@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Best Ball Voting</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1 class="app-title">Best Ball Voting</h1>
+
+  <!-- Mode selection -->
+  <div class="mode-select">
+    <button id="modeUploadBtn" class="active">Upload</button>
+    <button id="modeDraftBtn">Draft or Pass</button>
+    <button id="modeVersusBtn">Versus</button>
+    <button id="modeLeaderboardBtn">Leaderboard</button>
+  </div>
+
+  <div class="layout">
+    <div id="teamsContainer"></div>
+
+    <div class="upload-panel">
+      <h2>Upload Your Teams</h2>
+      <p>Add your drafts to the community vote pool</p>
+      <input type="text" id="usernameInput" placeholder="Your username" />
+      <div class="file-input-container">
+        <input type="file" id="csvUpload" accept=".csv" disabled />
+        <button id="uploadButton" class="upload-button" disabled>Upload Teams</button>
+      </div>
+      <div id="uploadMessage" class="upload-message"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="script.js"></script>
+
+  <!-- Modal for viewing team details -->
+  <div id="modalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-content" id="modalContent">
+      <div class="modal-close"><button id="modalCloseBtn">✖</button></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+</body>
+</html>

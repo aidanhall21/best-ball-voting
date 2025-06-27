@@ -1,0 +1,5 @@
+node_modules/
+uploads/
+teams.db
+.env
+.DS_Store 

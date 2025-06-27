@@ -1,0 +1,439 @@
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: #0d1117;
+    color: #f0f6fc;
+    padding: 30px;
+    text-align: center;
+  }
+  
+  .layout {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 40px;
+    width: 100%;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+  
+  #teamsContainer {
+    flex: 1;
+  }
+  
+  h1, h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+  }
+  
+  .team-card {
+    background: #161b22;
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .player-columns {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 20px;
+    gap: 10px;
+  }
+  
+  .position-column {
+    flex: 1;
+    background: #0d1117;
+    padding: 10px;
+    border-radius: 10px;
+  }
+  
+  .position-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+  }
+  
+  .player-bubble {
+    width: 25%;
+    margin: 0;
+    text-align: center;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    background: #0d1117;
+    color: #f0f6fc;
+    border: 2px solid #888;
+  }
+  
+  /* Position colors */
+  .player-bubble[style*="#a855f7"] { border-color: #a855f7; } /* QB - purple */
+  .player-bubble[style*="#22c55e"] { border-color: #22c55e; } /* RB - green */
+  .player-bubble[style*="#facc15"] { border-color: #facc15; } /* WR - yellow */
+  .player-bubble[style*="#3b82f6"] { border-color: #3b82f6; } /* TE - blue */
+  
+  .vote-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  
+  .vote-buttons button {
+    font-size: 16px;
+    padding: 10px 20px;
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  
+  .vote-buttons button:nth-child(2) {
+    background: #da3633;
+  }
+  
+  .vote-buttons button:hover {
+    filter: brightness(1.1);
+  }
+  
+  .vote-results {
+    font-size: 14px;
+    margin-top: 10px;
+  }
+  
+  .nav-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+    width: 100%;
+  }
+  
+  .nav-buttons button {
+    font-size: 20px;
+    background: #30363d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  
+  .upload-panel {
+    background: #161b22;
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  }
+  
+  .upload-panel input {
+    display: block;
+    margin: 20px auto;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #f0f6fc;
+    width: 80%;
+    max-width: 300px;
+  }
+  
+  .file-input-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+  }
+  
+  .upload-button {
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .upload-button:hover:not(:disabled) {
+    background: #2ea043;
+  }
+  
+  .upload-button:disabled {
+    background: #238636;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .upload-message {
+    margin-top: 15px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  
+  .upload-message.success {
+    background: #238636;
+    color: white;
+  }
+  
+  .upload-message.error {
+    background: #da3633;
+    color: white;
+  }
+  
+  .upload-message.info {
+    background: #1f6feb;
+    color: white;
+  }
+  
+  .app-title {
+    font-size: 40px;
+    font-weight: 700;
+    margin-bottom: 40px;
+  }
+  
+  .upload-panel input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #f0f6fc;
+  }
+  
+  .mode-select {
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+  }
+  
+  .mode-select button {
+    background: #30363d;
+    color: #f0f6fc;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  
+  .mode-select button.active {
+    background: #238636;
+  }
+  
+  .versus-container {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  
+  .versus-center {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 100px;
+  }
+  
+  .versus-text {
+    font-size: 24px;
+    font-weight: bold;
+    color: #8b949e;
+  }
+  
+  .versus-buttons {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .versus-stats {
+    margin: 15px 0;
+    padding: 8px;
+    background: #0d1117;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #8b949e;
+  }
+  
+  .player-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+  }
+  
+  .player-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+  }
+  
+  .position-summary {
+    margin-top: 10px;
+    font-weight: 600;
+    color: #8b949e;
+    font-size: 14px;
+  }
+  
+  .choose-button {
+    font-size: 16px;
+    padding: 10px 20px;
+    background: #0969da;  /* GitHub blue */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .choose-button:hover {
+    filter: brightness(1.1);
+  }
+  
+  /* Make bubbles wider in versus mode */
+  .versus-container .player-bubble {
+    width: 50%;
+  }
+  
+  /* Ensure emoji is vertically aligned */
+  .choose-button span {
+    display: inline-flex;
+    align-items: center;
+  }
+  
+  .leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+  }
+  
+  .leaderboard-table th,
+  .leaderboard-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #30363d;
+    text-align: center;
+  }
+  
+  .leaderboard-table th {
+    background: #161b22;
+    color: #f0f6fc;
+    font-weight: 600;
+  }
+  
+  .leaderboard-table tr:nth-child(even) {
+    background: #0d1117;
+  }
+  
+  .leaderboard-switch {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+  
+  .leaderboard-switch button {
+    padding: 6px 14px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #f0f6fc;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  
+  .leaderboard-switch button.active {
+    background: #238636;
+  }
+  
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  
+  .modal-content {
+    background: #161b22;
+    padding: 20px;
+    border-radius: 12px;
+    max-width: 95%;
+    max-height: 90%;
+    overflow: auto;
+  }
+  
+  .modal-close {
+    text-align: right;
+    margin-bottom: 10px;
+  }
+  
+  .modal-close button {
+    background: transparent;
+    border: none;
+    color: #f0f6fc;
+    font-size: 20px;
+    cursor: pointer;
+  }
+  
+  /* Make player bubbles wider in modal */
+  .modal-content .player-bubble {
+    width: 90%;
+    font-size: 15px;
+    padding: 8px 12px;
+    background: none;
+  }
+  
+  /* Adjust modal player list spacing */
+  .modal-content .player-list {
+    gap: 3px;
+    max-width: 900px;
+    margin: 0 auto;
+    background: none;
+  }
+  
+  .modal-content .player-row {
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+  
+  .modal-content .position-summary {
+    margin-top: 8px;
+    padding: 4px;
+    background: none;
+  }
+  
+  .modal-content .team-card {
+    background: none;
+    padding: 0;
+    box-shadow: none;
+  }
+  
+    
