@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 const path = require("path");
@@ -6,6 +7,11 @@ const multer = require("multer");
 const Papa = require("papaparse");
 const db = require("./db");
 const crypto = require("crypto");
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const passport = require('./auth');
+const bcrypt = require('bcryptjs');
+const sendMail = require('./mailer');
 
 const upload = multer({ dest: "uploads/" });
 app.use(express.static(__dirname));
@@ -21,7 +27,7 @@ app.use((req, res, next) => {
 // Simple in-memory rate limiter for votes: max 10 per 10-second window per voter
 const voteHistory = new Map(); // voterId -> [timestamps]
 function voteRateLimiter(req, res, next) {
-  const id = req.voterId;
+  const id = req.user ? req.user.id : crypto.randomUUID();
   const now = Date.now();
   const WINDOW_MS = 10 * 1000; // 10 seconds
   const MAX_VOTES = 10;
@@ -37,13 +43,30 @@ function voteRateLimiter(req, res, next) {
   next();
 }
 
+// Helper middleware to protect routes
+function requireAuth(req, res, next) {
+  if (req.isAuthenticated && req.isAuthenticated()) return next();
+  return res.status(401).json({ error: 'Login required' });
+}
+
+// ---- Sessions & Passport ----
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.sqlite' }),
+  secret: process.env.SESSION_SECRET || 'change_this_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Home page
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // Handle CSV Upload
-app.post("/upload", upload.single("csv"), (req, res) => {
+app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
   const csvPath = req.file.path;
   const fileContent = fs.readFileSync(csvPath, "utf8");
 
@@ -66,7 +89,8 @@ app.post("/upload", upload.single("csv"), (req, res) => {
         "Last Name",
         "Position",
         "Pick Number",
-        "Draft"
+        "Draft",
+        "Team"
       ];
 
       const headers = Object.keys(rows[0] || {});
@@ -104,6 +128,7 @@ app.post("/upload", upload.single("csv"), (req, res) => {
             const position = row["Position"];
             const pick = parseInt(row["Pick Number"]);
             const draftId = row["Draft"];
+            const team = row["Team"];
 
             if (!teamId || !fullName || !position || isNaN(pick)) return;
             if (existingTeamIds.has(teamId)) return; // Skip if team already exists
@@ -116,7 +141,7 @@ app.post("/upload", upload.single("csv"), (req, res) => {
               };
             }
 
-            groupedTeams[teamId].players.push({ position, name: fullName, pick });
+            groupedTeams[teamId].players.push({ position, name: fullName, pick, team });
           });
 
           // Only proceed with insert if we have new teams
@@ -127,14 +152,57 @@ app.post("/upload", upload.single("csv"), (req, res) => {
           db.serialize(() => {
             for (const [teamId, data] of Object.entries(groupedTeams)) {
               db.run(
-                `INSERT OR IGNORE INTO teams (id, tournament, username, draft_id) VALUES (?, ?, ?, ?)`,
-                [teamId, data.tournament, uploaderUsername, data.draftId]
+                `INSERT OR IGNORE INTO teams (id, tournament, username, draft_id, user_id) VALUES (?, ?, ?, ?, ?)`,
+                [teamId, data.tournament, uploaderUsername, data.draftId, req.user && req.user.id]
               );
 
-              data.players.forEach((player) => {
+              // Sort players by pick number for stack processing
+              const players = data.players.sort((a, b) => a.pick - b.pick);
+              
+              // Find and assign primary stacks (QB-based)
+              const qbs = players.filter(p => p.position === 'QB');
+              
+              // First assign all QB-based primary stacks
+              for (const qb of qbs) {
+                const receivers = players.filter(p => 
+                  (p.position === 'WR' || p.position === 'TE') && 
+                  p.team === qb.team && 
+                  p !== qb
+                );
+                
+                if (receivers.length > 0) {
+                  qb.stack = 'primary';
+                  receivers.forEach(r => r.stack = 'primary');
+                }
+              }
+              
+              // Then look for secondary stacks among remaining WR/TEs
+              const unstackedReceivers = players.filter(p => 
+                (p.position === 'WR' || p.position === 'TE') && 
+                !p.stack
+              );
+              
+              // Group unstacked receivers by team
+              const teamGroups = {};
+              unstackedReceivers.forEach(p => {
+                if (!teamGroups[p.team]) {
+                  teamGroups[p.team] = [];
+                }
+                teamGroups[p.team].push(p);
+              });
+              
+              // Assign secondary stacks where there are multiple receivers from same team
+              Object.values(teamGroups).forEach(group => {
+                if (group.length > 1) {
+                  group.forEach(p => p.stack = 'secondary');
+                }
+              });
+
+              // Insert players with stack information
+              players.forEach((player) => {
                 db.run(
-                  `INSERT INTO players (team_id, position, name, pick) VALUES (?, ?, ?, ?)`,
-                  [teamId, player.position, player.name, player.pick]
+                  `INSERT INTO players (team_id, position, name, pick, team, stack) VALUES (?, ?, ?, ?, ?, ?)`,
+                  [teamId, player.position, player.name, player.pick, player.team, player.stack || null]
                 );
               });
             }
@@ -156,7 +224,7 @@ app.post("/upload", upload.single("csv"), (req, res) => {
 // GET all teams from DB
 app.get("/teams", (req, res) => {
   const sql = `
-    SELECT t.id as team_id, t.tournament, t.username, p.position, p.name, p.pick
+    SELECT t.id as team_id, t.tournament, t.username, p.position, p.name, p.pick, p.team, p.stack
     FROM teams t
     JOIN players p ON p.team_id = t.id
   `;
@@ -166,35 +234,39 @@ app.get("/teams", (req, res) => {
 
     const teams = {};
     const tournaments = {};
+    const usernames = {};
 
     rows.forEach((row) => {
       if (!teams[row.team_id]) {
         teams[row.team_id] = [];
         tournaments[row.team_id] = row.tournament;
+        usernames[row.team_id] = row.username;
       }
       teams[row.team_id].push({
         position: row.position,
         name: row.name,
         pick: row.pick,
+        team: row.team,
+        stack: row.stack
       });
     });
 
-    res.json({ teams: Object.entries(teams), tournaments });
+    res.json({ teams: Object.entries(teams), tournaments, usernames });
   });
 });
 
 // POST vote for a team
 app.post("/vote", voteRateLimiter, (req, res) => {
   const { teamId, voteType } = req.body;
-  const voterId = req.voterId;
+  const voterId = req.user ? req.user.id : null;
 
   if (!["yes", "no"].includes(voteType)) {
     return res.status(400).json({ error: "Invalid vote type" });
   }
 
   db.get(
-    `SELECT vote_type FROM votes WHERE team_id = ? AND voter_id = ?`,
-    [teamId, voterId],
+    `SELECT vote_type FROM votes WHERE team_id = ? AND voter_id ${voterId ? '= ?' : 'IS NULL'}`,
+    voterId ? [teamId, voterId] : [teamId],
     (err, row) => {
       if (err) return res.status(500).json({ error: "DB error" });
 
@@ -206,8 +278,8 @@ app.post("/vote", voteRateLimiter, (req, res) => {
         );
       } else if (row.vote_type !== voteType) {
         db.run(
-          `UPDATE votes SET vote_type = ? WHERE team_id = ? AND voter_id = ?`,
-          [voteType, teamId, voterId],
+          `UPDATE votes SET vote_type = ? WHERE team_id = ? AND voter_id ${voterId ? '= ?' : 'IS NULL'}`,
+          voterId ? [voteType, teamId, voterId] : [voteType, teamId],
           () => res.json({ status: "updated" })
         );
       } else {
@@ -239,7 +311,7 @@ app.get("/votes/:teamId", (req, res) => {
 // Record versus match result (rate-limited)
 app.post("/versus", voteRateLimiter, (req, res) => {
   const { winnerId, loserId } = req.body;
-  const voterId = req.voterId;
+  const voterId = req.user ? req.user.id : null;
 
   if (!winnerId || !loserId) {
     return res.status(400).json({ error: "Winner and loser IDs required" });
@@ -257,7 +329,7 @@ app.post("/versus", voteRateLimiter, (req, res) => {
 
 // Get versus stats for a team
 app.get("/versus-stats/:teamId", (req, res) => {
-  const teamId = req.params.teamId;
+  const { teamId } = req.params;
   
   db.all(
     `SELECT 
@@ -266,11 +338,29 @@ app.get("/versus-stats/:teamId", (req, res) => {
     `,
     [teamId, teamId],
     (err, rows) => {
-      if (err) return res.status(500).json({ error: "Failed to get versus stats" });
-      const stats = rows[0] || { wins: 0, losses: 0 };
+      if (err) {
+        console.error('Error getting versus stats:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      // Ensure we get numbers, not strings
+      const stats = {
+        wins: parseInt(rows[0]?.wins || 0, 10),
+        losses: parseInt(rows[0]?.losses || 0, 10)
+      };
+      
       const total = stats.wins + stats.losses;
-      const winRate = total ? ((stats.wins / total) * 100).toFixed(1) : 0;
-      res.json({ ...stats, winRate });
+      
+      // Calculate win percentage
+      let winPct = 0;
+      if (total > 0) {
+        winPct = (stats.wins / total) * 100;
+      } else if (stats.wins > 0) {
+        winPct = 100; // If we have wins but total calculation failed
+      }
+      stats.win_pct = Number(winPct.toFixed(1));
+      
+      res.json(stats);
     }
   );
 });
@@ -278,15 +368,24 @@ app.get("/versus-stats/:teamId", (req, res) => {
 // Leaderboard endpoint (team)
 app.get("/leaderboard", (req, res) => {
   const sql = `
-    SELECT
-      t.id,
-      t.username,
-      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
-      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
-      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
-    FROM teams t
+    WITH team_stats AS (
+      SELECT
+        t.id,
+        t.username,
+        COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
+        COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
+        COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
+        COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+      FROM teams t
+    )
+    SELECT *
+    FROM team_stats
+    WHERE (yes_votes + no_votes) > 0 OR (wins + losses) > 0
+    ORDER BY (CAST(wins AS FLOAT) / NULLIF(wins + losses, 0)) DESC NULLS LAST,
+             (CAST(yes_votes AS FLOAT) / NULLIF(yes_votes + no_votes, 0)) DESC NULLS LAST
+    LIMIT 150
   `;
+  
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: "DB error" });
     const enriched = rows.map(calcPercents);
@@ -338,14 +437,139 @@ app.get("/leaderboard/users", (req, res) => {
 // Single team detail
 app.get('/team/:id', (req, res) => {
   const teamId = req.params.id;
-  db.all(`SELECT position, name, pick FROM players WHERE team_id = ?`, [teamId], (err, rows) => {
+  db.all(`SELECT position, name, pick, team, stack FROM players WHERE team_id = ?`, [teamId], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     res.json(rows);
+  });
+});
+
+// Get team owner info
+app.get("/team-owner/:teamId", (req, res) => {
+  const teamId = req.params.teamId;
+  
+  db.get(`
+    SELECT t.username, u.twitter_username 
+    FROM teams t 
+    LEFT JOIN users u ON t.user_id = u.id 
+    WHERE t.id = ?
+  `, [teamId], (err, row) => {
+    if (err) return res.status(500).json({ error: "DB error" });
+    res.json(row || { username: null, twitter_username: null });
+  });
+});
+
+// ---- Auth Routes ----
+app.post('/register', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  try {
+    const hash = await bcrypt.hash(password, 12);
+    db.run('INSERT INTO users (email, password_hash) VALUES (?, ?)', [email, hash], function(err) {
+      if (err) {
+        return res.status(400).json({ error: 'User already exists' });
+      }
+      res.json({ status: 'registered', id: this.lastID });
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/login', (req, res, next) => {
+  passport.authenticate('local', (err, user, info) => {
+    if (err) return next(err);
+    if (!user) {
+      return res.status(401).json({ error: info?.message || 'Login failed' });
+    }
+    req.logIn(user, (err2) => {
+      if (err2) return next(err2);
+      res.json({ status: 'logged_in', user: { id: user.id, email: user.email } });
+    });
+  })(req, res, next);
+});
+
+app.post('/logout', (req, res) => {
+  req.logout(() => {
+    res.json({ status: 'logged_out' });
+  });
+});
+
+app.get('/auth/twitter', passport.authenticate('twitter', { includeEmail: true }));
+
+app.get('/auth/twitter/callback',
+  passport.authenticate('twitter', { failureRedirect: '/' }),
+  (req, res) => {
+    res.redirect('/');
+  }
+);
+
+app.get('/me', (req, res) => {
+  res.json({ user: req.user || null });
+});
+
+// ---- Password reset ----
+const PASSWORD_RESET_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+
+const cryptoRandom = () => crypto.randomBytes(32).toString('hex');
+
+app.post('/password-reset/request', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  db.get('SELECT id FROM users WHERE email = ?', [email], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+
+    if (!row) {
+      // don't reveal user existence
+      return res.json({ status: 'ok' });
+    }
+
+    const token = cryptoRandom();
+    const expires = Date.now() + PASSWORD_RESET_EXPIRY_MS;
+
+    db.run('INSERT OR REPLACE INTO password_resets (token, user_id, expires_at) VALUES (?,?,?)', [token, row.id, expires], async (insertErr) => {
+      if (insertErr) return res.status(500).json({ error: 'DB error' });
+
+      const base = process.env.BASE_URL || 'https://draftrpass.com';
+      const link = `${base}/reset-password.html?token=${token}`;
+
+      try {
+        await sendMail({
+          to: email,
+          subject: 'Reset your Draft or Pass password',
+          html: `<p>Hello,</p><p>Click the link below to reset your password (valid for 1 hour):</p><p><a href="${link}">${link}</a></p><p>If you did not request this, you can ignore this email.</p>`
+        });
+      } catch (mailErr) {
+        console.error('Failed to send reset email:', mailErr);
+      }
+
+      res.json({ status: 'ok' });
+    });
+  });
+});
+
+app.post('/password-reset/confirm', async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'Token and password required' });
+
+  db.get('SELECT user_id, expires_at FROM password_resets WHERE token = ?', [token], async (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (!row || Date.now() > row.expires_at) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const hash = await bcrypt.hash(password, 12);
+    db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, row.user_id], (updErr) => {
+      if (updErr) return res.status(500).json({ error: 'DB error' });
+
+      db.run('DELETE FROM password_resets WHERE token = ?', [token]);
+      res.json({ status: 'password_reset' });
+    });
   });
 });
 
 // ✅ Updated to support Replit or local dev port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });

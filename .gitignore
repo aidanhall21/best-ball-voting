@@ -1,5 +1,17 @@
 node_modules/
 uploads/
-teams.db
-.env
-.DS_Store 
+
+.gitignore
+
+# Environment & credentials
+.env*
+
+# Local databases (SQLite)
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# Logs / misc
+*.log
+.DS_Store
