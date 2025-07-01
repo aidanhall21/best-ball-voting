@@ -23,6 +23,9 @@
   <meta name="twitter:description" content="Vote on best ball drafts!">
   <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
   <meta name="twitter:image:alt" content="Draft or Pass - Best Ball Voting app preview">
+  <!-- Cloudflare Web Analytics -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
+  <!-- End Cloudflare Web Analytics -->
 </head>
 <body>
   <div class="header">
@@ -78,7 +81,8 @@
   </div>
 
   <div class="layout">
-    <div id="teamsContainer"></div>
+    <!-- Hidden by default; script shows it when needed to avoid initial layout shift -->
+    <div id="teamsContainer" style="display:none;"></div>
 
     <div class="upload-panel">
       <!-- Upload section (shown when logged in) -->

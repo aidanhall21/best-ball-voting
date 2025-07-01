@@ -18,7 +18,10 @@ body {
   }
   
   #teamsContainer {
-    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
   }
   
   h1, h2 {
@@ -63,25 +66,37 @@ body {
   }
   
   .player-bubble {
-    width: 25%;
-    margin: 0;
-    text-align: center;
-    padding: 8px 10px;
-    font-size: 14px;
-    font-weight: 500;
-    border-radius: 8px;
-    background: #0d1117;
-    color: #f0f6fc;
-    border: 2px solid #888;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  width: 45%;
+  margin: 0;
+  position: relative;
+  text-align: center;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: #0d1117;
+  color: #f0f6fc;
+  border: 2px solid #888;
+  white-space: normal;
+  overflow: visible;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
   
   .stack-star {
     display: inline-block;
-    margin-left: 4px;
     font-size: 12px;
+  }
+  
+  /* Align stack star to bubble right */
+  .player-bubble .stack-star {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
   }
   
   .stack-star.primary {
@@ -292,11 +307,22 @@ body {
     background: #238636;
   }
   
+  .versus-outer-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  
   .versus-container {
     display: flex;
-    gap: 2px;
+    flex-direction: row;
+    gap: 4px;
     justify-content: center;
-    align-items: flex-start;
+    width: 100%;
+    padding: 0 2px;
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
   
   .versus-center {
@@ -418,7 +444,7 @@ body {
   
   /* Make bubbles much wider in versus mode */
   .versus-container .player-bubble {
-    width: 85%;
+    width: 92%; /* slightly wider on desktop */
   }
   
   /* Ensure emoji is vertically aligned */
@@ -427,17 +453,30 @@ body {
     align-items: center;
   }
   
-  .leaderboard-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
+  .leaderboard-switch {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
   }
+  
+  .leaderboard-table {
+  width: 100%;
+  max-width: 800px;
+  border-collapse: collapse;
+  margin: 20px auto;
+  table-layout: fixed;
+  font-size: 13px;
+}
   
   .leaderboard-table th,
   .leaderboard-table td {
-    padding: 8px 12px;
+    padding: 8px 6px;
     border-bottom: 1px solid #30363d;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   .leaderboard-table th {
@@ -446,15 +485,25 @@ body {
     font-weight: 600;
   }
   
-  .leaderboard-table tr:nth-child(even) {
-    background: #0d1117;
+  .leaderboard-table th.sortable {
+    cursor: pointer;
   }
   
-  .leaderboard-switch {
-    margin-top: 10px;
-    display: flex;
-    justify-content: center;
-    gap: 10px;
+  /* Column widths for team view */
+  .leaderboard-table.team-view th:nth-child(1) { width: 12%; } /* Team */
+  .leaderboard-table.team-view th:nth-child(2) { width: 40%; } /* User */
+  .leaderboard-table.team-view th:nth-child(3) { width: 12%; } /* W */
+  .leaderboard-table.team-view th:nth-child(4) { width: 12%; } /* L */
+  .leaderboard-table.team-view th:nth-child(5) { width: 24%; } /* Win % */
+  
+  /* Column widths for user view */
+  .leaderboard-table.user-view th:nth-child(1) { width: 46%; } /* User */
+  .leaderboard-table.user-view th:nth-child(2) { width: 15%; } /* W */
+  .leaderboard-table.user-view th:nth-child(3) { width: 15%; } /* L */
+  .leaderboard-table.user-view th:nth-child(4) { width: 24%; } /* Win % */
+  
+  .leaderboard-table tr:nth-child(even) {
+    background: #0d1117;
   }
   
   .leaderboard-switch button {
@@ -484,12 +533,14 @@ body {
   }
   
   .modal-content {
-    background: #161b22;
+    background: #0d1117;
     padding: 20px;
-    border-radius: 12px;
-    max-width: 95%;
-    max-height: 90%;
-    overflow: auto;
+    border-radius: 8px;
+    position: relative;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
   }
   
   .modal-close {
@@ -505,38 +556,12 @@ body {
     cursor: pointer;
   }
   
-  /* Make player bubbles wider in modal */
-  .modal-content .player-bubble {
-    width: 90%;
-    font-size: 15px;
-    padding: 8px 12px;
-    background: none;
-  }
-  
-  /* Adjust modal player list spacing */
-  .modal-content .player-list {
-    gap: 3px;
-    max-width: 900px;
-    margin: 0 auto;
-    background: none;
-  }
-  
-  .modal-content .player-row {
-    margin: 0;
-    padding: 0;
-    background: none;
-  }
-  
-  .modal-content .position-summary {
-    margin-top: 8px;
-    padding: 4px;
-    background: none;
-  }
-  
-  .modal-content .team-card {
-    background: none;
-    padding: 0;
-    box-shadow: none;
+  /* Ensure modal scrolls properly on mobile */
+  @media (max-width: 768px) {
+    .modal-content {
+      width: 95%;
+      padding: 15px;
+    }
   }
   
   /* ---- Auth Bar ---- */
@@ -808,11 +833,11 @@ body {
     padding: 10px;
     background: #21262d;
     border-radius: 8px;
+    min-height: 16px;
   }
   
   .roster-counts {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 14px;
     text-align: center;
     color: #f0f6fc;
   }
@@ -1051,8 +1076,32 @@ body {
     /* Bubble compaction */
     .player-bubble {
       width: 100%;
-      padding: 4px 6px;
-      font-size: 13px;
+      padding: 3px 12px; /* balanced padding */
+      font-size: 15px;
+      box-sizing: border-box;
+      min-height: 28px;
+    }
+    
+    /* Ensure centered text doesn't overlap pick or star */
+    .player-bubble .player-info {
+      display: block;
+      padding: 0;
+      text-align: center;
+      font-size: 11px; /* even smaller text on mobile to help fit */
+    }
+    
+    /* Slightly smaller pick/star to fit mobile */
+    .player-bubble .stack-star {
+      font-size: 11px;
+    }
+    
+    /* Hide pick numbers on mobile */
+    .player-bubble .pick-num {
+      display: none;
+    }
+    
+    .player-bubble .stack-star {
+      right: 6px;
     }
     
     /* Ensure player-list layout is consistent on mobile for Draft mode */
@@ -1079,30 +1128,34 @@ body {
     
     /* Versus mode mobile adjustments */
     .versus-container {
-      flex-direction: row;      /* keep teams side by side */
-      gap: 10px;
+      display: flex;
+      flex-direction: row;      /* teams side by side */
+      flex-wrap: nowrap;        /* prevent wrapping by default */
+      gap: 4px;                /* minimal gap between cards */
       width: 100%;
-      padding: 0 5px;
+      padding: 0 2px;          /* minimal outer padding */
       box-sizing: border-box;
-      overflow-x: hidden;
-      flex-wrap: wrap;          /* allow next button to wrap below */
+      overflow-x: hidden;      /* prevent horizontal scroll */
+      justify-content: center; /* center the cards */
     }
     
     .versus-container .team-card {
-      width: 48%;             /* each team takes slightly less than half width for gap */
-      height: auto;          /* remove fixed height */
-      padding: 8px;          /* reduce padding */
-      margin: 0;             /* remove margins */
-      min-width: 0;          /* allow shrinking */
-      overflow: visible;     /* ensure no scrolling */
+      flex: 0 0 calc(50% - 2px); /* exactly half width minus gap */
+      width: calc(50% - 2px);    /* backup width */
+      min-width: 0;              /* allow shrinking */
+      padding: 6px;              /* reduced padding */
+      margin: 0;                 /* no margins */
+      box-sizing: border-box;    /* include padding in width */
     }
     
     /* Adjust player bubbles in versus mode for mobile */
     .versus-container .player-bubble {
-      width: 95%;            /* nearly full width of container */
-      font-size: 12px;       /* slightly smaller font */
-      padding: 4px 6px;      /* compact padding */
+      width: 96%;           /* wider bubbles on mobile */
+      font-size: 14px;       /* increased font size for mobile */
+      padding: 3px 8px;      /* balanced padding */
       white-space: normal;   /* allow text wrapping */
+      margin: 0 auto;        /* center the wider bubbles */
+      min-height: 28px;
     }
     
     /* Center the versus text and buttons */
@@ -1122,23 +1175,34 @@ body {
       font-size: 12px;
     }
 
-    /* Position next button below choose buttons on mobile */
+    /* Position next button below cards */
     .versus-container .next-button {
       position: static;
-      display: block;
       width: fit-content;
-      margin: 20px auto 0;
-      flex-basis: 100%;      /* take full width to force to new line */
-      text-align: center;    /* center the button */
+      margin: 0;           /* remove margin since container handles it */
+      display: block;
+      text-align: center;  /* center the button */
     }
     
     /* Modal mobile adjustments */
     .modal-content {
       width: 95%;
-      max-width: none;
-      margin: 10px;
-      max-height: 90vh;
-      overflow-y: auto;
+      padding: 15px;
+    }
+    
+    .modal-content .player-bubble {
+      min-width: unset;
+      width: 100%;
+      font-size: 12px;
+      padding: 6px 8px;
+    }
+    
+    .modal-content .player-info {
+      margin: 0 20px;
+    }
+    
+    .modal-content .pick-num {
+      min-width: 30px;
     }
     
     /* Table responsive */
@@ -1150,7 +1214,42 @@ body {
     
     .leaderboard-table th,
     .leaderboard-table td {
-      padding: 8px 4px;
+      padding: 4px 2px;
+    }
+
+    /* Allow wrapping only on mobile */
+    .versus-container {
+      flex-wrap: wrap;          /* allow wrapping for next button container */
+    }
+
+    /* Mobile adjustments */
+    .leaderboard-table th,
+    .leaderboard-table td {
+      padding: 4px 2px;
+      font-size: 10px;
+    }
+
+    /* Team view mobile adjustments */
+    .leaderboard-table.team-view th:nth-child(1) { width: 15%; } /* Team */
+    .leaderboard-table.team-view th:nth-child(2) { width: 45%; } /* User - give more space */
+    .leaderboard-table.team-view th:nth-child(3) { width: 12%; } /* W */
+    .leaderboard-table.team-view th:nth-child(4) { width: 12%; } /* L */
+    .leaderboard-table.team-view th:nth-child(5) { width: 16%; } /* Win % */
+
+    /* User view mobile adjustments */
+    .leaderboard-table.user-view th:nth-child(1) { width: 52%; } /* User - give more space */
+    .leaderboard-table.user-view th:nth-child(2) { width: 14%; } /* W */
+    .leaderboard-table.user-view th:nth-child(3) { width: 14%; } /* L */
+    .leaderboard-table.user-view th:nth-child(4) { width: 20%; } /* Win % */
+
+    .leaderboard-switch button {
+      font-size: 11px;
+      padding: 4px 8px;
+    }
+
+    .view-team-btn {
+      font-size: 9px;
+      padding: 2px 4px;
     }
   }
   
@@ -1188,6 +1287,35 @@ body {
   html, body {
     max-width: 100vw;
     overflow-x: hidden;
+  }
+  
+  /* Loading indicator shown while teams are being fetched */
+  .loading-indicator {
+    font-size: 18px;
+    color: #8b949e;
+    margin-top: 40px;
+    animation: pulseFade 1.5s ease-in-out infinite;
+  }
+  
+  @keyframes pulseFade {
+    0% { opacity: 0.4; }
+    50% { opacity: 1; }
+    100% { opacity: 0.4; }
+  }
+  
+  /* Pick number (left aligned inside bubble) */
+  .player-bubble .pick-num {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  
+  /* Player info (centered) */
+  .player-bubble .player-info {
+    display: block;
+    width: 100%;
+    text-align: center;
   }
   
     

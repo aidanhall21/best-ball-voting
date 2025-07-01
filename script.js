@@ -222,8 +222,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Check auth on load
-  refreshAuth();
+  // Check auth on load and then set initial mode once we know auth state
+  refreshAuth().then(() => {
+    // Ensure correct initial layout after auth status is known
+    setMode("upload");
+  });
 
   // Enable/disable file input and upload button based on username presence
   usernameInput.addEventListener("input", (e) => {
@@ -278,11 +281,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (data.message === "No new teams to add") {
           showUploadMessage("File processed - all teams were already in the database", "info");
+        } else if (typeof data.added === 'number') {
+          const pluralize = (n, singular) => `${n} ${singular}${n === 1 ? '' : 's'}`;
+
+          const addedCount = data.added;
+          const skippedInvalidCount = Array.isArray(data.skippedInvalid) ? data.skippedInvalid.length : (typeof data.skippedInvalid === 'number' ? data.skippedInvalid : 0);
+          const existingCount = Array.isArray(data.skippedExisting) ? data.skippedExisting.length : (typeof data.skippedExisting === 'number' ? data.skippedExisting : 0);
+
+          const parts = [pluralize(addedCount, 'team') + ' added'];
+          if (skippedInvalidCount > 0) parts.push(pluralize(skippedInvalidCount, 'team') + ' skipped');
+          if (existingCount > 0) parts.push(pluralize(existingCount, 'team') + ' already exist');
+
+          const msg = parts.join(', ');
+          const msgType = addedCount > 0 ? 'success' : 'info';
+          showUploadMessage(msg, msgType);
         } else {
-          showUploadMessage("Teams uploaded successfully!", "success");
+          // fallback to provided message if counts not present
+          showUploadMessage(data.message || "Teams uploaded successfully!", "success");
         }
-        // Refresh teams list regardless
-        fetchTeams();
+        // Refresh teams list regardless (force refresh to get latest)
+        fetchTeams(true);
       })
       .catch(error => {
         showUploadMessage(error.message || "Failed to upload teams. Please try again.", "error");
@@ -341,6 +359,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       uploadPanel.style.display = "none";
       container.style.display = "block";
+      // Show loading indicator immediately to signal work is happening
+      container.innerHTML = "<div class='loading-indicator'>Loading teams…</div>";
       if (mode === "leaderboard") {
         fetchLeaderboard();
       } else {
@@ -361,9 +381,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Modal close button
   document.getElementById("modalCloseBtn").addEventListener("click", hideModal);
-
-  // Ensure correct initial layout
-  setMode("upload");
 });
 
 function showUploadMessage(message, type) {
@@ -375,7 +392,21 @@ function showUploadMessage(message, type) {
   }
 }
 
-function fetchTeams() {
+// Fetch teams, optionally bypassing the cache
+function fetchTeams(force = false) {
+  // If we already have teams cached and not forcing a refresh, reuse them
+  if (!force && teams.length) {
+    if (currentMode === "versus") {
+      renderVersus();
+    }
+    return;
+  }
+
+  const container = document.getElementById("teamsContainer");
+  if (container) {
+    container.innerHTML = "<div class='loading-indicator'>Loading teams…</div>";
+  }
+
   fetch("/teams")
     .then(res => res.json())
     .then(data => {
@@ -451,7 +482,11 @@ function buildTeamCard(teamId, players) {
       bubble.className = "player-bubble";
       const stackStar = pl.stack ? 
         `<span class="stack-star ${pl.stack}">★</span>` : '';
-      bubble.innerHTML = `${pl.name}${pl.team ? ` - ${pl.team}${stackStar}` : ''}`;
+      // Build bubble content with pick number left-aligned and player info centered
+      const pickHTML = (pl.pick || pl.pick === 0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
+      const infoHTML = `<span class="player-info">${pl.name}${pl.team ? ` - ${pl.team}` : ''}</span>`;
+      const starHTML = stackStar; // star after info for positioning via CSS
+      bubble.innerHTML = `${pickHTML}${infoHTML}${starHTML}`;
       bubble.style.border = `2px solid ${getBorderColor(pl.position)}`;
 
       row.appendChild(bubble);
@@ -468,6 +503,14 @@ function renderVersus() {
   container.innerHTML = "";
 
   if (teams.length < 2) return;
+
+  // Create outer container for everything
+  const outerContainer = document.createElement("div");
+  outerContainer.className = "versus-outer-container";
+
+  // Create versus container just for the cards
+  const versusWrapper = document.createElement("div");
+  versusWrapper.className = "versus-container";
 
   // Build tournament -> teamIds map
   const tourGroups = {};
@@ -532,9 +575,6 @@ function renderVersus() {
   // Retrieve players arrays
   const players1 = teams.find(([id]) => id === teamId1)[1];
   const players2 = teams.find(([id]) => id === teamId2)[1];
-
-  const versusWrapper = document.createElement("div");
-  versusWrapper.className = "versus-container";
 
   const card1 = buildTeamCard(teamId1, players1);
   const card2 = buildTeamCard(teamId2, players2);
@@ -609,12 +649,12 @@ function renderVersus() {
           </div>
         `;
 
-        // Add "Next Matchup" button
+        // Add "Next Matchup" button to outer container
         const nextButton = document.createElement("button");
         nextButton.textContent = "Next Matchup →";
         nextButton.className = "next-button";
         nextButton.onclick = () => renderVersus();
-        versusWrapper.appendChild(nextButton);
+        document.querySelector('.versus-outer-container').appendChild(nextButton);
       });
     });
   };
@@ -629,7 +669,11 @@ function renderVersus() {
   versusWrapper.appendChild(card1);
   versusWrapper.appendChild(card2);
 
-  container.appendChild(versusWrapper);
+  // Add versus wrapper to outer container
+  outerContainer.appendChild(versusWrapper);
+  
+  // Add outer container to main container
+  container.appendChild(outerContainer);
 }
 
 // fetchLeaderboard
@@ -703,21 +747,21 @@ function renderLeaderboard(data) {
   container.appendChild(switchDiv);
 
   const table = document.createElement("table");
-  table.className = "leaderboard-table";
+  table.className = `leaderboard-table ${leaderboardType}-view`;
 
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
   headerRow.innerHTML = leaderboardType === "team" ? `
     <th>Team</th>
     <th>User</th>
-    <th>W</th>
-    <th>L</th>
-    <th>Win %</th>
+    <th class="sortable">W</th>
+    <th class="sortable">L</th>
+    <th class="sortable">Win %</th>
   ` : `
     <th>User</th>
-    <th>W</th>
-    <th>L</th>
-    <th>Win %</th>
+    <th class="sortable">W</th>
+    <th class="sortable">L</th>
+    <th class="sortable">Win %</th>
   `;
   thead.appendChild(headerRow);
   table.appendChild(thead);
@@ -744,7 +788,7 @@ function renderLeaderboard(data) {
     const keyIdx = leaderboardType === "team" ? idx - 2 : idx - 1;
     if (keyIdx < 0) return; // skip Team/User columns
     const key = sortableKeys[keyIdx];
-    th.style.cursor = "pointer";
+    
     th.onclick = () => {
       if (sortKey === key) {
         sortDir = sortDir === "desc" ? "asc" : "desc";

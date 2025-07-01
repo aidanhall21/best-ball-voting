@@ -4,6 +4,7 @@ const app = express();
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
+const morgan = require('morgan');
 const Papa = require("papaparse");
 const db = require("./db");
 const crypto = require("crypto");
@@ -16,6 +17,11 @@ const sendMail = require('./mailer');
 const upload = multer({ dest: "uploads/" });
 app.use(express.static(__dirname));
 app.use(express.json());
+
+// Request logging
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+}
 
 // Middleware to identify user (basic fingerprint via cookie or IP)
 app.use((req, res, next) => {
@@ -81,6 +87,20 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
     complete: (result) => {
       const rows = result.data;
       
+      // ⚠️ Validate positions – only allow NFL skill positions
+      const allowedPositions = new Set(['QB', 'RB', 'WR', 'TE']);
+      const invalidTeamIds = new Set();
+
+      // First pass to identify any teams that include a disallowed position
+      rows.forEach(row => {
+        const teamId = row["Draft Entry"];
+        if (!teamId) return;
+        const pos = String(row["Position"] || '').trim().toUpperCase();
+        if (!allowedPositions.has(pos)) {
+          invalidTeamIds.add(teamId);
+        }
+      });
+
       // Check for required columns
       const requiredColumns = [
         "Draft Entry",
@@ -120,6 +140,9 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
 
           const existingTeamIds = new Set(existingTeams.map(t => t.id));
 
+          // Track counts for reporting
+          const skippedExistingIds = new Set(existingTeamIds);
+
           // Now process only non-existing teams
           rows.forEach((row) => {
             const teamId = row["Draft Entry"];
@@ -132,6 +155,7 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
 
             if (!teamId || !fullName || !position || isNaN(pick)) return;
             if (existingTeamIds.has(teamId)) return; // Skip if team already exists
+            if (invalidTeamIds.has(teamId)) return;  // Skip if team contains invalid position
 
             if (!groupedTeams[teamId]) {
               groupedTeams[teamId] = {
@@ -145,8 +169,21 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
           });
 
           // Only proceed with insert if we have new teams
-          if (Object.keys(groupedTeams).length === 0) {
-            return res.json({ message: "No new teams to add" });
+          const addedTeamsCount = Object.keys(groupedTeams).length;
+          const skippedIdsSet = new Set([
+            ...skippedExistingIds,
+            ...invalidTeamIds
+          ]);
+
+          if (addedTeamsCount === 0) {
+            return res.json({
+              message: `0 new entries added, ${skippedIdsSet.size} skipped`,
+              added: 0,
+              skipped: skippedIdsSet.size,
+              skippedIds: [...skippedIdsSet],
+              skippedExisting: [...skippedExistingIds],
+              skippedInvalid: [...invalidTeamIds]
+            });
           }
 
           db.serialize(() => {
@@ -206,7 +243,14 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
                 );
               });
             }
-            res.json({ message: "Teams uploaded successfully" });
+            res.json({
+              message: `${addedTeamsCount} new ${addedTeamsCount === 1 ? 'entry' : 'entries'} added, ${skippedIdsSet.size} skipped`,
+              added: addedTeamsCount,
+              skipped: skippedIdsSet.size,
+              skippedIds: [...skippedIdsSet],
+              skippedExisting: [...skippedExistingIds],
+              skippedInvalid: [...invalidTeamIds]
+            });
           });
         }
       );
