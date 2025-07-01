@@ -1,5 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const db = new sqlite3.Database("./teams.db");
+const DB_PATH = process.env.DB_PATH || "./teams.db"; // allow override in prod
+const db = new sqlite3.Database(DB_PATH);
 
 // Enable Write-Ahead Logging for better concurrency
 db.exec('PRAGMA journal_mode = WAL;');
