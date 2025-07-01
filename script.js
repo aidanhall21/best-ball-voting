@@ -2,10 +2,10 @@ let teams = [];
 let currentIndex = 0;
 let userVotes = {};
 let teamTournaments = {};
-let currentMode = "upload"; // 'upload' | 'draft' | 'versus' | 'leaderboard'
+let currentMode = "upload"; // 'upload' | 'versus' | 'leaderboard'
 let leaderboardType = "team"; // 'team' or 'user'
 let leaderboardData = [];
-let sortKey = "yes_pct";
+let sortKey = "wins";
 let sortDir = "desc";
 let teamUsernames = {};
 const MAX_LEADERBOARD_ROWS = 150; // how many rows to actually render after sorting
@@ -310,13 +310,11 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Update desktop navigation buttons
     document.getElementById("modeUploadBtn").classList.toggle("active", mode === "upload");
-    document.getElementById("modeDraftBtn").classList.toggle("active", mode === "draft");
     document.getElementById("modeVersusBtn").classList.toggle("active", mode === "versus");
     document.getElementById("modeLeaderboardBtn").classList.toggle("active", mode === "leaderboard");
     
     // Update mobile navigation buttons
     document.getElementById("mobileUploadBtn").classList.toggle("active", mode === "upload");
-    document.getElementById("mobileDraftBtn").classList.toggle("active", mode === "draft");
     document.getElementById("mobileVersusBtn").classList.toggle("active", mode === "versus");
     document.getElementById("mobileLeaderboardBtn").classList.toggle("active", mode === "leaderboard");
     
@@ -353,13 +351,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Desktop mode selection event listeners
   document.getElementById("modeUploadBtn").addEventListener("click", () => setMode("upload"));
-  document.getElementById("modeDraftBtn").addEventListener("click", () => setMode("draft"));
   document.getElementById("modeVersusBtn").addEventListener("click", () => setMode("versus"));
   document.getElementById("modeLeaderboardBtn").addEventListener("click", () => setMode("leaderboard"));
 
   // Mobile mode selection event listeners
   document.getElementById("mobileUploadBtn").addEventListener("click", () => setMode("upload"));
-  document.getElementById("mobileDraftBtn").addEventListener("click", () => setMode("draft"));
   document.getElementById("mobileVersusBtn").addEventListener("click", () => setMode("versus"));
   document.getElementById("mobileLeaderboardBtn").addEventListener("click", () => setMode("leaderboard"));
 
@@ -395,15 +391,9 @@ function fetchTeams() {
           if (!teamUsernames[id]) teamUsernames[id] = null;
         });
       }
-      if (currentMode === "draft" && teams.length) {
-        currentIndex = Math.floor(Math.random() * teams.length);
-      } else {
-        currentIndex = 0;
-      }
+      currentIndex = 0;
       if (currentMode === "upload") return;
-      if (currentMode === "draft") {
-        renderDraft();
-      } else if (currentMode === "versus") {
+      if (currentMode === "versus") {
         renderVersus();
       }
     });
@@ -471,93 +461,6 @@ function buildTeamCard(teamId, players) {
 
   card.appendChild(list);
   return card;
-}
-
-function renderDraft() {
-  const container = document.getElementById("teamsContainer");
-  container.innerHTML = "";
-
-  if (!teams.length) return;
-
-  const [teamId, players] = teams[currentIndex];
-
-  const card = buildTeamCard(teamId, players);
-
-  // Add owner info section (hidden initially)
-  const ownerInfo = document.createElement("div");
-  ownerInfo.className = "owner-info hidden";
-  ownerInfo.innerHTML = '<div class="loading">Loading drafter info...</div>';
-  card.appendChild(ownerInfo);
-
-  // Voting UI with highlight for selected vote
-  const voteSection = document.createElement("div");
-  voteSection.className = "vote-buttons";
-
-  const yesBtn = document.createElement("button");
-  yesBtn.textContent = "👍 Draft";
-  yesBtn.className = userVotes[teamId] === "yes" ? "selected" : "";
-
-  const noBtn = document.createElement("button");
-  noBtn.textContent = "👎 Pass";
-  noBtn.className = userVotes[teamId] === "no" ? "selected" : "";
-
-  const sendVote = (type) => {
-    // Disable both buttons immediately
-    yesBtn.disabled = true;
-    noBtn.disabled = true;
-    
-    // Update button states
-    if (type === "yes") {
-      yesBtn.className = "selected";
-      noBtn.className = "disabled";
-    } else {
-      noBtn.className = "selected";
-      yesBtn.className = "disabled";
-    }
-
-    fetch("/vote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId, voteType: type }),
-    }).then(res => {
-      if (handleRateLimit(res)) return;
-      userVotes[teamId] = type;
-
-      // Show owner info after vote
-      ownerInfo.classList.remove("hidden");
-      Promise.all([
-        fetch(`/team-owner/${teamId}`).then(r=>r.json()).catch(()=>({})),
-        fetch(`/votes/${teamId}`).then(r=>r.json()).catch(()=>({yes:0,no:0}))
-      ]).then(([info, votes])=>{
-        const total = (votes.yes||0) + (votes.no||0);
-        const yesPct = total ? ((votes.yes||0)/total*100).toFixed(1) : 0;
-        const noPct = total ? ((votes.no||0)/total*100).toFixed(1) : 0;
-        ownerInfo.innerHTML = `
-          <div class="owner-info">
-            ${info.username || 'Anonymous'}${info.twitter_username ? ` | @${info.twitter_username}` : ''} | <strong>Draft:</strong> ${yesPct}% | <strong>Pass:</strong> ${noPct}%
-          </div>
-        `;
-      }).catch(()=>{
-        ownerInfo.innerHTML = '<div class="owner-info">Drafter information unavailable</div>';
-      });
-
-      // Add "Next Team" button
-      const nextButton = document.createElement("button");
-      nextButton.textContent = "Next Team →";
-      nextButton.className = "next-button";
-      nextButton.onclick = () => nextTeam();
-      card.appendChild(nextButton);
-    });
-  };
-
-  yesBtn.onclick = () => sendVote("yes");
-  noBtn.onclick = () => sendVote("no");
-
-  voteSection.appendChild(yesBtn);
-  voteSection.appendChild(noBtn);
-  card.appendChild(voteSection);
-
-  container.appendChild(card);
 }
 
 function renderVersus() {
@@ -729,13 +632,6 @@ function renderVersus() {
   container.appendChild(versusWrapper);
 }
 
-// nextTeam function random selection
-function nextTeam() {
-  if (!teams.length) return;
-  currentIndex = Math.floor(Math.random() * teams.length);
-  renderDraft();
-}
-
 // fetchLeaderboard
 function fetchLeaderboard() {
   // Ensure default sort for both views is by Versus Wins (desc)
@@ -764,17 +660,6 @@ function sortAndRender() {
       }
       // If percentages are equal, break tie with total wins
       return sortDir === "asc" ? a.wins - b.wins : b.wins - a.wins;
-    }
-
-    if (sortKey === "yes_pct") {
-      // Draft percentage first, then total votes for tiebreaker
-      const ap = parseFloat(a.yes_pct);
-      const bp = parseFloat(b.yes_pct);
-      if (ap !== bp) {
-        return sortDir === "asc" ? ap - bp : bp - ap;
-      }
-      // If percentages are equal, break tie with total votes
-      return sortDir === "asc" ? a.yes_votes - b.yes_votes : b.yes_votes - a.yes_votes;
     }
     
     // default single-column numeric sort
@@ -821,61 +706,50 @@ function renderLeaderboard(data) {
   table.className = "leaderboard-table";
 
   const thead = document.createElement("thead");
-  // First grouped header row
-  const headerRow1 = document.createElement("tr");
-  headerRow1.innerHTML = leaderboardType === "team" ? `
-    <th rowspan="2">Team</th>
-    <th rowspan="2">User</th>
-    <th colspan="3">Draft or Pass</th>
-    <th colspan="3">Versus</th>
+  const headerRow = document.createElement("tr");
+  headerRow.innerHTML = leaderboardType === "team" ? `
+    <th>Team</th>
+    <th>User</th>
+    <th>W</th>
+    <th>L</th>
+    <th>Win %</th>
   ` : `
-    <th rowspan="2">User</th>
-    <th colspan="3">Draft or Pass</th>
-    <th colspan="3">Versus</th>
-  `;
-  // Second sub-header row
-  const headerRow2 = document.createElement("tr");
-  headerRow2.innerHTML = `
-    <th>👍 Draft</th>
-    <th>👎 Pass</th>
-    <th>Draft %</th>
+    <th>User</th>
     <th>W</th>
     <th>L</th>
     <th>Win %</th>
   `;
-  thead.appendChild(headerRow1);
-  thead.appendChild(headerRow2);
+  thead.appendChild(headerRow);
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
   data.forEach(row=>{
     const tr = document.createElement("tr");
-    const yesPct = (row.yes_pct || 0).toString();
     const winPct = (row.win_pct || 0).toString();
 
     if (leaderboardType === "team") {
       const viewBtn = `<button class="view-team-btn" data-id="${row.id}">View</button>`;
-      tr.innerHTML = `<td>${viewBtn}</td><td>${row.username || "-"}</td><td>${row.yes_votes}</td><td>${row.no_votes}</td><td>${yesPct}%</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      tr.innerHTML = `<td>${viewBtn}</td><td>${row.username || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     } else {
-      tr.innerHTML = `<td>${row.username || "-"}</td><td>${row.yes_votes}</td><td>${row.no_votes}</td><td>${yesPct}%</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      tr.innerHTML = `<td>${row.username || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
   container.appendChild(table);
 
-  // event listeners for sort
-  const headerCells = headerRow2.querySelectorAll("th");
-  const keys = ["yes_votes","no_votes","yes_pct","wins","losses","win_pct"];
+  // Make W, L, Win% sortable
+  const headerCells = headerRow.querySelectorAll("th");
+  const sortableKeys = ["wins","losses","win_pct"]; // always last three columns
   headerCells.forEach((th, idx) => {
+    const keyIdx = leaderboardType === "team" ? idx - 2 : idx - 1;
+    if (keyIdx < 0) return; // skip Team/User columns
+    const key = sortableKeys[keyIdx];
     th.style.cursor = "pointer";
     th.onclick = () => {
-      const newKey = keys[idx];
-      if (sortKey === newKey) {
-        // If clicking same column, toggle direction
+      if (sortKey === key) {
         sortDir = sortDir === "desc" ? "asc" : "desc";
       } else {
-        // If clicking new column, default to descending
-        sortKey = newKey;
+        sortKey = key;
         sortDir = "desc";
       }
       sortAndRender();

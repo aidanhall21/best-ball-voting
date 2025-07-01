@@ -17,3 +17,6 @@ uploads/
 
 # Ignore local backup script
 backup-db.sh
+
+# Ignore archive directory
+archive/
