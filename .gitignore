@@ -9,7 +9,11 @@ uploads/
 *.db
 *.db-shm
 *.db-wal
+*.db.gz
 
 # Logs / misc
 *.log
 .DS_Store
+
+# Ignore local backup script
+backup-db.sh
