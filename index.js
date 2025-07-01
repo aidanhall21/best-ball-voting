@@ -383,7 +383,6 @@ app.get("/leaderboard", (req, res) => {
     WHERE (yes_votes + no_votes) > 0 OR (wins + losses) > 0
     ORDER BY (CAST(wins AS FLOAT) / NULLIF(wins + losses, 0)) DESC NULLS LAST,
              (CAST(yes_votes AS FLOAT) / NULLIF(yes_votes + no_votes, 0)) DESC NULLS LAST
-    LIMIT 150
   `;
   
   db.all(sql, [], (err, rows) => {

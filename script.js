@@ -8,6 +8,7 @@ let leaderboardData = [];
 let sortKey = "yes_pct";
 let sortDir = "desc";
 let teamUsernames = {};
+const MAX_LEADERBOARD_ROWS = 150; // how many rows to actually render after sorting
 
 document.addEventListener("DOMContentLoaded", () => {
   // initial state: upload mode visible
@@ -716,6 +717,12 @@ function nextTeam() {
 
 // fetchLeaderboard
 function fetchLeaderboard() {
+  // Ensure default sort for both views is by Versus Wins (desc)
+  if (sortKey !== "wins") {
+    sortKey = "wins";
+    sortDir = "desc";
+  }
+
   const endpoint = leaderboardType === "team" ? "/leaderboard" : "/leaderboard/users";
   fetch(endpoint)
     .then(res => res.json())
@@ -735,7 +742,7 @@ function sortAndRender() {
     if (sortDir === "asc") return aval - bval;
     return bval - aval;
   });
-  renderLeaderboard(sorted);
+  renderLeaderboard(sorted.slice(0, MAX_LEADERBOARD_ROWS));
 }
 
 // renderLeaderboard implementation
@@ -751,7 +758,12 @@ function renderLeaderboard(data) {
   const btnUser = document.createElement("button");
   btnUser.textContent = "By User";
   btnUser.classList.toggle("active", leaderboardType === "user");
-  btnTeam.onclick = () => { leaderboardType = "team"; fetchLeaderboard(); };
+  btnTeam.onclick = () => {
+    leaderboardType = "team";
+    sortKey = "wins";
+    sortDir = "desc";
+    fetchLeaderboard();
+  };
   btnUser.onclick = () => { 
     leaderboardType = "user"; 
     sortKey = "wins";
