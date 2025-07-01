@@ -734,9 +734,31 @@ function fetchLeaderboard() {
 
 function sortAndRender() {
   const sorted = [...leaderboardData].sort((a, b) => {
+    if (sortKey === "win_pct") {
+      // Win percentage first, then total wins for tiebreaker
+      const ap = parseFloat(a.win_pct);
+      const bp = parseFloat(b.win_pct);
+      if (ap !== bp) {
+        return sortDir === "asc" ? ap - bp : bp - ap;
+      }
+      // If percentages are equal, break tie with total wins
+      return sortDir === "asc" ? a.wins - b.wins : b.wins - a.wins;
+    }
+
+    if (sortKey === "yes_pct") {
+      // Draft percentage first, then total votes for tiebreaker
+      const ap = parseFloat(a.yes_pct);
+      const bp = parseFloat(b.yes_pct);
+      if (ap !== bp) {
+        return sortDir === "asc" ? ap - bp : bp - ap;
+      }
+      // If percentages are equal, break tie with total votes
+      return sortDir === "asc" ? a.yes_votes - b.yes_votes : b.yes_votes - a.yes_votes;
+    }
+    
+    // default single-column numeric sort
     let aval = a[sortKey];
     let bval = b[sortKey];
-    // numeric coercion
     aval = parseFloat(aval);
     bval = parseFloat(bval);
     if (sortDir === "asc") return aval - bval;
