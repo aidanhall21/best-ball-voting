@@ -578,6 +578,27 @@ function renderVersus() {
   // Helper to get random element
   const randElem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+  // Helper for weighted tournament selection
+  const weightedTournamentSelect = (tournaments) => {
+    // Calculate total weight (sum of all team counts)
+    const totalWeight = tournaments.reduce((sum, [_, teams]) => sum + teams.length, 0);
+    
+    // Generate random value between 0 and total weight
+    let random = Math.random() * totalWeight;
+    
+    // Find the tournament that contains this weighted random value
+    for (const tournament of tournaments) {
+      const weight = tournament[1].length;
+      if (random < weight) {
+        return tournament;
+      }
+      random -= weight;
+    }
+    
+    // Fallback to last tournament (shouldn't happen due to math above)
+    return tournaments[tournaments.length - 1];
+  };
+
   let teamId1, teamId2;
 
   const eligibleTours = Object.entries(tourGroups).filter(([tour, tlist]) => {
@@ -586,8 +607,8 @@ function renderVersus() {
   });
 
   if (eligibleTours.length) {
-    // Pick random eligible tournament
-    const [tour, list] = randElem(eligibleTours);
+    // Use weighted selection for tournament
+    const [tour, list] = weightedTournamentSelect(eligibleTours);
     // pick first team
     teamId1 = randElem(list);
     const user1 = teamUsernames[teamId1] || "__anon__";
