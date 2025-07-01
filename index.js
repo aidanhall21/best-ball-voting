@@ -567,6 +567,89 @@ app.post('/password-reset/confirm', async (req, res) => {
   });
 });
 
+// ---- Admin list -------------------------------------------------------------
+const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+function requireAdmin(req, res, next) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Login required' });
+  }
+  const email = (req.user?.email || '').toLowerCase();
+  if (adminEmails.includes(email)) return next();
+  return res.status(403).json({ error: 'Admin only' });
+}
+
+// --- 📊 Reports & Dashboards -------------------------------------------------
+// Votes by user (draft vs pass counts)
+app.get('/api/reports/votes-by-user', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT
+      COALESCE(voter_id, 'ANON') AS voter,
+      SUM(CASE WHEN vote_type = 'yes' THEN 1 ELSE 0 END) AS yes_votes,
+      SUM(CASE WHEN vote_type = 'no' THEN 1 ELSE 0 END) AS no_votes
+    FROM votes
+    GROUP BY COALESCE(voter_id, 'ANON')
+    ORDER BY (yes_votes + no_votes) DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    // add handy totals & percentages
+    const enriched = rows.map(r => {
+      const total = r.yes_votes + r.no_votes;
+      const yes_pct = total ? ((r.yes_votes / total) * 100).toFixed(1) : 0;
+      return { ...r, total, yes_pct };
+    });
+    res.json(enriched);
+  });
+});
+
+// Overall summary counts
+app.get('/api/reports/summary', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT 
+      (SELECT COUNT(*) FROM versus_matches) AS total_versus_votes,
+      (SELECT COUNT(*) FROM votes)            AS total_draft_votes,
+      (SELECT COUNT(*) FROM teams)            AS total_teams
+  `;
+  db.get(sql, [], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(row);
+  });
+});
+
+// Versus votes by day (UTC)
+app.get('/api/reports/versus-by-day', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT DATE(created_at) AS day, COUNT(*) AS votes
+    FROM versus_matches
+    GROUP BY DATE(created_at)
+    ORDER BY day
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// Total lineups by username
+app.get('/api/reports/lineups-by-user', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT username, COUNT(*) AS lineups
+    FROM teams
+    WHERE username IS NOT NULL AND username <> ''
+    GROUP BY username
+    ORDER BY lineups DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// Serve simple admin dashboard (protected)
+app.get('/dashboard', requireAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
 // ✅ Updated to support Replit or local dev port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

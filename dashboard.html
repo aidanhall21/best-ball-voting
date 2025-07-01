@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Draft or Pass – Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body{
+      font-family: sans-serif;
+      margin:0;
+      padding:20px;
+      background:#f9fafb;
+    }
+    h1{
+      text-align:center;
+      margin-bottom:40px;
+    }
+    .chart-container{
+      width:90%;
+      max-width:900px;
+      margin:0 auto;
+      background:#fff;
+      padding:20px;
+      border-radius:8px;
+      box-shadow:0 2px 4px rgba(0,0,0,0.1);
+    }
+    body{ color:#111; }
+    h1,h2{ color:#111; }
+  </style>
+</head>
+<body>
+  <h1>Admin Dashboard</h1>
+  <div class="chart-container">
+    <h2>Summary</h2>
+    <div id="summaryStats" style="display:flex;gap:40px;justify-content:center;margin-bottom:30px;font-size:1.2rem;"></div>
+  </div>
+
+  <div class="chart-container" style="margin-top:40px;">
+    <canvas id="versusDayChart"></canvas>
+  </div>
+
+  <div class="chart-container" style="margin-top:40px;">
+    <h2>Lineups by User</h2>
+    <table id="lineupsTable" style="width:100%;border-collapse:collapse;text-align:left;">
+      <thead>
+        <tr><th style="padding:8px;border-bottom:1px solid #ddd;">User</th><th style="padding:8px;border-bottom:1px solid #ddd;">Lineups</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script>
+  async function initDashboard() {
+    try {
+      // ---- Summary ----
+      const summary = await fetch('/api/reports/summary').then(r=>r.json());
+      document.getElementById('summaryStats').innerHTML = `
+        <div><strong>Total Lineups:</strong> ${summary.total_teams}</div>
+        <div><strong>Total Versus Votes:</strong> ${summary.total_versus_votes}</div>
+        <div><strong>Total Draft Votes:</strong> ${summary.total_draft_votes}</div>
+      `;
+
+      // ---- Versus votes by day line chart ----
+      const vRows = await fetch('/api/reports/versus-by-day').then(r=>r.json());
+      const dayLabels = vRows.map(r=>r.day);
+      const dayCounts = vRows.map(r=>r.votes);
+      new Chart(document.getElementById('versusDayChart'), {
+        type:'line',
+        data:{ labels:dayLabels, datasets:[{ label:'Versus Votes per Day', data:dayCounts, fill:false, borderColor:'rgba(59,130,246,0.9)', tension:0.2 }] },
+        options:{ responsive:true, plugins:{ title:{display:true,text:'Versus Votes per Day'} } }
+      });
+
+      // ---- Lineups by user table ----
+      const lRows = await fetch('/api/reports/lineups-by-user').then(r=>r.json());
+      const tbody = document.querySelector('#lineupsTable tbody');
+      lRows.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="padding:8px;border-bottom:1px solid #eee;">${r.username}</td><td style="padding:8px;border-bottom:1px solid #eee;">${r.lineups}</td>`;
+        tbody.appendChild(tr);
+      });
+
+    } catch(err) {
+      console.error(err);
+      alert('Failed to load dashboard data');
+    }
+  }
+
+  initDashboard();
+  </script>
+</body>
+</html> 

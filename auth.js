@@ -59,11 +59,30 @@ passport.use(new TwitterStrategy(
           'INSERT INTO users (email, twitter_id, display_name, twitter_username) VALUES (?,?,?,?)',
           [email, twitterId, displayName, twitterUsername],
           function (insertErr) {
-            if (insertErr) return done(insertErr);
-            db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (selErr, newUser) => {
-              if (selErr) return done(selErr);
-              return done(null, newUser);
-            });
+            if (insertErr) {
+              // If insert failed due to unique email, try linking to existing user by email
+              if (insertErr.message && insertErr.message.includes('UNIQUE constraint failed: users.email') && email) {
+                db.get('SELECT * FROM users WHERE email = ?', [email], (selErr, existingEmailUser) => {
+                  if (selErr) return done(selErr);
+                  if (!existingEmailUser) return done(insertErr); // nothing we can do
+
+                  // Link twitter fields to existing account if not already linked
+                  db.run('UPDATE users SET twitter_id = ?, twitter_username = ? WHERE id = ?', [twitterId, twitterUsername, existingEmailUser.id], (updErr) => {
+                    if (updErr) return done(updErr);
+                    existingEmailUser.twitter_id = twitterId;
+                    existingEmailUser.twitter_username = twitterUsername;
+                    return done(null, existingEmailUser);
+                  });
+                });
+              } else {
+                return done(insertErr);
+              }
+            } else {
+              db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (selErr, newUser) => {
+                if (selErr) return done(selErr);
+                return done(null, newUser);
+              });
+            }
           }
         );
       }
