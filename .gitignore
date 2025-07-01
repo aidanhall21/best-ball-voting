@@ -1,8 +1,6 @@
 node_modules/
 uploads/
 
-.gitignore
-
 # Environment & credentials
 .env*
 
