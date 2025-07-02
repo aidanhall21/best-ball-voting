@@ -56,8 +56,16 @@ function requireAuth(req, res, next) {
 }
 
 // ---- Sessions & Passport ----
+// Store sessions in a file that lives on the same persistent disk as the main DB
+// In production (Render) DB_PATH=/var/data/teams.db so sessions go to /var/data/sessions.sqlite
+// In local dev DB_PATH is unset → sessions.sqlite is created in the project root (as before)
+const sessionDir = process.env.SESSION_DIR || (process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : '.');
+
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.sqlite' }),
+  store: new SQLiteStore({
+    db: 'sessions.sqlite',
+    dir: sessionDir
+  }),
   secret: process.env.SESSION_SECRET || 'change_this_secret',
   resave: false,
   saveUninitialized: false,
