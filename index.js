@@ -30,19 +30,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple in-memory rate limiter for votes: max 10 per 10-second window per voter
+// Simple in-memory rate limiter for votes: max 5 per 10-second window per voter
 const voteHistory = new Map(); // voterId -> [timestamps]
 function voteRateLimiter(req, res, next) {
   const id = req.user ? req.user.id : crypto.randomUUID();
   const now = Date.now();
   const WINDOW_MS = 10 * 1000; // 10 seconds
-  const MAX_VOTES = 10;
+  const MAX_VOTES = 5;
 
   let arr = voteHistory.get(id) || [];
   // Keep only timestamps within the window
   arr = arr.filter(ts => now - ts < WINDOW_MS);
   if (arr.length >= MAX_VOTES) {
-    return res.status(429).json({ error: "Rate limit exceeded: max 10 votes per 10 seconds" });
+    return res.status(429).json({ error: "Rate limit exceeded: max 5 votes per 10 seconds" });
   }
   arr.push(now);
   voteHistory.set(id, arr);
@@ -419,16 +419,20 @@ app.get("/versus-stats/:teamId", (req, res) => {
 
 // Leaderboard endpoint (team)
 app.get("/leaderboard", (req, res) => {
+  const tournament = req.query.tournament;
+  
   const sql = `
     WITH team_stats AS (
       SELECT
         t.id,
         t.username,
+        t.tournament,
         COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
         COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
         COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
         COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
       FROM teams t
+      WHERE ($tournament IS NULL OR t.tournament = $tournament)
     )
     SELECT *
     FROM team_stats
@@ -437,7 +441,9 @@ app.get("/leaderboard", (req, res) => {
              (CAST(yes_votes AS FLOAT) / NULLIF(yes_votes + no_votes, 0)) DESC NULLS LAST
   `;
   
-  db.all(sql, [], (err, rows) => {
+  const params = { $tournament: tournament || null };
+  
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: "DB error" });
     const enriched = rows.map(calcPercents);
     res.json(enriched);
@@ -454,17 +460,24 @@ function calcPercents(r) {
 
 // Leaderboard by user
 app.get("/leaderboard/users", (req, res) => {
+  const tournament = req.query.tournament;
+  
   const sql = `
     SELECT
       t.id,
       t.username,
+      t.tournament,
       COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
       COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
       COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
       COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
     FROM teams t
+    WHERE ($tournament IS NULL OR t.tournament = $tournament)
   `;
-  db.all(sql, [], (err, rows) => {
+  
+  const params = { $tournament: tournament || null };
+  
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: "DB error" });
 
     // aggregate by username
@@ -482,6 +495,21 @@ app.get("/leaderboard/users", (req, res) => {
 
     const result = Object.values(userStats).map(calcPercents);
     res.json(result);
+  });
+});
+
+// Get available tournaments for filter
+app.get("/tournaments", (req, res) => {
+  const sql = `
+    SELECT DISTINCT tournament 
+    FROM teams 
+    WHERE tournament IS NOT NULL AND tournament != ''
+    ORDER BY tournament
+  `;
+  
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: "DB error" });
+    res.json(rows.map(r => r.tournament));
   });
 });
 
@@ -693,6 +721,21 @@ app.get('/api/reports/lineups-by-user', requireAdmin, (req, res) => {
     WHERE username IS NOT NULL AND username <> ''
     GROUP BY username
     ORDER BY lineups DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// Tournament counts
+app.get('/api/reports/tournament-counts', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT tournament, COUNT(*) as count
+    FROM teams
+    WHERE tournament IS NOT NULL
+    GROUP BY tournament
+    ORDER BY count DESC
   `;
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });

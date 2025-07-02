@@ -9,6 +9,9 @@ let sortKey = "wins";
 let sortDir = "desc";
 let teamUsernames = {};
 const MAX_LEADERBOARD_ROWS = 150; // how many rows to actually render after sorting
+let currentTournament = ""; // Add this at the top with other state variables
+let currentUsernameFilter = ""; // Username filter for team leaderboard
+let leaderboardRawData = []; // unfiltered data cache
 
 document.addEventListener("DOMContentLoaded", () => {
   // initial state: upload mode visible
@@ -36,6 +39,44 @@ document.addEventListener("DOMContentLoaded", () => {
   const mobileUserLabel = document.getElementById('mobileUserLabel');
   const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
   const mobileLoginPrompt = document.getElementById('mobileLoginPrompt');
+
+  // === NEW: overlay to catch clicks on disabled file input ===
+  const fileInputContainer = document.querySelector('.file-input-container');
+  let fileInputOverlay;
+  if (fileInputContainer) {
+    // Ensure the container is positioned relatively so the overlay can be absolutely positioned
+    fileInputContainer.style.position = 'relative';
+
+    fileInputOverlay = document.createElement('div');
+    fileInputOverlay.className = 'file-input-overlay';
+    Object.assign(fileInputOverlay.style, {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      cursor: 'not-allowed',
+      background: 'transparent',
+      display: 'none', // hidden by default; shown when username is empty
+      zIndex: 2 // sit above the disabled input
+    });
+
+    // Clicking the overlay shows a helpful message
+    fileInputOverlay.addEventListener('click', () => {
+      showUploadMessage('Please input Underdog or Twitter handle', 'error');
+    });
+
+    fileInputContainer.appendChild(fileInputOverlay);
+  }
+
+  // Helper to keep file input state & overlay in sync
+  function updateFileInputState() {
+    const hasUsername = !!usernameInput.value.trim();
+    csvUpload.disabled = !hasUsername;
+    if (fileInputOverlay) {
+      fileInputOverlay.style.display = hasUsername ? 'none' : 'block';
+    }
+  }
 
   // Mobile menu functionality
   function toggleMobileMenu() {
@@ -125,8 +166,12 @@ document.addEventListener("DOMContentLoaded", () => {
       usernameInput.disabled = true;
       csvUpload.disabled = true;
       uploadButton.disabled = true;
+      updateFileInputState();
     }
     showLoginMessage('', '');
+
+    // Keep overlay visibility in sync after auth refresh
+    updateFileInputState();
   }
 
   function showLoginMessage(msg, type) {
@@ -230,11 +275,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Enable/disable file input and upload button based on username presence
   usernameInput.addEventListener("input", (e) => {
-    const val = e.target.value.trim();
-    csvUpload.disabled = !val;
-    if (!val) {
+    updateFileInputState();
+    if (!e.target.value.trim()) {
       uploadButton.disabled = true;
       csvUpload.value = ""; // Clear file input if username is cleared
+    } else {
+      // Clear any previous warning once typing starts
+      showUploadMessage('', '');
     }
   });
 
@@ -278,6 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
         usernameInput.value = "";
         csvUpload.disabled = true;
         uploadButton.disabled = true;
+        updateFileInputState();
 
         if (data.message === "No new teams to add") {
           showUploadMessage("File processed - all teams were already in the database", "info");
@@ -337,7 +385,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("mobileLeaderboardBtn").classList.toggle("active", mode === "leaderboard");
     
     const container = document.getElementById("teamsContainer");
-    const uploadSection = document.getElementById('uploadSection');
+    const uploadPanel = document.querySelector('.upload-panel');
     
     // Close mobile menu when switching modes
     closeMobileMenuFunc();
@@ -359,11 +407,13 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       uploadPanel.style.display = "none";
       container.style.display = "block";
-      // Show loading indicator immediately to signal work is happening
-      container.innerHTML = "<div class='loading-indicator'>Loading teams…</div>";
+      
       if (mode === "leaderboard") {
+        container.innerHTML = ""; // Don't show loading for leaderboard
         fetchLeaderboard();
       } else {
+        // Show loading indicator only for versus mode
+        container.innerHTML = "<div class='loading-indicator'>Loading teams…</div>";
         fetchTeams();
       }
     }
@@ -385,10 +435,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function showUploadMessage(message, type) {
   const messageEl = document.getElementById("uploadMessage");
+  
+  // Clear previous content
   messageEl.textContent = message;
   messageEl.className = "upload-message";
   if (type) {
     messageEl.classList.add(type);
+  }
+
+  // Remove any existing CTA
+  const existingCTA = document.getElementById("startVotingCTA");
+  if (existingCTA) existingCTA.remove();
+
+  // Add CTA button below message for non-error outcomes with a real message
+  if (message && type !== "error") {
+    const ctaBtn = document.createElement("button");
+    ctaBtn.id = "startVotingCTA";
+    ctaBtn.className = "start-voting-btn"; // new css class
+    ctaBtn.textContent = "Start voting now! →";
+    ctaBtn.addEventListener("click", () => {
+      // Programmatically switch to the Draft or Pass tab (versus mode)
+      const versusBtn = document.getElementById("modeVersusBtn");
+      if (versusBtn) versusBtn.click();
+    });
+    // Insert after the message element
+    messageEl.parentNode.insertBefore(ctaBtn, messageEl.nextSibling);
   }
 }
 
@@ -579,6 +650,17 @@ function renderVersus() {
   const card1 = buildTeamCard(teamId1, players1);
   const card2 = buildTeamCard(teamId2, players2);
 
+  // === NEW: Add tournament/contest label to each card ===
+  const createTourLabel = (tourName) => {
+    const label = document.createElement("div");
+    label.className = "tournament-label";
+    label.textContent = tourName;
+    return label;
+  };
+
+  const tournamentName1 = teamTournaments[teamId1] || "";
+  const tournamentName2 = teamTournaments[teamId2] || "";
+
   // Add choose buttons under each card (center VS column removed)
   const chooseBtn1 = document.createElement("button");
   chooseBtn1.innerHTML = "<span>⬅️</span> Choose";
@@ -592,6 +674,25 @@ function renderVersus() {
     // Disable both buttons immediately
     chooseBtn1.disabled = true;
     chooseBtn2.disabled = true;
+
+    // Create owner info sections if they don't exist
+    let ownerInfo1 = card1.querySelector('.owner-info');
+    let ownerInfo2 = card2.querySelector('.owner-info');
+    
+    if (!ownerInfo1) {
+      ownerInfo1 = document.createElement('div');
+      ownerInfo1.className = 'owner-info';
+      card1.insertBefore(ownerInfo1, chooseBtn1);
+    }
+    if (!ownerInfo2) {
+      ownerInfo2 = document.createElement('div');
+      ownerInfo2.className = 'owner-info';
+      card2.insertBefore(ownerInfo2, chooseBtn2);
+    }
+
+    // Clear any existing highlight classes
+    ownerInfo1.classList.remove('winner','loser');
+    ownerInfo2.classList.remove('winner','loser');
     
     // Update button states visually
     if (winnerId === teamId1) {
@@ -599,12 +700,33 @@ function renderVersus() {
       chooseBtn2.className = "choose-button disabled";
       chooseBtn1.innerHTML = "<span>⬅️</span> Winner";
       chooseBtn2.innerHTML = "Loser <span>➡️</span>";
+      // Highlight corresponding owner info
+      ownerInfo1.classList.add('winner');
+      ownerInfo2.classList.add('loser');
     } else {
       chooseBtn2.className = "choose-button selected";
       chooseBtn1.className = "choose-button disabled";
       chooseBtn2.innerHTML = "Winner <span>➡️</span>";
       chooseBtn1.innerHTML = "<span>⬅️</span> Loser";
+      // Highlight corresponding owner info
+      ownerInfo2.classList.add('winner');
+      ownerInfo1.classList.add('loser');
     }
+
+    // === Reveal tournament/contest names at the bottom after vote ===
+    const revealTourLabel = (card, tourName) => {
+      if (!tourName) return;
+      if (card.querySelector('.tournament-label')) return; // already added
+      const label = createTourLabel(tourName);
+      const chooseButton = card.querySelector('.choose-button');
+      if (chooseButton) {
+        card.insertBefore(label, chooseButton); // insert just above choose button
+      } else {
+        card.appendChild(label);
+      }
+    };
+    revealTourLabel(card1, tournamentName1);
+    revealTourLabel(card2, tournamentName2);
 
     fetch("/versus", {
       method: "POST",
@@ -620,21 +742,6 @@ function renderVersus() {
         fetch(`/versus-stats/${teamId1}`).then(r=>r.json()).catch(()=>({wins:0,losses:0,win_pct:0})),
         fetch(`/versus-stats/${teamId2}`).then(r=>r.json()).catch(()=>({wins:0,losses:0,win_pct:0}))
       ]).then(([info1, info2, stats1, stats2])=>{
-        // Create owner info sections if they don't exist
-        let ownerInfo1 = card1.querySelector('.owner-info');
-        let ownerInfo2 = card2.querySelector('.owner-info');
-        
-        if (!ownerInfo1) {
-          ownerInfo1 = document.createElement('div');
-          ownerInfo1.className = 'owner-info';
-          card1.insertBefore(ownerInfo1, chooseBtn1);
-        }
-        if (!ownerInfo2) {
-          ownerInfo2 = document.createElement('div');
-          ownerInfo2.className = 'owner-info';
-          card2.insertBefore(ownerInfo2, chooseBtn2);
-        }
-
         // Update owner info content with win percentage
         ownerInfo1.innerHTML = `
           <div class="owner-stats">
@@ -677,75 +784,295 @@ function renderVersus() {
 }
 
 // fetchLeaderboard
-function fetchLeaderboard() {
+function fetchLeaderboard(force = false) {
   // Ensure default sort for both views is by Versus Wins (desc)
   if (sortKey !== "wins") {
     sortKey = "wins";
     sortDir = "desc";
   }
 
-  const endpoint = leaderboardType === "team" ? "/leaderboard" : "/leaderboard/users";
+  // Reuse cached data ONLY for team view (and when not forcing)
+  if (!force && leaderboardType === "team" && leaderboardRawData.length && leaderboardRawData[0]?.id !== undefined) {
+    leaderboardData = leaderboardRawData;
+    sortAndRender();
+    return;
+  }
+
+  let endpoint;
+  if (leaderboardType === "team") {
+    endpoint = "/leaderboard";
+  } else {
+    // leaderboardType === "user"
+    endpoint = "/leaderboard/users";
+    if (currentTournament) {
+      endpoint += `?tournament=${encodeURIComponent(currentTournament)}`;
+    }
+  }
+
   fetch(endpoint)
     .then(res => res.json())
     .then(data => {
+      leaderboardRawData = data;
       leaderboardData = data;
       sortAndRender();
     });
 }
 
 function sortAndRender() {
-  const sorted = [...leaderboardData].sort((a, b) => {
-    if (sortKey === "win_pct") {
-      // Win percentage first, then total wins for tiebreaker
-      const ap = parseFloat(a.win_pct);
-      const bp = parseFloat(b.win_pct);
-      if (ap !== bp) {
-        return sortDir === "asc" ? ap - bp : bp - ap;
+  const sorted = [...leaderboardData]
+    // Apply username and tournament filters
+    .filter(row => {
+      if (leaderboardType !== "team") return true;
+      if (currentUsernameFilter && (row.username || "") !== currentUsernameFilter) return false;
+      if (currentTournament && (row.tournament || "") !== currentTournament) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortKey === "win_pct") {
+        // Win percentage first, then total wins for tiebreaker
+        const ap = parseFloat(a.win_pct);
+        const bp = parseFloat(b.win_pct);
+        if (ap !== bp) {
+          return sortDir === "asc" ? ap - bp : bp - ap;
+        }
+        // If percentages are equal, apply secondary key based on sort direction:
+        //  • Ascending win %  → more losses first (losses DESC) to surface weaker teams
+        //  • Descending win % → more wins first   (wins DESC)   to surface stronger teams
+        if (sortDir === "asc") {
+          return b.losses - a.losses; // tie-break: losses DESC
+        }
+        // sortDir === "desc"
+        return b.wins - a.wins;      // tie-break: wins DESC
       }
-      // If percentages are equal, break tie with total wins
-      return sortDir === "asc" ? a.wins - b.wins : b.wins - a.wins;
-    }
-    
-    // default single-column numeric sort
-    let aval = a[sortKey];
-    let bval = b[sortKey];
-    aval = parseFloat(aval);
-    bval = parseFloat(bval);
-    if (sortDir === "asc") return aval - bval;
-    return bval - aval;
-  });
+      
+      // default single-column numeric sort
+      let aval = a[sortKey];
+      let bval = b[sortKey];
+      aval = parseFloat(aval);
+      bval = parseFloat(bval);
+      if (sortDir === "asc") return aval - bval;
+      return bval - aval;
+    });
   renderLeaderboard(sorted.slice(0, MAX_LEADERBOARD_ROWS));
 }
 
 // renderLeaderboard implementation
 function renderLeaderboard(data) {
   const container = document.getElementById("teamsContainer");
-  container.innerHTML = "";
-  // switch buttons
-  const switchDiv = document.createElement("div");
-  switchDiv.className = "leaderboard-switch";
-  const btnTeam = document.createElement("button");
-  btnTeam.textContent = "By Team";
-  btnTeam.classList.toggle("active", leaderboardType === "team");
-  const btnUser = document.createElement("button");
-  btnUser.textContent = "By User";
-  btnUser.classList.toggle("active", leaderboardType === "user");
-  btnTeam.onclick = () => {
-    leaderboardType = "team";
-    sortKey = "wins";
-    sortDir = "desc";
-    fetchLeaderboard();
-  };
-  btnUser.onclick = () => { 
-    leaderboardType = "user"; 
-    sortKey = "wins";
-    sortDir = "desc";
-    fetchLeaderboard(); 
-  };
-  switchDiv.appendChild(btnTeam);
-  switchDiv.appendChild(btnUser);
-  container.appendChild(switchDiv);
+  
+  // === View switch (By Team / By User) ===
+  let switchDiv = container.querySelector('.leaderboard-switch');
+  if (!switchDiv) {
+    switchDiv = document.createElement("div");
+    switchDiv.className = "leaderboard-switch";
+    const btnTeam = document.createElement("button");
+    btnTeam.textContent = "By Team";
+    btnTeam.classList.toggle("active", leaderboardType === "team");
+    const btnUser = document.createElement("button");
+    btnUser.textContent = "By User";
+    btnUser.classList.toggle("active", leaderboardType === "user");
+    btnTeam.onclick = () => {
+      leaderboardType = "team";
+      sortKey = "wins";
+      sortDir = "desc";
+      currentTournament = ""; // reset tournament
+      // Keep currentUsernameFilter as-is
+      // Update tournament select dropdown later
+      const tsel = document.getElementById('tournamentSelect');
+      if (tsel) tsel.value = "";
+      fetchLeaderboard();
+    };
+    btnUser.onclick = () => {
+      leaderboardType = "user";
+      sortKey = "wins";
+      sortDir = "desc";
+      currentTournament = "";
+      currentUsernameFilter = ""; // reset user filter when switching views
+      const tsel = document.getElementById('tournamentSelect');
+      if (tsel) tsel.value = "";
+      fetchLeaderboard();
+    };
+    switchDiv.appendChild(btnTeam);
+    switchDiv.appendChild(btnUser);
+    container.appendChild(switchDiv);
+  } else {
+    // update active states
+    const [btnTeam, btnUser] = switchDiv.querySelectorAll('button');
+    if (btnTeam && btnUser) {
+      btnTeam.classList.toggle("active", leaderboardType === "team");
+      btnUser.classList.toggle("active", leaderboardType === "user");
+    }
+  }
 
+  // ==== Filter wrapper (holds tournament + username selects) ====
+  let filtersWrapper = container.querySelector('.filters-wrapper');
+  if (!filtersWrapper) {
+    filtersWrapper = document.createElement('div');
+    filtersWrapper.className = 'filters-wrapper';
+    container.appendChild(filtersWrapper);
+  }
+
+  // ---- Tournament filter (creates/updates) ----
+  let filterDiv = filtersWrapper.querySelector('.tournament-filter');
+  if (!filterDiv) {
+    filterDiv = document.createElement("div");
+    filterDiv.className = "tournament-filter";
+
+    const select = document.createElement("select");
+    select.id = "tournamentSelect";
+    select.style.padding = "8px";
+    select.style.borderRadius = "6px";
+    select.style.border = "1px solid #30363d";
+    select.style.background = "#0d1117";
+    select.style.color = "#f0f6fc";
+    select.style.cursor = "pointer";
+    filterDiv.appendChild(select);
+    filtersWrapper.appendChild(filterDiv);
+  }
+
+  // Populate tournaments each render, reflecting username filter
+  const tournamentSelect = document.getElementById('tournamentSelect');
+  if (tournamentSelect) {
+    // Only rebuild tournament dropdown if it's empty or if we're switching views
+    const needsRebuild = !tournamentSelect.options.length || 
+                        (leaderboardType === "team" && tournamentSelect.dataset.viewType !== "team") ||
+                        (leaderboardType === "user" && tournamentSelect.dataset.viewType !== "user");
+
+    if (needsRebuild) {
+      // Always start by clearing and adding the default option
+      tournamentSelect.innerHTML = "";
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "All Tournaments";
+      tournamentSelect.appendChild(defaultOption);
+
+      if (leaderboardType === "team") {
+        // Build allowed tournament list from current data (respect username filter)
+        const tournamentSet = new Set();
+        leaderboardRawData.forEach(row => {
+          if (currentUsernameFilter && row.username !== currentUsernameFilter) return;
+          if (row.tournament) tournamentSet.add(row.tournament);
+        });
+        const tournamentsArr = Array.from(tournamentSet).sort((a,b)=>a.localeCompare(b));
+        tournamentsArr.forEach(t => {
+          const opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = t;
+          tournamentSelect.appendChild(opt);
+        });
+
+        // Validate current selection
+        if (currentTournament && !tournamentSet.has(currentTournament)) {
+          currentTournament = "";
+        }
+        tournamentSelect.value = currentTournament;
+        tournamentSelect.dataset.viewType = "team";
+      } else {
+        // User leaderboard: show all tournaments
+        fetch("/tournaments")
+          .then(res => res.json())
+          .then(tournaments => {
+            const sorted = tournaments.sort((a,b)=>a.localeCompare(b));
+            sorted.forEach(t => {
+              const opt = document.createElement("option");
+              opt.value = t;
+              opt.textContent = t;
+              tournamentSelect.appendChild(opt);
+            });
+
+            if (currentTournament && !sorted.includes(currentTournament)) {
+              currentTournament = "";
+            }
+            tournamentSelect.value = currentTournament;
+            tournamentSelect.dataset.viewType = "user";
+          });
+      }
+
+      tournamentSelect.onchange = (e) => {
+        currentTournament = e.target.value;
+        fetchLeaderboard();
+      };
+    } else {
+      // Just ensure the current selection is correct
+      tournamentSelect.value = currentTournament;
+    }
+  }
+
+  // ---- Username filter (team view only) ----
+  if (leaderboardType === "team") {
+    let userFilterDiv = filtersWrapper.querySelector('.username-filter');
+    if (!userFilterDiv) {
+      userFilterDiv = document.createElement("div");
+      userFilterDiv.className = "username-filter";
+
+      const userSelect = document.createElement("select");
+      userSelect.id = "usernameSelect";
+      userSelect.style.padding = "8px";
+      userSelect.style.borderRadius = "6px";
+      userSelect.style.border = "1px solid #30363d";
+      userSelect.style.background = "#0d1117";
+      userSelect.style.color = "#f0f6fc";
+      userSelect.style.cursor = "pointer";
+
+      userFilterDiv.appendChild(userSelect);
+      filtersWrapper.appendChild(userFilterDiv);
+    }
+
+    // Populate user select options
+    const userSelect = document.getElementById('usernameSelect');
+    if (userSelect) {
+      // Clear existing options
+      userSelect.innerHTML = "";
+
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.textContent = "All Users";
+      userSelect.appendChild(defaultOpt);
+
+      // Build usernames set respecting currentTournament filter
+      const usernamesSet = new Set();
+      leaderboardRawData.forEach(row => {
+        if (leaderboardType !== "team") return;
+        if (currentTournament && row.tournament !== currentTournament) return;
+        if (row.username) usernamesSet.add(row.username);
+      });
+      const usernames = [...usernamesSet].sort((a,b)=>a.localeCompare(b));
+      usernames.forEach(u => {
+        const opt = document.createElement("option");
+        opt.value = u;
+        opt.textContent = u;
+        userSelect.appendChild(opt);
+      });
+
+      // Ensure currentUsernameFilter is valid; reset if not present
+      if (currentUsernameFilter && !usernamesSet.has(currentUsernameFilter)) {
+        currentUsernameFilter = "";
+      }
+      userSelect.value = currentUsernameFilter;
+
+      userSelect.onchange = (e) => {
+        currentUsernameFilter = e.target.value;
+        sortAndRender(); // This will rebuild UI including tournament dropdown
+      };
+    }
+  } else {
+    // Remove username filter dropdown if not in team view
+    const existingUF = filtersWrapper.querySelector('.username-filter');
+    if (existingUF) existingUF.remove();
+    currentUsernameFilter = "";
+  }
+
+  // --------- Remove / Rebuild table ------------
+  // Remove existing table if it exists
+  const existingTable = container.querySelector('.leaderboard-table-container');
+  if (existingTable) {
+    existingTable.remove();
+  }
+
+  // Create and populate table
+  const tableContainer = document.createElement("div");
+  tableContainer.className = "leaderboard-table-container";
+  
   const table = document.createElement("table");
   table.className = `leaderboard-table ${leaderboardType}-view`;
 
@@ -754,6 +1081,7 @@ function renderLeaderboard(data) {
   headerRow.innerHTML = leaderboardType === "team" ? `
     <th>Team</th>
     <th>User</th>
+    <th>Contest</th>
     <th class="sortable">W</th>
     <th class="sortable">L</th>
     <th class="sortable">Win %</th>
@@ -772,20 +1100,20 @@ function renderLeaderboard(data) {
 
     if (leaderboardType === "team") {
       const viewBtn = `<button class="view-team-btn" data-id="${row.id}">View</button>`;
-      tr.innerHTML = `<td>${viewBtn}</td><td>${row.username || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      tr.innerHTML = `<td>${viewBtn}</td><td>${row.username || "-"}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     } else {
       tr.innerHTML = `<td>${row.username || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  container.appendChild(table);
+  tableContainer.appendChild(table);
 
   // Make W, L, Win% sortable
   const headerCells = headerRow.querySelectorAll("th");
   const sortableKeys = ["wins","losses","win_pct"]; // always last three columns
   headerCells.forEach((th, idx) => {
-    const keyIdx = leaderboardType === "team" ? idx - 2 : idx - 1;
+    const keyIdx = leaderboardType === "team" ? idx - 3 : idx - 1;
     if (keyIdx < 0) return; // skip Team/User columns
     const key = sortableKeys[keyIdx];
     
@@ -802,13 +1130,15 @@ function renderLeaderboard(data) {
 
   // attach view button listeners if team view
   if (leaderboardType === "team") {
-    container.querySelectorAll(".view-team-btn").forEach(btn => {
+    tableContainer.querySelectorAll(".view-team-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
         const id = e.target.getAttribute("data-id");
         showTeamModal(id);
       });
     });
   }
+
+  container.appendChild(tableContainer);
 }
 
 function hideModal() {

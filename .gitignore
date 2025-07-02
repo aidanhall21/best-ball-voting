@@ -20,3 +20,9 @@ backup-db.sh
 
 # Ignore archive directory
 archive/
+
+# --- Local Bradley-Terry rating tooling (ignored) ---
+venv/
+requirements.txt
+scripts/
+team_ratings.csv
