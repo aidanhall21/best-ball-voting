@@ -651,8 +651,11 @@ app.get('/api/reports/summary', requireAdmin, (req, res) => {
   const sql = `
     SELECT 
       (SELECT COUNT(*) FROM versus_matches) AS total_versus_votes,
-      (SELECT COUNT(*) FROM votes)            AS total_draft_votes,
-      (SELECT COUNT(*) FROM teams)            AS total_teams
+      (SELECT COUNT(*) FROM users)          AS total_signups,
+      (SELECT COUNT(DISTINCT username) FROM teams WHERE username IS NOT NULL AND username <> '') AS users_with_uploads,
+      (SELECT COUNT(*) FROM teams)          AS total_teams,
+      (SELECT COUNT(*) FROM versus_matches 
+       WHERE created_at >= datetime('now', '-1 hour')) AS votes_last_hour
   `;
   db.get(sql, [], (err, row) => {
     if (err) return res.status(500).json({ error: 'DB error' });
@@ -682,6 +685,30 @@ app.get('/api/reports/lineups-by-user', requireAdmin, (req, res) => {
     WHERE username IS NOT NULL AND username <> ''
     GROUP BY username
     ORDER BY lineups DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// Versus votes by user
+app.get('/api/reports/versus-votes-by-user', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT 
+      CASE 
+        WHEN vm.voter_id IS NULL THEN 'Anonymous'
+        ELSE COALESCE(u.twitter_username, u.email)
+      END as username,
+      COUNT(*) as vote_count
+    FROM versus_matches vm
+    LEFT JOIN users u ON vm.voter_id = u.id
+    GROUP BY 
+      CASE 
+        WHEN vm.voter_id IS NULL THEN 'Anonymous'
+        ELSE COALESCE(u.twitter_username, u.email)
+      END
+    ORDER BY vote_count DESC
   `;
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });

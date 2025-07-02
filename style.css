@@ -1075,7 +1075,7 @@ body {
     
     /* Bubble compaction */
     .player-bubble {
-      width: 100%;
+      width: 100%; /* Take full width of container */
       padding: 3px 12px; /* balanced padding */
       font-size: 15px;
       box-sizing: border-box;
@@ -1085,7 +1085,7 @@ body {
     /* Ensure centered text doesn't overlap pick or star */
     .player-bubble .player-info {
       display: block;
-      padding: 0;
+      padding: 0 16px; /* Add padding to make room for pick number */
       text-align: center;
       font-size: 11px; /* even smaller text on mobile to help fit */
     }
@@ -1095,9 +1095,15 @@ body {
       font-size: 11px;
     }
     
-    /* Hide pick numbers on mobile */
+    /* Mobile pick number styling */
     .player-bubble .pick-num {
-      display: none;
+      display: block;
+      font-size: 9px;
+      position: absolute;
+      left: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #8b949e;
     }
     
     .player-bubble .stack-star {
@@ -1133,19 +1139,18 @@ body {
       flex-wrap: nowrap;        /* prevent wrapping by default */
       gap: 4px;                /* minimal gap between cards */
       width: 100%;
-      padding: 0 2px;          /* minimal outer padding */
+      padding: 0;              /* remove padding to maximize width */
       box-sizing: border-box;
       overflow-x: hidden;      /* prevent horizontal scroll */
       justify-content: center; /* center the cards */
     }
     
     .versus-container .team-card {
-      flex: 0 0 calc(50% - 2px); /* exactly half width minus gap */
-      width: calc(50% - 2px);    /* backup width */
-      min-width: 0;              /* allow shrinking */
-      padding: 6px;              /* reduced padding */
-      margin: 0;                 /* no margins */
-      box-sizing: border-box;    /* include padding in width */
+      flex: 1;                   /* grow to fill available space */
+      width: 50%;               /* take half the container width */
+      padding: 6px 4px;         /* slight horizontal padding */
+      margin: 0;                /* no margins */
+      box-sizing: border-box;   /* include padding in width */
     }
     
     /* Adjust player bubbles in versus mode for mobile */
@@ -1309,6 +1314,7 @@ body {
     left: 8px;
     top: 50%;
     transform: translateY(-50%);
+    color: #8b949e;  /* Match mobile gray color */
   }
   
   /* Player info (centered) */

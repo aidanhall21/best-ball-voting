@@ -27,6 +27,43 @@
     }
     body{ color:#111; }
     h1,h2{ color:#111; }
+
+    /* Responsive table container */
+    .tables-container {
+      display: flex;
+      gap: 20px;
+      margin-top: 40px;
+    }
+    .table-wrapper {
+      flex: 1;
+      margin-top: 0;
+    }
+    
+    /* Mobile styles */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+      .chart-container {
+        width: 100%;
+        padding: 15px;
+      }
+      .tables-container {
+        flex-direction: column;
+        gap: 30px;
+      }
+      .table-wrapper {
+        width: 100%;
+      }
+      #summaryStats {
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+      }
+      table {
+        font-size: 14px;
+      }
+    }
   </style>
   <!-- Cloudflare Web Analytics -->
   <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
@@ -43,14 +80,26 @@
     <canvas id="versusDayChart"></canvas>
   </div>
 
-  <div class="chart-container" style="margin-top:40px;">
-    <h2>Lineups by User</h2>
-    <table id="lineupsTable" style="width:100%;border-collapse:collapse;text-align:left;">
-      <thead>
-        <tr><th style="padding:8px;border-bottom:1px solid #ddd;">User</th><th style="padding:8px;border-bottom:1px solid #ddd;">Lineups</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <div class="tables-container">
+    <div class="chart-container table-wrapper">
+      <h2>Lineups by User</h2>
+      <table id="lineupsTable" style="width:100%;border-collapse:collapse;text-align:left;">
+        <thead>
+          <tr><th style="padding:8px;border-bottom:1px solid #ddd;">User</th><th style="padding:8px;border-bottom:1px solid #ddd;">Lineups</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="chart-container table-wrapper">
+      <h2>Votes by User</h2>
+      <table id="versusVotesTable" style="width:100%;border-collapse:collapse;text-align:left;">
+        <thead>
+          <tr><th style="padding:8px;border-bottom:1px solid #ddd;">User</th><th style="padding:8px;border-bottom:1px solid #ddd;">Votes</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Chart.js -->
@@ -62,8 +111,10 @@
       const summary = await fetch('/api/reports/summary').then(r=>r.json());
       document.getElementById('summaryStats').innerHTML = `
         <div><strong>Total Lineups:</strong> ${summary.total_teams}</div>
-        <div><strong>Total Versus Votes:</strong> ${summary.total_versus_votes}</div>
-        <div><strong>Total Draft Votes:</strong> ${summary.total_draft_votes}</div>
+        <div><strong>Total Votes:</strong> ${summary.total_versus_votes}</div>
+        <div><strong>Total Signups:</strong> ${summary.total_signups}</div>
+        <div><strong>Users with Uploads:</strong> ${summary.users_with_uploads}</div>
+        <div><strong>Votes (Last Hour):</strong> ${summary.votes_last_hour}</div>
       `;
 
       // ---- Versus votes by day line chart ----
@@ -72,8 +123,8 @@
       const dayCounts = vRows.map(r=>r.votes);
       new Chart(document.getElementById('versusDayChart'), {
         type:'line',
-        data:{ labels:dayLabels, datasets:[{ label:'Versus Votes per Day', data:dayCounts, fill:false, borderColor:'rgba(59,130,246,0.9)', tension:0.2 }] },
-        options:{ responsive:true, plugins:{ title:{display:true,text:'Versus Votes per Day'} } }
+        data:{ labels:dayLabels, datasets:[{ label:'Votes per Day', data:dayCounts, fill:false, borderColor:'rgba(59,130,246,0.9)', tension:0.2 }] },
+        options:{ responsive:true, plugins:{ title:{display:true,text:'Votes per Day'} } }
       });
 
       // ---- Lineups by user table ----
@@ -83,6 +134,15 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `<td style="padding:8px;border-bottom:1px solid #eee;">${r.username}</td><td style="padding:8px;border-bottom:1px solid #eee;">${r.lineups}</td>`;
         tbody.appendChild(tr);
+      });
+
+      // ---- Versus votes by user table ----
+      const vvRows = await fetch('/api/reports/versus-votes-by-user').then(r=>r.json());
+      const votesTbody = document.querySelector('#versusVotesTable tbody');
+      vvRows.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="padding:8px;border-bottom:1px solid #eee;">${r.username || 'Anonymous'}</td><td style="padding:8px;border-bottom:1px solid #eee;">${r.vote_count}</td>`;
+        votesTbody.appendChild(tr);
       });
 
     } catch(err) {
