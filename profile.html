@@ -843,7 +843,7 @@
             const editButton = isOwnProfile ? 
               `<button class="edit-display-name" onclick="editDisplayName('${user.display_name || ''}')">Edit</button>` : '';
             
-            const displayName = user.display_name || (viewingUsername || 'Unknown User');
+            const displayName = user.display_name || (viewingUsername || 'User Profile Name Needed');
             const displayNameClass = !user.display_name && isOwnProfile ? 'class="no-display-name"' : '';
             
             infoDiv.innerHTML = `
