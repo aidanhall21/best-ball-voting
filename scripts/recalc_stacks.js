@@ -13,6 +13,9 @@
 
 const db = require('../db');
 
+// ---- New: wait up to 5s if the DB is temporarily locked ----
+db.run('PRAGMA busy_timeout = 5000');
+
 // Helper to perform one DB call and return a Promise
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -38,8 +41,7 @@ async function applyStacksToTeam(teamId) {
     [teamId]
   );
 
-  // Pass 0: clear existing flags
-  await run(`UPDATE players SET stack = NULL WHERE team_id = ?`, [teamId]);
+  // Pass 0 removed – stacks are cleared once globally before the loop
 
   // Identify QBs and receivers
   const qbs = players.filter((p) => p.position === 'QB');
@@ -84,17 +86,33 @@ async function applyStacksToTeam(teamId) {
 
 async function main() {
   try {
-    const teamRows = await all(`SELECT id FROM teams`);
-    console.log(`Re-calculating stacks for ${teamRows.length} teams…`);
+    // Start one big write transaction for speed & atomicity
+    await run('BEGIN IMMEDIATE TRANSACTION');
 
+    // Clear all existing stack flags in one shot
+    await run('UPDATE players SET stack = NULL');
+
+    const teamRows = await all(`SELECT id FROM teams`);
+    const total = teamRows.length;
+    console.log(`Re-calculating stacks for ${total} teams…`);
+
+    let processed = 0;
+    const REPORT_EVERY = 500; // adjust as desired
     for (const { id } of teamRows) {
       await applyStacksToTeam(id);
+      processed++;
+      if (processed % REPORT_EVERY === 0 || processed === total) {
+        const pct = ((processed / total) * 100).toFixed(1);
+        console.log(` … ${processed}/${total} (${pct}%)`);
+      }
     }
 
-    console.log('✅ All teams updated.');
+    await run('COMMIT');
+    console.log('✅ All teams updated (transaction committed).');
     process.exit(0);
   } catch (err) {
     console.error('Failed to recalculate stacks:', err);
+    try { await run('ROLLBACK'); } catch (_) {}
     process.exit(1);
   }
 }
