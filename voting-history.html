@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voting History - Best Ball Voting</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="favicon_io/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon_io/favicon-16x16.png">
+
+  <!-- Social share metadata -->
+  <meta property="og:title" content="Voting History - Draft or Pass">
+  <meta property="og:description" content="View team voting history and matchup results">
+  <meta property="og:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://draftrpass.com/voting-history.html" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Voting History - Draft or Pass">
+  <meta name="twitter:description" content="View team voting history and matchup results">
+  <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta name="twitter:image:alt" content="Draft or Pass - Voting History page preview">
+
+  <!-- Cloudflare Web Analytics -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
+  <!-- End Cloudflare Web Analytics -->
+
+  <style>
+    .voting-history-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* Initially hide main content until auth check completes */
+    .voting-history-container,
+    .header h1 {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    /* Show content when auth is confirmed */
+    .content-visible .voting-history-container,
+    .content-visible .header h1 {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s ease;
+    }
+
+    /* Add fixed positioning for hamburger button */
+    .hamburger-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1100;
+    }
+
+    .voting-history-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      text-align: center;
+      position: relative;
+    }
+
+    .team-info {
+      flex: 1;
+      text-align: center;
+    }
+
+    .team-title {
+      color: #c9d1d9;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .team-subtitle {
+      color: #8b949e;
+      font-size: 16px;
+      margin: 5px 0 0 0;
+    }
+
+    .voting-history-content {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .no-votes-message {
+      text-align: center;
+      padding: 40px 20px;
+      color: #8b949e;
+      font-size: 16px;
+    }
+
+    /* Enhanced table styles for the dedicated page */
+    .votes-history-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      background: #161b22;
+    }
+
+    .votes-history-table th {
+      font-weight: 600;
+      color: #8b949e;
+      background: #1c2128;
+      padding: 12px;
+      text-align: left;
+      border-bottom: 2px solid #30363d;
+      position: sticky;
+      top: 0;
+    }
+
+    .votes-history-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #30363d;
+      font-size: 14px;
+      white-space: normal;
+      word-wrap: break-word;
+    }
+
+    .votes-history-table tr:hover {
+      background: #1c2128;
+    }
+
+    /* Column widths for better space utilization */
+    .votes-history-table td:nth-child(1) { width: 90px; }  /* Result */
+    .votes-history-table td:nth-child(2) { min-width: 140px; max-width: 220px; } /* Opponent */
+    .votes-history-table td:nth-child(3) { width: 70px; }  /* View */
+    .votes-history-table td:nth-child(4) { min-width: 160px; max-width: 250px; } /* Contest */
+    .votes-history-table td:nth-child(5) { min-width: 120px; max-width: 180px; } /* Voter */
+    .votes-history-table td:nth-child(6) { width: 120px; } /* Date */
+
+    .win-result {
+      color: #238636;
+      font-weight: 600;
+    }
+
+    .loss-result {
+      color: #da3633;
+      font-weight: 600;
+    }
+
+    .view-opponent-btn {
+      background: #30363d;
+      color: #c9d1d9;
+      border: 1px solid #21262d;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.2s;
+    }
+
+    .view-opponent-btn:hover {
+      background: #58a6ff;
+      color: #fff;
+    }
+
+    .loading-indicator {
+      text-align: center;
+      padding: 40px;
+      color: #8b949e;
+      font-size: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .voting-history-container {
+        padding: 10px;
+      }
+
+      /* Add spacing to the main header */
+      .header {
+        margin-top: 60px; /* Space for fixed hamburger button */
+        margin-bottom: 20px;
+      }
+
+      .voting-history-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 15px;
+        padding: 0 40px; /* Add padding for hamburger button */
+        margin-top: 0; /* Remove since .header now has margin */
+      }
+
+      .team-info {
+        width: 100%;
+      }
+
+      .team-title {
+        font-size: 20px;
+        text-align: center;
+      }
+
+      .team-subtitle {
+        text-align: center;
+      }
+
+      .votes-history-table {
+        font-size: 12px;
+      }
+
+      .votes-history-table th,
+      .votes-history-table td {
+        padding: 8px 6px;
+      }
+
+      /* Adjust column widths for mobile */
+      .votes-history-table td:nth-child(2) { min-width: 100px; max-width: 150px; }
+      .votes-history-table td:nth-child(4) { min-width: 120px; max-width: 180px; }
+      .votes-history-table td:nth-child(5) { min-width: 80px; max-width: 120px; }
+
+      /* Make the table horizontally scrollable on mobile */
+      .voting-history-content {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    /* Keep desktop styles for larger screens */
+    @media (min-width: 769px) {
+      .mobile-menu {
+        display: none !important;
+      }
+      
+      .hamburger-btn {
+        display: none !important;
+      }
+
+      /* Add more space at top of page on desktop */
+      .header {
+        margin-top: 40px;
+      }
+    }
+
+    /* Make the roster counts stick to top and list scroll */
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 class="team-title" id="teamTitle">Loading...</h1>
+    
+    <!-- Hamburger menu for mobile -->
+    <button id="hamburgerBtn" class="hamburger-btn">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+
+  <!-- Mobile menu overlay -->
+  <div id="mobileMenu" class="mobile-menu">
+    <div class="mobile-menu-content">
+      <button id="closeMobileMenu" class="close-menu-btn">✖</button>
+      
+      <!-- Navigation items in mobile menu -->
+      <div class="mobile-nav">
+        <button id="mobileHomeBtn" class="mobile-nav-btn">Home</button>
+      </div>
+      
+      <!-- User controls in mobile menu -->
+      <div id="mobileUserSection" class="mobile-user-section">
+        <div id="mobileUserInfo" style="display:none;">
+          <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
+          <button id="mobileLogoutBtn" class="mobile-logout-btn">Logout</button>
+        </div>
+        <div id="mobileLoginPrompt">
+          <p>Sign in to upload teams</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add after user-controls div -->
+  <div id="loginRequiredMessage" class="login-required" style="display:none; text-align:center; padding:40px;">
+    <h2>You need to be logged in to view this page</h2>
+    <button id="goLoginBtn" class="start-voting-btn">Login →</button>
+  </div>
+
+  <div class="voting-history-container">
+    <div class="voting-history-header">
+      <div class="team-info">
+        <p class="team-subtitle" id="teamSubtitle">Recent Voting History</p>
+      </div>
+    </div>
+
+    <div class="voting-history-content">
+      <div id="loadingIndicator" class="loading-indicator">
+        Loading voting history...
+      </div>
+      <div id="votingHistoryTable" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Modal for viewing team details -->
+  <div id="modalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-close"><button id="modalCloseBtn">✖</button></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script>
+    // Get team ID from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const teamId = urlParams.get('teamId');
+
+    if (!teamId) {
+      document.getElementById('loadingIndicator').innerHTML = 'Error: No team ID provided';
+      throw new Error('Team ID is required');
+    }
+
+    // Global variables for team modal functionality
+    let currentUserId = null;
+
+    // Mobile menu functionality
+    function toggleMobileMenu() {
+      const mobileMenu = document.getElementById('mobileMenu');
+      const hamburgerBtn = document.getElementById('hamburgerBtn');
+      const isActive = mobileMenu.classList.contains('active');
+      
+      if (isActive) {
+        closeMobileMenuFunc();
+      } else {
+        openMobileMenuFunc();
+      }
+    }
+
+    function openMobileMenuFunc() {
+      const mobileMenu = document.getElementById('mobileMenu');
+      const hamburgerBtn = document.getElementById('hamburgerBtn');
+      mobileMenu.classList.add('active');
+      hamburgerBtn.classList.add('active');
+      document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
+
+    function closeMobileMenuFunc() {
+      const mobileMenu = document.getElementById('mobileMenu');
+      const hamburgerBtn = document.getElementById('hamburgerBtn');
+      mobileMenu.classList.remove('active');
+      hamburgerBtn.classList.remove('active');
+      document.body.style.overflow = ''; // Restore scrolling
+    }
+
+    // Mobile menu event listeners
+    document.getElementById('hamburgerBtn').addEventListener('click', toggleMobileMenu);
+    document.getElementById('closeMobileMenu').addEventListener('click', closeMobileMenuFunc);
+    
+    // Close mobile menu when clicking outside
+    document.getElementById('mobileMenu').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('mobileMenu')) {
+        closeMobileMenuFunc();
+      }
+    });
+
+    // Mobile navigation buttons
+    document.getElementById('mobileHomeBtn').addEventListener('click', () => {
+      window.location.href = '/';
+    });
+
+    // Check auth status first, then load voting history
+    fetch('/me')
+      .then(res => res.json())
+      .then(data => {
+        const loggedIn = !!data.user;
+        if (loggedIn) {
+          currentUserId = data.user.id;
+          // Update mobile menu - show user info, hide login prompt
+          document.getElementById('mobileUserInfo').style.display = 'block';
+          document.getElementById('mobileLoginPrompt').style.display = 'none';
+          // Show main content
+          document.body.classList.add('content-visible');
+          // After auth check, load voting history
+          loadVotingHistory();
+        } else {
+          showLoginRequired();
+        }
+      })
+      .catch(err => {
+        console.log('Auth check failed:', err);
+        showLoginRequired();
+      });
+
+    function showLoginRequired() {
+      // Hide main content and header text
+      document.querySelector('.voting-history-container').style.display = 'none';
+      document.getElementById('teamTitle').style.display = 'none';
+      // Show login required message
+      const msgDiv = document.getElementById('loginRequiredMessage');
+      msgDiv.style.display = 'block';
+      // Attach click handler once
+      const btn = document.getElementById('goLoginBtn');
+      if (btn && !btn.dataset.bound) {
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', () => {
+          window.location.href = '/';
+        });
+      }
+    }
+
+    // Mobile logout functionality
+    document.getElementById('mobileLogoutBtn').addEventListener('click', async () => {
+      await fetch('/logout', { method: 'POST' });
+      window.location.href = '/';
+    });
+
+    // Load voting history
+    async function loadVotingHistory() {
+      try {
+        // First, get team information
+        const teamResponse = await fetch(`/team-meta/${teamId}`);
+        const teamData = await teamResponse.json();
+        
+        document.getElementById('teamTitle').textContent = 
+          `${teamData.username || 'Anonymous'} - ${teamData.tournament || 'Unknown Contest'}`;
+
+        // Then get voting history
+        const votesResponse = await fetch(`/team-votes/${teamId}`);
+        const votesData = await votesResponse.json();
+
+        document.getElementById('loadingIndicator').style.display = 'none';
+        document.getElementById('votingHistoryTable').style.display = 'block';
+
+        if (!votesData.votes.length) {
+          document.getElementById('votingHistoryTable').innerHTML = 
+            '<div class="no-votes-message">No voting history yet for this team.</div>';
+          return;
+        }
+
+        // Build the table
+        let tableHtml = `
+          <table class="votes-history-table">
+            <thead>
+              <tr>
+                <th>Result</th>
+                <th>Opponent</th>
+                <th>View</th>
+                <th>Contest</th>
+                <th>Voter</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        votesData.votes.forEach(vote => {
+          const date = new Date(vote.created_at).toLocaleDateString();
+          const result = vote.result === 'win' ? '✅ Win' : '❌ Loss';
+          const resultClass = vote.result === 'win' ? 'win-result' : 'loss-result';
+          
+          tableHtml += `
+            <tr>
+              <td class="${resultClass}">${result}</td>
+              <td>${vote.opponent_username || 'Anonymous'}</td>
+              <td><button class="view-opponent-btn" data-id="${vote.opponent_id}">View</button></td>
+              <td>${vote.opponent_tournament || '-'}</td>
+              <td>${vote.voter_name || 'Anonymous'}</td>
+              <td>${date}</td>
+            </tr>
+          `;
+        });
+
+        tableHtml += '</tbody></table>';
+        document.getElementById('votingHistoryTable').innerHTML = tableHtml;
+
+        // Add event listeners for view opponent buttons
+        document.querySelectorAll('.view-opponent-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const opponentId = e.target.getAttribute('data-id');
+            showTeamModal(opponentId);
+          });
+        });
+
+      } catch (error) {
+        console.error('Failed to load voting history:', error);
+        document.getElementById('loadingIndicator').innerHTML = 
+          'Error loading voting history. Please try again.';
+      }
+    }
+
+    // EXACT copy of team modal functions from profile.html
+    function getBorderColor(position) {
+      switch (position) {
+        case 'QB': return '#a855f7';
+        case 'RB': return '#22c55e';
+        case 'WR': return '#facc15';
+        case 'TE': return '#3b82f6';
+        default: return '#999';
+      }
+    }
+
+    function buildTeamCard(teamId, players) {
+      const card = document.createElement('div');
+      card.className = 'team-card';
+
+      const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+      players.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+      const roster = document.createElement('div');
+      roster.className = 'roster-construction';
+      roster.innerHTML = `<div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>`;
+      card.appendChild(roster);
+
+      const list = document.createElement('div');
+      list.className = 'player-list';
+      const positionOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
+      const sortedPlayers = [...players].sort((a,b)=>{
+        if (positionOrder[a.position] !== positionOrder[b.position]) return positionOrder[a.position]-positionOrder[b.position];
+        return (a.pick||0)-(b.pick||0);
+      });
+
+      ['QB','RB','WR','TE'].forEach(pos=>{
+        sortedPlayers.filter(p=>p.position===pos).forEach(pl=>{
+          const row=document.createElement('div');
+          row.className='player-row';
+          const bubble=document.createElement('div');
+          bubble.className='player-bubble';
+          const stackStar = pl.stack ? `<span class="stack-star ${pl.stack}">★</span>` : '';
+          const pickHTML = (pl.pick||pl.pick===0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
+          const infoHTML = `<span class="player-info">${pl.name}${pl.team?` - ${pl.team}`:''}</span>`;
+          bubble.innerHTML = `${pickHTML}${infoHTML}${stackStar}`;
+          bubble.style.border=`2px solid ${getBorderColor(pl.position)}`;
+          row.appendChild(bubble);
+          list.appendChild(row);
+        });
+      });
+      card.appendChild(list);
+      return card;
+    }
+
+    function showTeamModal(teamId) {
+      fetch(`/team/${teamId}`)
+        .then(res=>res.json())
+        .then(players=>{
+          const body = document.getElementById('modalBody');
+          body.innerHTML = '';
+          body.appendChild(buildTeamCard(teamId, players));
+          document.getElementById('modalOverlay').style.display = 'flex';
+        });
+    }
+
+    // Close modal buttons
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'modalCloseBtn' || e.target.id === 'modalOverlay') {
+        document.getElementById('modalOverlay').style.display = 'none';
+        document.getElementById('modalBody').innerHTML = '';
+      }
+    });
+  </script>
+</body>
+</html> 

@@ -456,6 +456,7 @@ app.get("/team-meta/:teamId", (req, res) => {
   const sql = `
     SELECT 
       t.username,
+      t.tournament,
       u.twitter_username,
       (
         SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = $id
@@ -476,7 +477,7 @@ app.get("/team-meta/:teamId", (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
 
-    const meta = row || { username: null, twitter_username: null, wins: 0, losses: 0 };
+    const meta = row || { username: null, twitter_username: null, tournament: null, wins: 0, losses: 0 };
     const total = (meta.wins || 0) + (meta.losses || 0);
     let win_pct = 0;
     if (total > 0) {
@@ -822,7 +823,11 @@ app.get('/api/reports/versus-votes-by-user', requireAdmin, (req, res) => {
     SELECT 
       CASE 
         WHEN vm.voter_id IS NULL THEN 'Anonymous'
-        ELSE COALESCE(u.twitter_username, u.email)
+        ELSE COALESCE(
+          NULLIF(TRIM(u.display_name), ''),
+          (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+          'Anonymous'
+        )
       END as username,
       COUNT(*) as vote_count
     FROM versus_matches vm
@@ -830,7 +835,11 @@ app.get('/api/reports/versus-votes-by-user', requireAdmin, (req, res) => {
     GROUP BY 
       CASE 
         WHEN vm.voter_id IS NULL THEN 'Anonymous'
-        ELSE COALESCE(u.twitter_username, u.email)
+        ELSE COALESCE(
+          NULLIF(TRIM(u.display_name), ''),
+          (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+          'Anonymous'
+        )
       END
     ORDER BY vote_count DESC
   `;
@@ -858,6 +867,576 @@ app.get("/my/votes-count", requireAuth, (req, res) => {
       res.json({ count: (row && row.count) ? row.count : 0 });
     }
   );
+});
+
+// === NEW: User profile data endpoint ===
+app.get('/my/profile', requireAuth, (req, res) => {
+  const user = req.user;
+  if (!user) {
+    return res.status(401).json({ error: 'Login required' });
+  }
+  const userId = user.id;
+
+  const response = {
+    user: {
+      id: user.id,
+      email: user.email,
+      twitter_username: user.twitter_username,
+      display_name: user.display_name,
+      login_method: user.twitter_id ? 'twitter' : 'email'
+    },
+    uploads: [],
+    usernames: [],
+    votingStats: {
+      friends: [],
+      foes: []
+    },
+    voteResults: [],
+    isOwnProfile: true,
+    viewerLoggedIn: true
+  };
+
+  // First get distinct usernames for this user
+  db.all(
+    'SELECT DISTINCT username FROM teams WHERE user_id = ? AND username IS NOT NULL ORDER BY username',
+    [userId],
+    (err, usernameRows) => {
+      if (err) {
+        console.error('DB error fetching usernames:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      response.usernames = usernameRows.map(r => r.username);
+
+      // Then get the upload data
+      db.all(
+        `SELECT username, tournament, COUNT(*) as count 
+         FROM teams 
+         WHERE user_id = ? 
+         GROUP BY username, tournament
+         ORDER BY tournament, username`,
+        [userId],
+        (err2, rows) => {
+          if (err2) {
+            console.error('DB error in /my/profile:', err2);
+            return res.status(500).json({ error: 'DB error' });
+          }
+          response.uploads = rows || [];
+
+          // Get voting stats - first get my team IDs
+          db.all(
+            'SELECT id FROM teams WHERE user_id = ?',
+            [userId],
+            (err3, myTeams) => {
+              if (err3) {
+                console.error('DB error fetching teams:', err3);
+                return res.status(500).json({ error: 'DB error' });
+              }
+
+              const myTeamIds = myTeams.map(t => t.id);
+              if (!myTeamIds.length) {
+                return res.json(response); // No teams, return early
+              }
+
+              // Complex query to get win/loss stats by voter
+              const statsQuery = `
+                WITH voter_stats AS (
+                  SELECT 
+                    vm.voter_id,
+                    COALESCE(
+                      (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+                      u.twitter_username
+                    ) as voter_name,
+                    COUNT(CASE WHEN vm.winner_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as wins,
+                    COUNT(CASE WHEN vm.loser_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as losses,
+                    COUNT(*) as total_votes
+                  FROM versus_matches vm
+                  JOIN users u ON vm.voter_id = u.id
+                  WHERE vm.voter_id IS NOT NULL
+                    AND (
+                      vm.winner_id IN (${myTeamIds.map(() => '?').join(',')})
+                      OR 
+                      vm.loser_id IN (${myTeamIds.map(() => '?').join(',')})
+                    )
+                  GROUP BY vm.voter_id
+                  HAVING total_votes >= 3
+                )
+                SELECT 
+                  voter_id,
+                  voter_name,
+                  wins,
+                  losses,
+                  total_votes,
+                  CAST(wins AS FLOAT) / (wins + losses) as win_rate
+                FROM voter_stats
+                WHERE voter_name IS NOT NULL
+                ORDER BY win_rate DESC`;
+
+              // Build params array - need to repeat myTeamIds 4 times for the different IN clauses
+              const params = [
+                ...myTeamIds, // For wins IN clause
+                ...myTeamIds, // For losses IN clause
+                ...myTeamIds, // For winner_id IN clause
+                ...myTeamIds  // For loser_id IN clause
+              ];
+
+              db.all(statsQuery, params, (err4, statsRows) => {
+                if (err4) {
+                  console.error('DB error fetching voting stats:', err4);
+                  return res.status(500).json({ error: 'DB error' });
+                }
+
+                // Split into friends (high win rate) and foes (low win rate)
+                statsRows.sort((a, b) => b.win_rate - a.win_rate);
+                
+                response.votingStats.friends = statsRows.slice(0, 5).map(r => ({
+                  name: r.voter_name,
+                  wins: r.wins,
+                  losses: r.losses,
+                  winRate: (r.win_rate * 100).toFixed(1)
+                }));
+
+                response.votingStats.foes = statsRows.slice(-5).reverse().map(r => ({
+                  name: r.voter_name,
+                  wins: r.wins,
+                  losses: r.losses,
+                  winRate: (r.win_rate * 100).toFixed(1)
+                }));
+
+                // === NEW: Fetch vote results for each of the user's teams ===
+                const teamStatsSql = `
+                  WITH team_stats AS (
+                    SELECT
+                      t.id,
+                      t.tournament,
+                      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
+                      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
+                      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
+                      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+                    FROM teams t
+                    WHERE t.user_id = ?
+                  )
+                  SELECT * FROM team_stats
+                `;
+
+                db.all(teamStatsSql, [userId], (err5, teamRows) => {
+                  if (err5) {
+                    console.error('DB error fetching team vote results:', err5);
+                    // Even if this fails, send rest of profile; leave voteResults empty
+                    response.voteResults = [];
+                    return res.json(response);
+                  }
+
+                  // Calculate percentages to match leaderboard formatting
+                  const enriched = teamRows.map(r => {
+                    const voteTotal = r.yes_votes + r.no_votes;
+                    const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
+                    const h2hTotal = r.wins + r.losses;
+                    const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
+                    return { ...r, yes_pct, win_pct };
+                  });
+
+                  response.voteResults = enriched;
+                  res.json(response);
+                });
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// === NEW: Get public profile for any user by username ===
+app.get('/profile/:username', (req, res) => {
+  const { username } = req.params;
+  const viewerUserId = req.user ? req.user.id : null;
+
+  if (!username) {
+    return res.status(400).json({ error: 'Username required' });
+  }
+
+  // First find the user by username (from teams table)
+  db.get(
+    'SELECT user_id FROM teams WHERE username = ? LIMIT 1',
+    [username],
+    (err, userRow) => {
+      if (err) {
+        console.error('DB error finding user:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (!userRow) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const targetUserId = userRow.user_id;
+
+      // Get user details
+      db.get(
+        'SELECT id, display_name, twitter_username FROM users WHERE id = ?',
+        [targetUserId],
+        (err2, user) => {
+          if (err2) {
+            console.error('DB error fetching user details:', err2);
+            return res.status(500).json({ error: 'Database error' });
+          }
+
+          if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+          }
+
+          const response = {
+            user: {
+              id: user.id,
+              display_name: user.display_name,
+              twitter_username: user.twitter_username
+            },
+            isOwnProfile: viewerUserId === targetUserId,
+            viewerLoggedIn: !!viewerUserId,
+            voteResults: [],
+            votingStats: { friends: [], foes: [] }
+          };
+
+          // First gather this user's team IDs (used for both voting stats & team stats)
+          db.all('SELECT id FROM teams WHERE user_id = ?', [targetUserId], (errTeams, teamIdRows) => {
+            if (errTeams) {
+              console.error('DB error fetching team ids:', errTeams);
+              return res.status(500).json({ error: 'Database error' });
+            }
+
+            const myTeamIds = teamIdRows.map(r => r.id);
+
+            const afterVotingStats = () => {
+              // === Get vote results for each of the user\'s teams (same as before) ===
+              const teamStatsSql = `
+                WITH team_stats AS (
+                  SELECT
+                    t.id,
+                    t.tournament,
+                    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
+                    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
+                    COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
+                    COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+                  FROM teams t
+                  WHERE t.user_id = ?
+                )
+                SELECT * FROM team_stats
+              `;
+
+              db.all(teamStatsSql, [targetUserId], (err3, teamRows) => {
+                if (err3) {
+                  console.error('DB error fetching team vote results:', err3);
+                  return res.status(500).json({ error: 'Database error' });
+                }
+
+                const enriched = teamRows.map(r => {
+                  const voteTotal = r.yes_votes + r.no_votes;
+                  const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
+                  const h2hTotal = r.wins + r.losses;
+                  const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
+                  return { ...r, yes_pct, win_pct };
+                });
+
+                response.voteResults = enriched;
+                res.json(response);
+              });
+            };
+
+            // If no teams, we can skip votingStats and directly get teamStats (which will return empty anyway)
+            if (!myTeamIds.length) {
+              return afterVotingStats();
+            }
+
+            // === Build voter friend/foe stats (same logic as /my/profile) ===
+            const statsQuery = `
+              WITH voter_stats AS (
+                SELECT 
+                  vm.voter_id,
+                  COALESCE(
+                    (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+                    u.twitter_username
+                  ) as voter_name,
+                  COUNT(CASE WHEN vm.winner_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as wins,
+                  COUNT(CASE WHEN vm.loser_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as losses,
+                  COUNT(*) as total_votes
+                FROM versus_matches vm
+                JOIN users u ON vm.voter_id = u.id
+                WHERE vm.voter_id IS NOT NULL
+                  AND (
+                    vm.winner_id IN (${myTeamIds.map(() => '?').join(',')})
+                    OR 
+                    vm.loser_id IN (${myTeamIds.map(() => '?').join(',')})
+                  )
+                GROUP BY vm.voter_id
+                HAVING total_votes >= 3
+              )
+              SELECT 
+                voter_id,
+                voter_name,
+                wins,
+                losses,
+                total_votes,
+                CAST(wins AS FLOAT) / (wins + losses) as win_rate
+              FROM voter_stats
+              WHERE voter_name IS NOT NULL
+              ORDER BY win_rate DESC`;
+
+            const params = [
+              ...myTeamIds,
+              ...myTeamIds,
+              ...myTeamIds,
+              ...myTeamIds
+            ];
+
+            db.all(statsQuery, params, (errStats, statsRows) => {
+              if (errStats) {
+                console.error('DB error fetching voting stats:', errStats);
+                // Continue without voting stats
+                return afterVotingStats();
+              }
+
+              statsRows.sort((a, b) => b.win_rate - a.win_rate);
+
+              response.votingStats.friends = statsRows.slice(0, 5).map(r => ({
+                name: r.voter_name,
+                wins: r.wins,
+                losses: r.losses,
+                winRate: (r.win_rate * 100).toFixed(1)
+              }));
+
+              response.votingStats.foes = statsRows.slice(-5).reverse().map(r => ({
+                name: r.voter_name,
+                wins: r.wins,
+                losses: r.losses,
+                winRate: (r.win_rate * 100).toFixed(1)
+              }));
+
+              afterVotingStats();
+            });
+          });
+        }
+      );
+    }
+  );
+});
+
+// === NEW: Get voting history for a specific team ===
+app.get('/my/team-votes/:teamId', requireAuth, (req, res) => {
+  const { teamId } = req.params;
+  const userId = req.user.id;
+
+  // First verify the team belongs to the current user
+  db.get(
+    'SELECT id FROM teams WHERE id = ? AND user_id = ?',
+    [teamId, userId],
+    (err, team) => {
+      if (err) {
+        console.error('DB error verifying team ownership:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (!team) {
+        return res.status(404).json({ error: 'Team not found or not owned by you' });
+      }
+
+      // Get voting history for this team
+      const sql = `
+        SELECT 
+          vm.id,
+          vm.winner_id,
+          vm.loser_id,
+          vm.voter_id,
+          vm.created_at,
+          CASE 
+            WHEN vm.winner_id = ? THEN 'win'
+            ELSE 'loss'
+          END as result,
+          CASE 
+            WHEN vm.winner_id = ? THEN vm.loser_id
+            ELSE vm.winner_id
+          END as opponent_id,
+          CASE 
+            WHEN vm.winner_id = ? THEN ot_loser.tournament
+            ELSE ot_winner.tournament
+          END as opponent_tournament,
+          CASE 
+            WHEN vm.winner_id = ? THEN ot_loser.username
+            ELSE ot_winner.username
+          END as opponent_username,
+          CASE 
+            WHEN vm.voter_id IS NULL THEN 'Anonymous'
+            ELSE COALESCE(
+              NULLIF(TRIM(u.display_name), ''),
+              (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+              'Anonymous'
+            )
+          END as voter_name
+        FROM versus_matches vm
+        LEFT JOIN users u ON vm.voter_id = u.id
+        LEFT JOIN teams ot_winner ON vm.winner_id = ot_winner.id
+        LEFT JOIN teams ot_loser ON vm.loser_id = ot_loser.id
+        WHERE vm.winner_id = ? OR vm.loser_id = ?
+        ORDER BY vm.created_at DESC
+        LIMIT 50
+      `;
+
+      // Need to pass teamId 6 times for the different CASE statements and WHERE clause
+      const params = [teamId, teamId, teamId, teamId, teamId, teamId];
+
+      db.all(sql, params, (err2, votes) => {
+        if (err2) {
+          console.error('DB error fetching team votes:', err2);
+          return res.status(500).json({ error: 'Database error' });
+        }
+
+        res.json({ votes: votes || [] });
+      });
+    }
+  );
+});
+
+// === NEW: Update username for a tournament's teams ===
+app.post('/my/update-username', requireAuth, express.json(), (req, res) => {
+  const { oldUsername, newUsername, tournament } = req.body;
+  const userId = req.user.id;
+
+  if (!oldUsername || !newUsername || !tournament) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // Verify the new username is one they've used before
+  db.get(
+    'SELECT 1 FROM teams WHERE user_id = ? AND username = ?',
+    [userId, newUsername],
+    (err, exists) => {
+      if (err) {
+        console.error('DB error checking username:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+
+      if (!exists) {
+        return res.status(400).json({ error: 'Username not found in your uploads' });
+      }
+
+      // Update all matching teams
+      db.run(
+        `UPDATE teams 
+         SET username = ? 
+         WHERE user_id = ? 
+         AND username = ? 
+         AND tournament = ?`,
+        [newUsername, userId, oldUsername, tournament],
+        function(err2) {
+          if (err2) {
+            console.error('DB error updating username:', err2);
+            return res.status(500).json({ error: 'Failed to update username' });
+          }
+
+          res.json({ 
+            message: 'Username updated successfully',
+            rowsAffected: this.changes
+          });
+        }
+      );
+    }
+  );
+});
+
+// === NEW: Update display name endpoint ===
+app.post('/my/update-display-name', requireAuth, express.json(), (req, res) => {
+  const { displayName } = req.body;
+  const userId = req.user.id;
+
+  // Validate display name
+  if (displayName && displayName.length > 50) {
+    return res.status(400).json({ error: 'Display name too long (max 50 characters)' });
+  }
+
+  // Update the display name
+  db.run(
+    'UPDATE users SET display_name = ? WHERE id = ?',
+    [displayName || null, userId],
+    function(err) {
+      if (err) {
+        console.error('DB error updating display name:', err);
+        return res.status(500).json({ error: 'Failed to update display name' });
+      }
+
+      res.json({ 
+        message: 'Display name updated successfully',
+        displayName: displayName || null
+      });
+    }
+  );
+});
+
+// === NEW: Public voting history for any team ===
+app.get('/team-votes/:teamId', (req, res) => {
+  const { teamId } = req.params;
+
+  // Verify the team exists
+  db.get('SELECT id FROM teams WHERE id = ?', [teamId], (err, team) => {
+    if (err) {
+      console.error('DB error verifying team:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!team) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    // Re-use same query as private endpoint (no ownership check)
+    const sql = `
+      SELECT 
+        vm.id,
+        vm.winner_id,
+        vm.loser_id,
+        vm.voter_id,
+        vm.created_at,
+        CASE 
+          WHEN vm.winner_id = ? THEN 'win'
+          ELSE 'loss'
+        END as result,
+        CASE 
+          WHEN vm.winner_id = ? THEN vm.loser_id
+          ELSE vm.winner_id
+        END as opponent_id,
+        CASE 
+          WHEN vm.winner_id = ? THEN ot_loser.tournament
+          ELSE ot_winner.tournament
+        END as opponent_tournament,
+        CASE 
+          WHEN vm.winner_id = ? THEN ot_loser.username
+          ELSE ot_winner.username
+        END as opponent_username,
+        CASE 
+          WHEN vm.voter_id IS NULL THEN 'Anonymous'
+          ELSE COALESCE(
+            NULLIF(TRIM(u.display_name), ''),
+            (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+            'Anonymous'
+          )
+        END as voter_name
+      FROM versus_matches vm
+      LEFT JOIN users u ON vm.voter_id = u.id
+      LEFT JOIN teams ot_winner ON vm.winner_id = ot_winner.id
+      LEFT JOIN teams ot_loser ON vm.loser_id = ot_loser.id
+      WHERE vm.winner_id = ? OR vm.loser_id = ?
+      ORDER BY vm.created_at DESC
+      LIMIT 50
+    `;
+
+    const params = [teamId, teamId, teamId, teamId, teamId, teamId];
+
+    db.all(sql, params, (err2, votes) => {
+      if (err2) {
+        console.error('DB error fetching votes:', err2);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ votes: votes || [] });
+    });
+  });
 });
 
 // ✅ Updated to support Replit or local dev port

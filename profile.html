@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Profile - Draft or Pass</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Favicons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/favicon_io/site.webmanifest">
+  <link rel="shortcut icon" href="/favicon_io/favicon.ico">
+
+  <!-- Social share metadata -->
+  <meta property="og:title" content="User Profile - Draft or Pass">
+  <meta property="og:description" content="View user profile, achievements, and voting history">
+  <meta property="og:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://draftrpass.com/profile.html" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="User Profile - Draft or Pass">
+  <meta name="twitter:description" content="View user profile, achievements, and voting history">
+  <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta name="twitter:image:alt" content="Draft or Pass - User Profile page preview">
+
+  <!-- Cloudflare Web Analytics -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
+  <!-- End Cloudflare Web Analytics -->
+
+  <style>
+    .profile-header {
+      background: #161b22;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      text-align: center;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      max-width: 800px;
+      width: 100%;
+      position: relative;
+    }
+
+    .profile-header h2 {
+      margin: 0 0 10px 0;
+      font-size: 24px;
+    }
+
+    .profile-header .no-display-name {
+      color: #8b949e;
+      font-style: italic;
+    }
+
+    .profile-header p {
+      color: #8b949e;
+      margin: 5px 0;
+    }
+
+    .profile-header .login-method {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #30363d;
+      border-radius: 12px;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    .achievements-section {
+      background: #161b22;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      max-width: 800px;
+      width: 100%;
+    }
+
+    .achievements-section h3 {
+      margin: 0 0 20px 0;
+      font-size: 20px;
+    }
+
+    .coming-soon {
+      color: #8b949e;
+      font-style: italic;
+      font-size: 14px;
+      padding: 20px;
+      text-align: center;
+      background: #1c2128;
+      border-radius: 8px;
+    }
+
+    .uploads-section {
+      background: #161b22;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      max-width: 800px;
+      width: 100%;
+    }
+
+    .uploads-section h3 {
+      margin: 0 0 20px 0;
+      font-size: 20px;
+    }
+
+    .uploads-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+
+    .uploads-table th,
+    .uploads-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .uploads-table th {
+      font-weight: 600;
+      color: #8b949e;
+      font-size: 14px;
+    }
+
+    .uploads-table tr:hover {
+      background: #1c2128;
+    }
+
+    .uploads-table td {
+      font-size: 14px;
+    }
+
+    .uploads-table td:last-child {
+      text-align: right;
+    }
+
+    .edit-username {
+      background: transparent;
+      border: none;
+      color: #58a6ff;
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+
+    .edit-username:hover {
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    .username-select {
+      background: #30363d;
+      color: #f0f6fc;
+      border: 1px solid #58a6ff;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 14px;
+      max-width: 150px;
+    }
+
+    .logout-btn {
+      background: #da3633;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      width: 100%;
+      margin-top: 20px;
+      transition: background 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: #b91c1c;
+    }
+
+    .edit-display-name {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: transparent;
+      border: none;
+      color: #58a6ff;
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: 14px;
+      border-radius: 4px;
+      opacity: 0.8;
+    }
+
+    .edit-display-name:hover {
+      background: rgba(88, 166, 255, 0.1);
+      opacity: 1;
+    }
+
+    .display-name-input {
+      background: #30363d;
+      color: #f0f6fc;
+      border: 1px solid #58a6ff;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 20px;
+      max-width: 300px;
+      margin-right: 8px;
+    }
+
+    .save-display-name {
+      background: #238636;
+      color: white;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .save-display-name:hover {
+      background: #2ea043;
+    }
+
+    .cancel-display-name {
+      background: #21262d;
+      color: #f0f6fc;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 4px;
+    }
+
+    .cancel-display-name:hover {
+      background: #30363d;
+    }
+
+    @media (max-width: 768px) {
+      .profile-header,
+      .achievements-section,
+      .uploads-section {
+        border-radius: 0;
+        padding: 20px;
+      }
+
+      .uploads-table th,
+      .uploads-table td {
+        padding: 8px;
+      }
+    }
+
+    /* --- Tab styles for Uploads / Vote Results --- */
+    .tab-header {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .tab-btn:hover {
+      background: #30363d;
+    }
+
+    .tab-btn.active {
+      background: #58a6ff;
+      color: #fff;
+      border-color: #58a6ff;
+    }
+
+    .tab-content {
+      width: 100%;
+    }
+
+    /* Right-align numeric columns */
+    .vote-results-table td:nth-child(3),
+    .vote-results-table td:nth-child(4),
+    .vote-results-table td:nth-child(5),
+    .vote-results-table th:nth-child(3),
+    .vote-results-table th:nth-child(4),
+    .vote-results-table th:nth-child(5) {
+      text-align: right;
+    }
+
+    /* Styling for View Team and View Votes buttons */
+    .view-team-btn, .view-votes-btn {
+      background: #30363d;
+      color: #c9d1d9;
+      border: 1px solid #21262d;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-right: 4px;
+      transition: background 0.2s;
+    }
+
+    .view-team-btn:hover, .view-votes-btn:hover {
+      background: #58a6ff;
+      color: #fff;
+    }
+
+    /* Votes modal styling */
+    .votes-modal-container {
+      max-width: 800px;
+      width: 100%;
+    }
+
+    .votes-history-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    .votes-history-table th,
+
+
+    /* Stacked modal styling */
+    #teamModalOverlay {
+      z-index: 1001; /* Higher than the primary modal */
+    }
+
+    #modalOverlay {
+      z-index: 1000;
+    }
+
+    /* Login section styling */
+    .x-btn {
+      background: #1d9bf0;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      width: 100%;
+      max-width: 300px;
+      margin: 0 auto 20px auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+
+    .x-btn:hover {
+      background: #1a8cd8;
+    }
+
+    .login-divider {
+      color: #8b949e;
+      margin: 20px 0;
+      display: flex;
+      align-items: center;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    .login-divider::before,
+    .login-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #30363d;
+      margin: 0 10px;
+    }
+
+    #loginEmailForm {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 300px;
+      margin: 0 auto;
+    }
+
+    #loginEmailForm input {
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #f0f6fc;
+      font-size: 14px;
+      width: 100%;
+    }
+
+    #loginEmailForm input:focus {
+      border-color: #58a6ff;
+      outline: none;
+    }
+
+    .login-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .login-actions button {
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #f0f6fc;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .login-actions button[type="submit"] {
+      background: #238636;
+      border-color: #238636;
+    }
+
+    .login-actions button:hover {
+      background: #30363d;
+    }
+
+    .login-actions button[type="submit"]:hover {
+      background: #2ea043;
+    }
+
+    #forgotPasswordLink {
+      color: #58a6ff;
+      text-decoration: none;
+      font-size: 14px;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    #forgotPasswordLink:hover {
+      text-decoration: underline;
+    }
+
+    /* Burger Menu Styles */
+    .burger-menu {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      z-index: 1000;
+    }
+
+    .burger-icon {
+      cursor: pointer;
+      padding: 10px;
+    }
+
+    .burger-icon span {
+      display: block;
+      width: 25px;
+      height: 3px;
+      background-color: #f0f6fc;
+      margin: 5px 0;
+      transition: 0.3s;
+    }
+
+    .burger-icon.active span:nth-child(1) {
+      transform: rotate(-45deg) translate(-5px, 6px);
+    }
+
+    .burger-icon.active span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .burger-icon.active span:nth-child(3) {
+      transform: rotate(45deg) translate(-5px, -6px);
+    }
+
+    .menu-items {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #1a1d20;
+      border-radius: 12px;
+      padding: 16px;
+      display: none;
+      min-width: 250px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    .menu-items.active {
+      display: block;
+    }
+
+    .menu-item {
+      display: block;
+      padding: 12px 16px;
+      color: #f0f6fc;
+      text-decoration: none;
+      font-size: 18px;
+      background: #2a2e33;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border: none;
+      width: 100%;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .menu-item:hover {
+      background-color: #238636;
+    }
+
+    .menu-divider {
+      height: 1px;
+      background-color: #30363d;
+      margin: 16px 0;
+    }
+
+    .menu-item.username {
+      background: transparent;
+      text-align: center;
+      padding: 4px;
+      margin-bottom: 16px;
+    }
+
+    .menu-item.sign-in {
+      background: transparent;
+      text-align: center;
+      color: #8b949e;
+    }
+
+    .menu-item.logout-btn {
+      background: #da3633;
+      margin-top: 8px;
+    }
+
+    .menu-item.logout-btn:hover {
+      background: #b91c1c;
+    }
+
+    /* Voting Stats Sections */
+    .voting-stats {
+      margin: 2rem 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      padding: 0 16px;
+    }
+
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #161b22;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .stats-table th,
+    .stats-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .stats-table th {
+      background: #1c2128;
+      color: #8b949e;
+      font-weight: 600;
+    }
+
+    .stats-table td {
+      color: #f0f6fc;
+    }
+
+    /* Right-align numeric columns */
+    .stats-table td:nth-child(2),
+    .stats-table td:nth-child(3) {
+      text-align: right;
+    }
+
+    .stats-table th:nth-child(2),
+    .stats-table th:nth-child(3) {
+      text-align: right;
+    }
+
+    @media (max-width: 768px) {
+      .voting-stats {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        padding: 0 8px;
+      }
+
+      .friends-section,
+      .foes-section {
+        padding: 15px;
+      }
+
+      .stats-table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -15px; /* Extend to full width */
+        padding: 0 15px; /* Add back internal padding */
+      }
+
+      .stats-table {
+        font-size: 12px;
+        min-width: 280px; /* Minimum width to ensure readability */
+        width: 100%;
+      }
+
+      .stats-table th,
+      .stats-table td {
+        padding: 6px 4px;
+        white-space: nowrap; /* Prevent text wrapping */
+      }
+
+      /* Optimize column widths for mobile */
+      .stats-table th:nth-child(1),
+      .stats-table td:nth-child(1) {
+        width: 50%;
+        white-space: normal; /* Allow voter names to wrap if needed */
+        word-break: break-word;
+      }
+
+      .stats-table th:nth-child(2),
+      .stats-table td:nth-child(2) {
+        width: 25%;
+        text-align: center;
+      }
+
+      .stats-table th:nth-child(3),
+      .stats-table td:nth-child(3) {
+        width: 25%;
+        text-align: center;
+      }
+
+      /* Ensure the no-data message fits well */
+      .no-data-message {
+        font-size: 12px;
+        padding: 10px;
+      }
+    }
+
+    /* Hide burger menu on larger screens */
+    @media (min-width: 769px) {
+      .burger-menu {
+        display: none;
+      }
+    }
+
+    /* Initially hide main content until auth check completes */
+    .layout,
+    .header h1 {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    /* Show content when auth is confirmed */
+    .content-visible .layout,
+    .content-visible .header h1 {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="header" style="justify-content:center;">
+    <div class="burger-menu">
+      <div class="burger-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="menu-items">
+        <a href="/" class="menu-item">Home</a>
+        <div class="menu-divider"></div>
+        <div class="auth-required">
+          <a href="/profile.html" class="menu-item">Profile</a>
+          <button class="menu-item logout-btn" onclick="logout()">Logout</button>
+        </div>
+      </div>
+    </div>
+    <h1>Profile</h1>
+  </div>
+
+  <!-- Insert login required message for unauthenticated users -->
+  <div id="loginRequiredMessage" class="login-required" style="display:none; text-align:center; padding:40px;">
+    <h2>You need to be logged in to view this page</h2>
+    <button id="goLoginBtn" class="start-voting-btn">Login →</button>
+  </div>
+
+  <div class="layout" style="flex-direction:column; align-items:center;">
+    <div class="profile-header">
+      <div id="profileInfo"></div>
+    </div>
+
+    <div class="achievements">
+      <h2>Achievements</h2>
+      <p class="coming-soon">Coming Soon!</p>
+    </div>
+
+    <div class="voting-stats">
+      <div class="friends-section">
+        <h2>Your Friends</h2>
+        <p class="subtitle">These voters love your teams!</p>
+        <div class="stats-table-container">
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>Voter</th>
+                <th>Win Rate</th>
+                <th>Record</th>
+              </tr>
+            </thead>
+            <tbody id="friends-tbody">
+              <!-- Filled by JavaScript -->
+            </tbody>
+          </table>
+          <p id="no-friends" class="no-data-message" style="display: none;">
+            No voting data yet! Upload some teams and get people to vote on them.
+          </p>
+        </div>
+      </div>
+
+      <div class="foes-section">
+        <h2>Your Foes</h2>
+        <p class="subtitle">These voters might need convincing...</p>
+        <div class="stats-table-container">
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>Voter</th>
+                <th>Win Rate</th>
+                <th>Record</th>
+              </tr>
+            </thead>
+            <tbody id="foes-tbody">
+              <!-- Filled by JavaScript -->
+            </tbody>
+          </table>
+          <p id="no-foes" class="no-data-message" style="display: none;">
+            No voting data yet! Upload some teams and get people to vote on them.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Uploads & Vote Results tabs -->
+    <div class="uploads-section">
+      <div class="tab-header">
+        <button id="tabUploads" class="tab-btn active">Uploads</button>
+        <button id="tabResults" class="tab-btn">Vote Results</button>
+      </div>
+      <div id="uploadsSummary" class="tab-content"></div>
+      <div id="voteResultsContent" class="tab-content" style="display:none;"></div>
+      <button id="logoutBtn" class="logout-btn">Logout</button>
+    </div>
+
+
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Track whether we're viewing our own profile globally
+      let viewingOwnProfile = false;
+      // Check for URL parameters to determine which user to load
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewingUsername = urlParams.get('user');
+      
+      // Helper to show login required message and hide the main content
+      function showLoginRequired() {
+        // Hide main content containers
+        const layoutEl = document.querySelector('.layout');
+        if (layoutEl) layoutEl.style.display = 'none';
+        const headerTitle = document.querySelector('.header h1');
+        if (headerTitle) headerTitle.style.display = 'none';
+
+        // Show the login prompt
+        const msgDiv = document.getElementById('loginRequiredMessage');
+        if (msgDiv) msgDiv.style.display = 'block';
+
+        // Bind click handler once
+        const btn = document.getElementById('goLoginBtn');
+        if (btn && !btn.dataset.bound) {
+          btn.dataset.bound = '1';
+          btn.addEventListener('click', () => {
+            window.location.href = '/';
+          });
+        }
+      }
+
+      // Check auth status first, then load profile
+      fetch('/me')
+        .then(res => res.json())
+        .then(data => {
+          const loggedIn = !!data.user;
+          if (loggedIn) {
+            // User is logged in, proceed to load profile
+            document.body.classList.add('content-visible');
+            loadProfile();
+          } else {
+            // User is not logged in, show login required message
+            showLoginRequired();
+          }
+        })
+        .catch(err => {
+          console.log('Auth check failed:', err);
+          showLoginRequired();
+        });
+
+      // Load profile data
+      function loadProfile() {
+        let profileEndpoint;
+        if (viewingUsername) {
+          // Viewing someone else's profile
+          profileEndpoint = `/profile/${encodeURIComponent(viewingUsername)}`;
+        } else {
+          // Viewing own profile
+          profileEndpoint = '/my/profile';
+        }
+
+        fetch(profileEndpoint)
+          .then(async res => {
+            if (res.status === 401) {
+              // Not logged in - show login required message
+              showLoginRequired();
+              return null;
+            } else if (!res.ok) {
+              throw new Error('Failed to load profile');
+            }
+            return res.json();
+          })
+          .then(data => {
+            if (!data) return;
+
+            const { user, uploads, voteResults, isOwnProfile, viewerLoggedIn } = data;
+            const infoDiv = document.getElementById('profileInfo');
+            const uploadsDiv = document.getElementById('uploadsSummary');
+
+            // Persist
+            viewingOwnProfile = isOwnProfile;
+
+            // Profile header - show edit button only for own profile
+            const editButton = isOwnProfile ? 
+              `<button class="edit-display-name" onclick="editDisplayName('${user.display_name || ''}')">Edit</button>` : '';
+            
+            const displayName = user.display_name || (viewingUsername || 'Unknown User');
+            const displayNameClass = !user.display_name && isOwnProfile ? 'class="no-display-name"' : '';
+            
+            infoDiv.innerHTML = `
+              ${editButton}
+              <h2>
+                <span id="displayNameContainer" ${displayNameClass}>
+                  ${displayName}
+                </span>
+              </h2>
+              ${user.twitter_username ? `<p>@${user.twitter_username}</p>` : ''}
+            `;
+
+            // Handle uploads section - only show for own profile
+            if (isOwnProfile && uploads) {
+              // Build uploads table
+              let tableHtml = `
+                <table class="uploads-table">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Tournament</th>
+                      <th>Count</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+              `;
+
+              uploads.forEach(row => {
+                tableHtml += `
+                  <tr>
+                    <td>${row.username}</td>
+                    <td>${row.tournament}</td>
+                    <td>${row.count}</td>
+                    <td>
+                      <button class="edit-username" onclick="editUsername('${row.username}', '${row.tournament}')">Edit</button>
+                    </td>
+                  </tr>
+                `;
+              });
+
+              tableHtml += '</tbody></table>';
+              uploadsDiv.innerHTML = tableHtml;
+            } else {
+              uploadsDiv.innerHTML = '';
+            }
+
+            // --- Store and render Vote Results with sortable table ---
+            window.voteResultsData = voteResults || [];
+            window.voteSortKey = 'win_pct';
+            window.voteSortDir = 'desc';
+            const resultsDiv = document.getElementById('voteResultsContent');
+
+            function sortVoteData() {
+              const key = window.voteSortKey;
+              const dir = window.voteSortDir;
+              const mul = dir === 'asc' ? 1 : -1;
+              return [...window.voteResultsData].sort((a,b) => {
+                if (key === 'win_pct') {
+                  if (a.win_pct !== b.win_pct) return (b.win_pct - a.win_pct) * (dir === 'desc' ? 1 : -1);
+                  // tie-breaker
+                  if (dir === 'desc') {
+                    return (b.wins - a.wins);
+                  } else {
+                    // For ascending Win %, break ties by losses descending (more losses = higher priority)
+                    return (b.losses - a.losses);
+                  }
+                }
+                if (key === 'wins') {
+                  if (a.wins !== b.wins) return (a.wins - b.wins) * mul * -1; // since mul flips
+                  return (b.win_pct - a.win_pct) * (dir === 'desc' ? 1 : -1);
+                }
+                if (key === 'losses') {
+                  if (a.losses !== b.losses) return (a.losses - b.losses) * mul * -1;
+                  return (b.win_pct - a.win_pct) * (dir === 'desc' ? 1 : -1);
+                }
+                if (key === 'tournament') {
+                  const ta = (a.tournament || '').localeCompare(b.tournament || '');
+                  return ta * mul;
+                }
+                return 0;
+              });
+            }
+
+            function renderVoteResultsTable() {
+              if (!window.voteResultsData.length) {
+                resultsDiv.innerHTML = '<p style="text-align:center; padding:20px; color:#8b949e;">No vote data yet. Once people start voting on your teams, results will appear here!</p>';
+                return;
+              }
+
+              const sorted = sortVoteData();
+              let html = `
+                <table class="uploads-table vote-results-table">
+                  <thead>
+                    <tr>
+                      <th>Team</th>
+                      <th class="sortable" data-key="tournament">Contest</th>
+                      <th class="sortable" data-key="wins">W</th>
+                      <th class="sortable" data-key="losses">L</th>
+                      <th class="sortable" data-key="win_pct">Win %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+              `;
+
+              sorted.forEach(r => {
+                const winPct = parseFloat(r.win_pct) === 0 ? '0' : r.win_pct;
+                html += `
+                  <tr>
+                    <td>
+                      <button class="view-team-btn" data-id="${r.id}">View Team</button>
+                      <button class="view-votes-btn" data-id="${r.id}">View Votes</button>
+                    </td>
+                    <td>${r.tournament || '-'}</td>
+                    <td>${r.wins}</td>
+                    <td>${r.losses}</td>
+                    <td>${winPct}%</td>
+                  </tr>
+                `;
+              });
+
+              html += '</tbody></table>';
+              resultsDiv.innerHTML = html;
+
+              // Attach header click listeners
+              resultsDiv.querySelectorAll('th.sortable').forEach(th => {
+                th.onclick = () => {
+                  const key = th.getAttribute('data-key');
+                  if (window.voteSortKey === key) {
+                    window.voteSortDir = window.voteSortDir === 'desc' ? 'asc' : 'desc';
+                  } else {
+                    window.voteSortKey = key;
+                    window.voteSortDir = 'desc';
+                  }
+                  renderVoteResultsTable();
+                };
+              });
+
+              // Attach view button listeners
+              resultsDiv.querySelectorAll('.view-team-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                  const id = e.target.getAttribute('data-id');
+                  showTeamModal(id);
+                });
+              });
+
+              // Attach view votes button listeners
+              resultsDiv.querySelectorAll('.view-votes-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                  const id = e.target.getAttribute('data-id');
+                  window.location.href = `voting-history.html?teamId=${id}`;
+                });
+              });
+            }
+
+            renderVoteResultsTable();
+
+            // Store usernames globally for the edit function (only for own profile)
+            if (isOwnProfile && data.usernames) {
+              window.availableUsernames = data.usernames;
+            }
+
+            // ---- Populate Friends & Foes ----
+            if (data.votingStats && (data.votingStats.friends.length || data.votingStats.foes.length)) {
+              populateVotingStats(data.votingStats);
+            } else {
+              document.querySelector('.voting-stats').style.display = 'none';
+            }
+
+            // ---- Update tab visibility based on viewing mode ----
+            const tabUploadsBtn = document.getElementById('tabUploads');
+            const tabResultsBtn = document.getElementById('tabResults');
+            const uploadsContent = document.getElementById('uploadsSummary');
+            const resultsContent = document.getElementById('voteResultsContent');
+            const logoutBtn = document.getElementById('logoutBtn');
+
+            if (isOwnProfile) {
+              // Own profile: show both tabs, default to uploads
+              tabUploadsBtn.style.display = '';
+              tabResultsBtn.style.display = '';
+              logoutBtn.style.display = '';
+              setActive('uploads');
+            } else {
+              // Other profile: hide uploads tab, show only vote results, hide logout
+              tabUploadsBtn.style.display = 'none';
+              tabResultsBtn.style.display = 'none'; // Hide tab header entirely
+              uploadsContent.style.display = 'none';
+              resultsContent.style.display = '';
+              logoutBtn.style.display = 'none';
+              // Update tab header to just show "Vote Results" as title
+              document.querySelector('.tab-header').innerHTML = '<h3 style="margin:0;">Vote Results</h3>';
+            }
+          })
+          .catch(err => {
+            console.error('Failed to load profile:', err);
+            alert('Failed to load profile information.');
+          });
+      }
+
+      // Helper to render voting stats
+      function populateVotingStats(stats) {
+        const friendsTbody = document.getElementById('friends-tbody');
+        const foesTbody = document.getElementById('foes-tbody');
+        const noFriendsMsg = document.getElementById('no-friends');
+        const noFoesMsg = document.getElementById('no-foes');
+
+        function escapeHtml(text) {
+          const div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+        }
+
+        function createRow(v) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHtml(v.name)}</td>
+            <td>${v.winRate}%</td>
+            <td>${v.wins}-${v.losses}</td>
+          `;
+          return tr;
+        }
+
+        friendsTbody.innerHTML = '';
+        foesTbody.innerHTML = '';
+
+        friendsTbody.parentElement.parentElement.style.display = 'block'; // ensure visible
+        foesTbody.parentElement.parentElement.style.display = 'block';
+
+        noFriendsMsg.style.display = stats.friends.length ? 'none' : 'block';
+        noFoesMsg.style.display = stats.foes.length ? 'none' : 'block';
+
+        stats.friends.forEach(f => friendsTbody.appendChild(createRow(f)));
+        stats.foes.forEach(f => foesTbody.appendChild(createRow(f)));
+      }
+
+      // Logout button
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await fetch('/logout', { method: 'POST' });
+        window.location = '/';
+      });
+
+      // === Tab switching logic ===
+      const tabUploadsBtn = document.getElementById('tabUploads');
+      const tabResultsBtn = document.getElementById('tabResults');
+      const uploadsContent = document.getElementById('uploadsSummary');
+      const resultsContent = document.getElementById('voteResultsContent');
+
+      function setActive(tab) {
+        if (tab === 'uploads') {
+          tabUploadsBtn.classList.add('active');
+          tabResultsBtn.classList.remove('active');
+          uploadsContent.style.display = '';
+          resultsContent.style.display = 'none';
+        } else {
+          tabUploadsBtn.classList.remove('active');
+          tabResultsBtn.classList.add('active');
+          uploadsContent.style.display = 'none';
+          resultsContent.style.display = '';
+        }
+      }
+
+      tabUploadsBtn.addEventListener('click', () => setActive('uploads'));
+      tabResultsBtn.addEventListener('click', () => setActive('results'));
+
+      // ------------------- Modal helpers copied from main site -------------------
+      function getBorderColor(position) {
+        switch (position) {
+          case 'QB': return '#a855f7';
+          case 'RB': return '#22c55e';
+          case 'WR': return '#facc15';
+          case 'TE': return '#3b82f6';
+          default: return '#999';
+        }
+      }
+
+      function buildTeamCard(teamId, players) {
+        const card = document.createElement('div');
+        card.className = 'team-card';
+
+        const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+        players.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+        const roster = document.createElement('div');
+        roster.className = 'roster-construction';
+        roster.innerHTML = `<div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>`;
+        card.appendChild(roster);
+
+        const list = document.createElement('div');
+        list.className = 'player-list';
+        const positionOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
+        const sortedPlayers = [...players].sort((a,b)=>{
+          if (positionOrder[a.position] !== positionOrder[b.position]) return positionOrder[a.position]-positionOrder[b.position];
+          return (a.pick||0)-(b.pick||0);
+        });
+
+        ['QB','RB','WR','TE'].forEach(pos=>{
+          sortedPlayers.filter(p=>p.position===pos).forEach(pl=>{
+            const row=document.createElement('div');
+            row.className='player-row';
+            const bubble=document.createElement('div');
+            bubble.className='player-bubble';
+            const stackStar = pl.stack ? `<span class="stack-star ${pl.stack}">★</span>` : '';
+            const pickHTML = (pl.pick||pl.pick===0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
+            const infoHTML = `<span class="player-info">${pl.name}${pl.team?` - ${pl.team}`:''}</span>`;
+            bubble.innerHTML = `${pickHTML}${infoHTML}${stackStar}`;
+            bubble.style.border=`2px solid ${getBorderColor(pl.position)}`;
+            row.appendChild(bubble);
+            list.appendChild(row);
+          });
+        });
+        card.appendChild(list);
+        return card;
+      }
+
+      function hideModal() {
+        document.getElementById('modalOverlay').style.display='none';
+        document.getElementById('modalBody').innerHTML='';
+      }
+
+      // Function to show team details in either primary or secondary modal
+      function showTeamModal(teamId, isSecondary = false) {
+        fetch(`/team/${teamId}`)
+          .then(res=>res.json())
+          .then(players=>{
+            const modalId = isSecondary ? 'teamModalBody' : 'modalBody';
+            const overlayId = isSecondary ? 'teamModalOverlay' : 'modalOverlay';
+            const body = document.getElementById(modalId);
+            body.innerHTML = '';
+            body.appendChild(buildTeamCard(teamId, players));
+            document.getElementById(overlayId).style.display = 'flex';
+          });
+      }
+
+
+
+      // Close modal buttons
+      document.addEventListener('click', (e) => {
+        if (e.target.id === 'modalCloseBtn' || e.target.id === 'modalOverlay') {
+          document.getElementById('modalOverlay').style.display = 'none';
+          document.getElementById('modalBody').innerHTML = '';
+        } else if (e.target.id === 'teamModalCloseBtn' || e.target.id === 'teamModalOverlay') {
+          document.getElementById('teamModalOverlay').style.display = 'none';
+          document.getElementById('teamModalBody').innerHTML = '';
+        }
+      });
+    });
+
+    // Username editing functionality
+    function editUsername(currentUsername, tournament) {
+      const cell = event.target.parentElement.previousElementSibling.previousElementSibling.previousElementSibling;
+      const originalContent = cell.innerHTML;
+
+      // Create select element with available usernames
+      const select = document.createElement('select');
+      select.className = 'username-select';
+      
+      window.availableUsernames.forEach(username => {
+        if (username !== currentUsername) { // Don't include current username
+          const option = document.createElement('option');
+          option.value = username;
+          option.textContent = username;
+          select.appendChild(option);
+        }
+      });
+
+      // Add cancel option
+      const cancelOption = document.createElement('option');
+      cancelOption.value = '';
+      cancelOption.textContent = '-- Cancel --';
+      select.insertBefore(cancelOption, select.firstChild);
+      select.value = '';
+
+      // Handle selection change
+      select.addEventListener('change', async () => {
+        const newUsername = select.value;
+        if (!newUsername) {
+          cell.innerHTML = originalContent;
+          return;
+        }
+
+        try {
+          const res = await fetch('/my/update-username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              oldUsername: currentUsername,
+              newUsername,
+              tournament
+            })
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            // Refresh the page to show updated data
+            window.location.reload();
+          } else {
+            alert(data.error || 'Failed to update username');
+            cell.innerHTML = originalContent;
+          }
+        } catch (err) {
+          console.error('Failed to update username:', err);
+          alert('Failed to update username');
+          cell.innerHTML = originalContent;
+        }
+      });
+
+      // Replace cell content with select
+      cell.innerHTML = '';
+      cell.appendChild(select);
+      select.focus();
+    }
+
+    // Display name editing functionality
+    function editDisplayName(currentDisplayName) {
+      const container = document.getElementById('displayNameContainer');
+      const originalContent = container.innerHTML;
+      const wasEmpty = !currentDisplayName;
+
+      // Create edit interface
+      container.innerHTML = `
+        <input type="text" class="display-name-input" value="${currentDisplayName}" placeholder="Enter display name">
+        <button class="save-display-name">Save</button>
+        <button class="cancel-display-name">Cancel</button>
+      `;
+
+      const input = container.querySelector('.display-name-input');
+      const saveBtn = container.querySelector('.save-display-name');
+      const cancelBtn = container.querySelector('.cancel-display-name');
+
+      input.focus();
+      input.select();
+
+      // Handle save
+      saveBtn.addEventListener('click', async () => {
+        const newDisplayName = input.value.trim();
+        
+        try {
+          const res = await fetch('/my/update-display-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayName: newDisplayName })
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            // Update the display without refreshing
+            container.innerHTML = newDisplayName || 'Create Display Name';
+            // Set styling class based on whether we have a display name
+            if (newDisplayName) {
+              container.classList.remove('no-display-name');
+            } else {
+              container.classList.add('no-display-name');
+            }
+          } else {
+            alert(data.error || 'Failed to update display name');
+            container.innerHTML = originalContent;
+            if (wasEmpty) container.classList.add('no-display-name');
+          }
+        } catch (err) {
+          console.error('Failed to update display name:', err);
+          alert('Failed to update display name');
+          container.innerHTML = originalContent;
+          if (wasEmpty) container.classList.add('no-display-name');
+        }
+      });
+
+      // Handle cancel
+      cancelBtn.addEventListener('click', () => {
+        container.innerHTML = originalContent;
+        if (wasEmpty) container.classList.add('no-display-name');
+      });
+
+      // Handle Enter key
+      input.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') saveBtn.click();
+        else if (e.key === 'Escape') cancelBtn.click();
+      });
+    }
+
+    // Burger menu functionality
+    document.addEventListener('DOMContentLoaded', () => {
+      const burgerIcon = document.querySelector('.burger-icon');
+      const menuItems = document.querySelector('.menu-items');
+      
+      burgerIcon.addEventListener('click', () => {
+        burgerIcon.classList.toggle('active');
+        menuItems.classList.toggle('active');
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.burger-menu')) {
+          burgerIcon.classList.remove('active');
+          menuItems.classList.remove('active');
+        }
+      });
+
+      // Check auth status and update menu visibility
+      fetch('/me')
+        .then(res => res.json())
+        .then(data => {
+          const isAuthed = !!data.user;
+          const username = isAuthed ? (data.user.display_name || data.user.email || 'User') : null;
+
+          document.querySelectorAll('.auth-required').forEach(el => {
+            el.style.display = isAuthed ? '' : 'none';
+          });
+          document.querySelectorAll('.no-auth').forEach(el => {
+            el.style.display = isAuthed ? 'none' : '';
+          });
+
+          if (isAuthed && username) {
+            const usernameLabel = document.querySelector('.menu-item.username');
+            if (usernameLabel) usernameLabel.textContent = username;
+          }
+        })
+        .catch(err => {
+          console.error('Auth status check failed:', err);
+          // Hide auth-only items on error
+          document.querySelectorAll('.auth-required').forEach(el => el.style.display='none');
+        });
+    });
+
+    // Logout function for the menu
+    function logout() {
+      fetch('/logout', { method: 'POST' })
+        .then(() => window.location.href = '/');
+    }
+  </script>
+
+  <!-- Modals for viewing team details and votes -->
+  <div id="modalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-close"><button id="modalCloseBtn">✖</button></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Secondary modal for nested team views -->
+  <div id="teamModalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-close"><button id="teamModalCloseBtn">✖</button></div>
+      <div id="teamModalBody"></div>
+    </div>
+  </div>
+</body>
+</html> 

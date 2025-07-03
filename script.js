@@ -197,6 +197,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Keep overlay visibility in sync after auth refresh
     updateFileInputState();
+
+    // Show content now that auth check is complete
+    document.body.classList.add('content-visible');
   }
 
   function showLoginMessage(msg, type) {
@@ -294,6 +297,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Check auth on load and then set initial mode once we know auth state
   refreshAuth().then(() => {
+    // Show content now that auth check is complete
+    document.body.classList.add('content-visible');
     // Ensure correct initial layout after auth status is known
     setMode("upload");
   });
@@ -381,20 +386,13 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   });
 
-  // Gear button click handler
+  // Gear button click handler - go directly to profile page
   if (gearBtn) {
     gearBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent document click from immediately closing menu
-      userMenu.style.display = userMenu.style.display === 'none' ? 'block' : 'none';
+      e.preventDefault();
+      window.location.href = 'profile.html';
     });
   }
-
-  // Hide menu when clicking outside
-  document.addEventListener('click', (e) => {
-    if (userMenu && !userMenu.contains(e.target) && e.target !== gearBtn) {
-      userMenu.style.display = 'none';
-    }
-  });
 
   function setMode(mode) {
     currentMode = mode;
@@ -1201,9 +1199,15 @@ function renderLeaderboard(data) {
 
     if (leaderboardType === "team") {
       const viewBtn = `<button class="view-team-btn" data-id="${row.id}">View</button>`;
-      tr.innerHTML = `<td>${viewBtn}</td><td>${row.username || "-"}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      const usernameCell = row.username && row.username !== "-" 
+        ? `<a href="voting-history.html?teamId=${row.id}" class="username-link">${row.username}</a>`
+        : "-";
+      tr.innerHTML = `<td>${viewBtn}</td><td>${usernameCell}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     } else {
-      tr.innerHTML = `<td>${row.username || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      const usernameCell = row.username && row.username !== "-" 
+        ? `<a href="profile.html?user=${encodeURIComponent(row.username)}" class="username-link">${row.username}</a>`
+        : "-";
+      tr.innerHTML = `<td>${usernameCell}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     }
     tbody.appendChild(tr);
   });
@@ -1276,4 +1280,246 @@ function createTourLabel(tourName) {
   label.className = "tournament-label";
   label.textContent = tourName;
   return label;
+}
+
+function populateVotingStats(stats) {
+  const friendsTbody = document.getElementById('friends-tbody');
+  const foesTbody = document.getElementById('foes-tbody');
+  const noFriendsMsg = document.getElementById('no-friends');
+  const noFoesMsg = document.getElementById('no-foes');
+
+  // Helper to create a stats row
+  function createStatsRow(voter) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(voter.name)}</td>
+      <td>${voter.winRate}%</td>
+      <td>${voter.wins}-${voter.losses}</td>
+    `;
+    return tr;
+  }
+
+  // Clear existing content
+  friendsTbody.innerHTML = '';
+  foesTbody.innerHTML = '';
+
+  // Show/hide no data messages
+  const hasData = stats.friends.length > 0 || stats.foes.length > 0;
+  noFriendsMsg.style.display = stats.friends.length === 0 ? 'block' : 'none';
+  noFoesMsg.style.display = stats.foes.length === 0 ? 'block' : 'none';
+
+  // Populate friends
+  stats.friends.forEach(friend => {
+    friendsTbody.appendChild(createStatsRow(friend));
+  });
+
+  // Populate foes
+  stats.foes.forEach(foe => {
+    foesTbody.appendChild(createStatsRow(foe));
+  });
+}
+
+// Update the loadProfile function to handle viewing own and other profiles
+async function loadProfile() {
+  // Get username from URL if present
+  const urlParams = new URLSearchParams(window.location.search);
+  const usernameToView = urlParams.get('user');
+  
+  try {
+    // If viewing someone else's profile
+    if (usernameToView) {
+      const response = await fetch(`/profile/${encodeURIComponent(usernameToView)}`);
+      
+      if (response.status === 401) {
+        // Not logged in - show login form
+        showLoginRequired();
+        return;
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to load profile');
+      }
+      
+      const data = await response.json();
+      
+      // Update profile header
+      document.getElementById('display-name').textContent = data.user.display_name || data.user.username;
+      document.getElementById('username').textContent = data.user.username;
+      
+      // Hide edit buttons and logout for other users' profiles
+      const editDisplayNameBtn = document.querySelector('.edit-display-name');
+      const logoutBtn = document.getElementById('logoutBtn');
+      if (editDisplayNameBtn) editDisplayNameBtn.style.display = 'none';
+      if (logoutBtn) logoutBtn.style.display = 'none';
+      
+      // Show only vote results tab for other users
+      const uploadsSummary = document.getElementById('uploadsSummary');
+      const voteResultsContent = document.getElementById('voteResultsContent');
+      const tabUploads = document.getElementById('tabUploads');
+      const tabResults = document.getElementById('tabResults');
+      
+      if (uploadsSummary) uploadsSummary.style.display = 'none';
+      if (voteResultsContent) voteResultsContent.style.display = 'block';
+      if (tabUploads) tabUploads.style.display = 'none';
+      if (tabResults) {
+        tabResults.style.display = 'block';
+        tabResults.classList.add('active');
+      }
+      
+      // Update voting stats
+      if (data.votingStats) {
+        populateVotingStats(data.votingStats);
+      }
+      
+      // Show profile content
+      document.getElementById('profileContent').style.display = 'block';
+      document.getElementById('loginSection').style.display = 'none';
+      
+    } else {
+      // Viewing own profile
+      const response = await fetch('/my/profile');
+      
+      if (response.status === 401) {
+        // Not logged in - show login form
+        showLoginRequired();
+        return;
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to load profile');
+      }
+      
+      const data = await response.json();
+      
+      // Update user info
+      document.getElementById('display-name').textContent = data.user.display_name || data.user.twitter_username || data.user.email;
+      document.getElementById('username').textContent = data.user.username;
+      document.getElementById('twitter-username').textContent = data.user.twitter_username || 'Not connected';
+      document.getElementById('login-method').textContent = data.user.login_method === 'twitter' ? 'Logged in via X (Twitter)' : 'Logged in via email';
+      
+      // Show edit buttons and logout for own profile
+      const editDisplayNameBtn = document.querySelector('.edit-display-name');
+      const logoutBtn = document.getElementById('logoutBtn');
+      if (editDisplayNameBtn) editDisplayNameBtn.style.display = 'block';
+      if (logoutBtn) logoutBtn.style.display = 'block';
+      
+      // Show both tabs for own profile
+      const uploadsSummary = document.getElementById('uploadsSummary');
+      const voteResultsContent = document.getElementById('voteResultsContent');
+      const tabUploads = document.getElementById('tabUploads');
+      const tabResults = document.getElementById('tabResults');
+      
+      if (uploadsSummary) uploadsSummary.style.display = 'block';
+      if (voteResultsContent) voteResultsContent.style.display = 'none';
+      if (tabUploads) {
+        tabUploads.style.display = 'block';
+        tabUploads.classList.add('active');
+      }
+      if (tabResults) {
+        tabResults.style.display = 'block';
+        tabResults.classList.remove('active');
+      }
+      
+      // Update voting stats
+      if (data.votingStats) {
+        populateVotingStats(data.votingStats);
+      }
+      
+      // Show profile content
+      document.getElementById('profileContent').style.display = 'block';
+      document.getElementById('loginSection').style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Error loading profile:', err);
+    showError('Failed to load profile data');
+  }
+}
+
+function showLoginRequired() {
+  const loginSection = document.getElementById('loginSection');
+  const profileContent = document.getElementById('profileContent');
+  const uploadsSummary = document.getElementById('uploadsSummary');
+  const voteResultsContent = document.getElementById('voteResultsContent');
+  const tabUploads = document.getElementById('tabUploads');
+  const tabResults = document.getElementById('tabResults');
+
+  if (loginSection && profileContent) {
+    loginSection.style.display = 'block';
+    profileContent.style.display = 'none';
+  }
+
+  // Hide tabs when showing login
+  if (uploadsSummary) uploadsSummary.style.display = 'none';
+  if (voteResultsContent) voteResultsContent.style.display = 'none';
+  if (tabUploads) tabUploads.style.display = 'none';
+  if (tabResults) tabResults.style.display = 'none';
+
+  // Set up login handlers for the profile page
+  const profileLoginTwitterBtn = document.getElementById('profileLoginTwitterBtn');
+  const profileLoginEmailForm = document.getElementById('profileLoginEmailForm');
+
+  if (profileLoginTwitterBtn) {
+    profileLoginTwitterBtn.addEventListener('click', () => {
+      window.location = '/auth/twitter';
+    });
+  }
+
+  if (profileLoginEmailForm) {
+    profileLoginEmailForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('profileLoginEmail').value.trim();
+      const password = document.getElementById('profileLoginPassword').value;
+      
+      if (!email || !password) {
+        showLoginMessage('Please provide both email and password', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (res.ok) {
+          // Refresh the page after successful login to load profile
+          window.location.reload();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showLoginMessage(err.error || 'Login failed', 'error');
+        }
+      } catch (error) {
+        showLoginMessage('Login failed. Please try again.', 'error');
+      }
+    });
+  }
+}
+
+function showError(message) {
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error-message';
+  errorDiv.textContent = message;
+  
+  // Remove any existing error messages
+  const existingError = document.querySelector('.error-message');
+  if (existingError) {
+    existingError.remove();
+  }
+  
+  // Insert at the top of the main content
+  const mainContent = document.querySelector('main') || document.body;
+  mainContent.insertBefore(errorDiv, mainContent.firstChild);
+  
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    errorDiv.remove();
+  }, 5000);
+}
+
+// Initialize profile page if we're on it
+if (window.location.pathname.endsWith('profile.html')) {
+  document.addEventListener('DOMContentLoaded', () => {
+    loadProfile();
+  });
 }
