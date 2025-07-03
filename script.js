@@ -8,6 +8,10 @@ let leaderboardData = [];
 let sortKey = "wins";
 let sortDir = "desc";
 let teamUsernames = {};
+let teamUserIds = {}; // teamId -> user_id mapping
+let currentUserId = null; // logged-in user id
+let userVotesCount = 0;   // total versus votes cast by user
+let myTeamIds = [];       // array of teamIds owned by current user
 const MAX_LEADERBOARD_ROWS = 150; // how many rows to actually render after sorting
 let currentTournament = ""; // Add this at the top with other state variables
 let currentUsernameFilter = ""; // Username filter for team leaderboard
@@ -123,6 +127,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = await fetch('/me');
     const data = await res.json();
     const loggedIn = !!data.user;
+    // Track current user id for ownership logic
+    currentUserId = loggedIn ? data.user.id : null;
+
+    // If logged in, fetch the current versus vote count
+    if (loggedIn) {
+      try {
+        const vcRes = await fetch('/my/votes-count');
+        if (vcRes.ok) {
+          const vcJson = await vcRes.json();
+          userVotesCount = vcJson.count || 0;
+        } else {
+          userVotesCount = 0;
+        }
+      } catch (e) {
+        console.error('Failed to fetch vote count', e);
+        userVotesCount = 0;
+      }
+    } else {
+      userVotesCount = 0;
+    }
+
     if (loggedIn) {
       const displayName = data.user.display_name || data.user.email || 'User';
       
@@ -493,6 +518,16 @@ function fetchTeams(force = false) {
           if (!teamUsernames[id]) teamUsernames[id] = null;
         });
       }
+      // NEW: build userIds map
+      if (data.userIds) {
+        teamUserIds = data.userIds;
+      }
+      // Determine myTeamIds based on currentUserId
+      if (currentUserId) {
+        myTeamIds = Object.keys(teamUserIds).filter(tid => teamUserIds[tid] === currentUserId);
+      } else {
+        myTeamIds = [];
+      }
       currentIndex = 0;
       if (currentMode === "upload") return;
       if (currentMode === "versus") {
@@ -517,6 +552,27 @@ function getBorderColor(position) {
     case "TE": return "#3b82f6";
     default: return "#999";
   }
+}
+
+// ----- New helper: map raw tournament names to user-friendly category labels -----
+function getTournamentCategory(tourName = "") {
+  const preDraftNames = [
+    "The Big Board",
+    "The Little Board",
+    "The Little Board 2",
+    "The Bigger Board",
+    "The Biggest Board",
+    "The War Room",
+  ];
+
+  if (!tourName) return "Post Draft";
+  if (tourName === "The Marathon") return "Marathon";
+  if (tourName === "The Sprint") return "Sprint";
+  if (tourName.endsWith("but Superflex")) return "Superflex";
+  if (tourName === "The Eliminator") return "Eliminator";
+  if (tourName === "Weekly Winners") return "Weekly Winners";
+  if (preDraftNames.includes(tourName)) return "Pre Draft";
+  return "Post Draft";
 }
 
 function buildTeamCard(teamId, players) {
@@ -575,6 +631,19 @@ function renderVersus() {
 
   if (teams.length < 2) return;
 
+  const ALPHA = 0.7; // exponent between 0.5 (sqrt) and 1 (linear)
+  let includeMyTeamChance = 0;
+  if (currentUserId && myTeamIds.length) {
+    if (userVotesCount === 0) {
+      includeMyTeamChance = 1; // 100% if no votes yet
+    } else {
+      includeMyTeamChance = 1 / (Math.pow(userVotesCount, ALPHA) + 1);
+    }
+    // Enforce 5% floor so probability never drops below 0.05
+    includeMyTeamChance = Math.max(0.05, Math.min(1, includeMyTeamChance));
+  }
+  const includeMyTeam = Math.random() < includeMyTeamChance;
+
   // Create outer container for everything
   const outerContainer = document.createElement("div");
   outerContainer.className = "versus-outer-container";
@@ -599,11 +668,7 @@ function renderVersus() {
   const weightedTournamentSelect = (tournaments) => {
     // Calculate total weight (sum of all team counts)
     const totalWeight = tournaments.reduce((sum, [_, teams]) => sum + teams.length, 0);
-    
-    // Generate random value between 0 and total weight
     let random = Math.random() * totalWeight;
-    
-    // Find the tournament that contains this weighted random value
     for (const tournament of tournaments) {
       const weight = tournament[1].length;
       if (random < weight) {
@@ -611,36 +676,59 @@ function renderVersus() {
       }
       random -= weight;
     }
-    
-    // Fallback to last tournament (shouldn't happen due to math above)
     return tournaments[tournaments.length - 1];
   };
 
   let teamId1, teamId2;
 
+  // --- Try to include one of the user's own teams if requested ---
+  if (includeMyTeam) {
+    const myEligible = myTeamIds.filter(tid => {
+      const tour = teamTournaments[tid];
+      if (!tour) return false;
+      const list = tourGroups[tour] || [];
+      if (list.length < 2) return false;
+      // ensure there is at least one opponent team not owned by the current user
+      return list.some(id => id !== tid && (teamUserIds[id] || null) !== currentUserId);
+    });
+
+    if (myEligible.length) {
+      teamId1 = randElem(myEligible);
+      const tour = teamTournaments[teamId1];
+      const list = tourGroups[tour] || [];
+      const opponentCandidates = list.filter(id => id !== teamId1 && (teamUserIds[id] || null) !== currentUserId);
+      if (opponentCandidates.length) {
+        teamId2 = randElem(opponentCandidates);
+      } else {
+        // shouldn't happen, but fallback
+        teamId1 = null;
+      }
+    }
+  }
+
+  // ---- Fallback to original random selection if we didn't get valid ids ----
   const eligibleTours = Object.entries(tourGroups).filter(([tour, tlist]) => {
     const usernamesSet = new Set(tlist.map(id => teamUsernames[id] || "__anon__"));
     return usernamesSet.size >= 2;
   });
 
-  if (eligibleTours.length) {
-    // Use weighted selection for tournament
-    const [tour, list] = weightedTournamentSelect(eligibleTours);
-    // pick first team
-    teamId1 = randElem(list);
-    const user1 = teamUsernames[teamId1] || "__anon__";
-    // candidates for second team with different username
-    const differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
-    teamId2 = randElem(differentUserTeams);
-  } else {
-    // fallback: original random distinct teams
-    let idx1 = Math.floor(Math.random() * teams.length);
-    let idx2;
-    do {
-      idx2 = Math.floor(Math.random() * teams.length);
-    } while (idx2 === idx1);
-    teamId1 = teams[idx1][0];
-    teamId2 = teams[idx2][0];
+  if (!teamId1 || !teamId2) {
+    if (eligibleTours.length) {
+      const [tour, list] = weightedTournamentSelect(eligibleTours);
+      teamId1 = randElem(list);
+      const user1 = teamUsernames[teamId1] || "__anon__";
+      const differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
+      teamId2 = randElem(differentUserTeams);
+    } else {
+      // ultimate fallback: any two distinct random teams
+      let idx1 = Math.floor(Math.random() * teams.length);
+      let idx2;
+      do {
+        idx2 = Math.floor(Math.random() * teams.length);
+      } while (idx2 === idx1);
+      teamId1 = teams[idx1][0];
+      teamId2 = teams[idx2][0];
+    }
   }
 
   // Retrieve players arrays
@@ -650,16 +738,20 @@ function renderVersus() {
   const card1 = buildTeamCard(teamId1, players1);
   const card2 = buildTeamCard(teamId2, players2);
 
-  // === NEW: Add tournament/contest label to each card ===
-  const createTourLabel = (tourName) => {
-    const label = document.createElement("div");
-    label.className = "tournament-label";
-    label.textContent = tourName;
-    return label;
-  };
-
+  // === NEW: centered category header for the matchup -----
   const tournamentName1 = teamTournaments[teamId1] || "";
   const tournamentName2 = teamTournaments[teamId2] || "";
+
+  const category1 = getTournamentCategory(tournamentName1);
+  const category2 = getTournamentCategory(tournamentName2);
+  const headerLabelText = category1 === category2 ? category1 : `${category1} / ${category2}`;
+
+  const matchupHeader = document.createElement("div");
+  matchupHeader.className = "matchup-category-header";
+  matchupHeader.textContent = headerLabelText;
+
+  // Insert header before the versus cards
+  outerContainer.appendChild(matchupHeader);
 
   // Add choose buttons under each card (center VS column removed)
   const chooseBtn1 = document.createElement("button");
@@ -735,24 +827,21 @@ function renderVersus() {
     }).then(res => {
       if (handleRateLimit(res)) return;
       
-      // Show stats for both teams after vote
+      // Show combined owner + versus stats for both teams after vote
       Promise.all([
-        fetch(`/team-owner/${teamId1}`).then(r=>r.json()).catch(()=>({})),
-        fetch(`/team-owner/${teamId2}`).then(r=>r.json()).catch(()=>({})),
-        fetch(`/versus-stats/${teamId1}`).then(r=>r.json()).catch(()=>({wins:0,losses:0,win_pct:0})),
-        fetch(`/versus-stats/${teamId2}`).then(r=>r.json()).catch(()=>({wins:0,losses:0,win_pct:0}))
-      ]).then(([info1, info2, stats1, stats2])=>{
-        // Update owner info content with win percentage
+        fetch(`/team-meta/${teamId1}`).then(r=>r.json()).catch(()=>({username:null,twitter_username:null,wins:0,losses:0,win_pct:0})),
+        fetch(`/team-meta/${teamId2}`).then(r=>r.json()).catch(()=>({username:null,twitter_username:null,wins:0,losses:0,win_pct:0}))
+      ]).then(([meta1, meta2])=>{
         ownerInfo1.innerHTML = `
           <div class="owner-stats">
-            ${info1.username || 'Anonymous'}${info1.twitter_username ? ` | @${info1.twitter_username}` : ''} 
-            | <strong>W:</strong> ${stats1.wins || 0} | <strong>L:</strong> ${stats1.losses || 0} | <strong>Win %:</strong> ${stats1.win_pct || '0.0'}%
+            ${meta1.username || 'Anonymous'}${meta1.twitter_username ? ` | @${meta1.twitter_username}` : ''} 
+            | <strong>W:</strong> ${meta1.wins || 0} | <strong>L:</strong> ${meta1.losses || 0} | <strong>Win %:</strong> ${meta1.win_pct || '0.0'}%
           </div>
         `;
         ownerInfo2.innerHTML = `
           <div class="owner-stats">
-            ${info2.username || 'Anonymous'}${info2.twitter_username ? ` | @${info2.twitter_username}` : ''} 
-            | <strong>W:</strong> ${stats2.wins || 0} | <strong>L:</strong> ${stats2.losses || 0} | <strong>Win %:</strong> ${stats2.win_pct || '0.0'}%
+            ${meta2.username || 'Anonymous'}${meta2.twitter_username ? ` | @${meta2.twitter_username}` : ''} 
+            | <strong>W:</strong> ${meta2.wins || 0} | <strong>L:</strong> ${meta2.losses || 0} | <strong>Win %:</strong> ${meta2.win_pct || '0.0'}%
           </div>
         `;
 
@@ -762,6 +851,11 @@ function renderVersus() {
         nextButton.className = "next-button";
         nextButton.onclick = () => renderVersus();
         document.querySelector('.versus-outer-container').appendChild(nextButton);
+
+        // Increment local vote count so future probability adjusts on the fly
+        if (currentUserId) {
+          userVotesCount += 1;
+        }
       });
     });
   };
@@ -935,7 +1029,10 @@ function renderLeaderboard(data) {
   if (tournamentSelect) {
     // Only rebuild tournament dropdown if it's empty or if we're switching views
     const needsRebuild = !tournamentSelect.options.length || 
-                        (leaderboardType === "team" && tournamentSelect.dataset.viewType !== "team") ||
+                        (leaderboardType === "team" && (
+                          tournamentSelect.dataset.viewType !== "team" ||
+                          tournamentSelect.dataset.usernameFilter !== (currentUsernameFilter || "")
+                        )) ||
                         (leaderboardType === "user" && tournamentSelect.dataset.viewType !== "user");
 
     if (needsRebuild) {
@@ -967,6 +1064,7 @@ function renderLeaderboard(data) {
         }
         tournamentSelect.value = currentTournament;
         tournamentSelect.dataset.viewType = "team";
+        tournamentSelect.dataset.usernameFilter = currentUsernameFilter || "";
       } else {
         // User leaderboard: show all tournaments
         fetch("/tournaments")
@@ -993,8 +1091,11 @@ function renderLeaderboard(data) {
         fetchLeaderboard();
       };
     } else {
-      // Just ensure the current selection is correct
+      // Just ensure the current selection is correct and store current filter
       tournamentSelect.value = currentTournament;
+      if (leaderboardType === "team") {
+        tournamentSelect.dataset.usernameFilter = currentUsernameFilter || "";
+      }
     }
   }
 
@@ -1167,4 +1268,12 @@ function handleRateLimit(res) {
     return true; // handled
   }
   return false;
+}
+
+// Helper to generate the tournament label element (used when revealing names after vote)
+function createTourLabel(tourName) {
+  const label = document.createElement("div");
+  label.className = "tournament-label";
+  label.textContent = tourName;
+  return label;
 }

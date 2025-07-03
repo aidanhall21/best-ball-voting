@@ -13,8 +13,10 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const passport = require('./auth');
 const bcrypt = require('bcryptjs');
 const sendMail = require('./mailer');
+const compression = require('compression');
 
 const upload = multer({ dest: "uploads/" });
+app.use(compression());
 app.use(express.static(__dirname));
 app.use(express.json());
 
@@ -210,7 +212,7 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
               // First assign all QB-based primary stacks
               for (const qb of qbs) {
                 const receivers = players.filter(p => 
-                  (p.position === 'WR' || p.position === 'TE') && 
+                  (p.position === 'WR' || p.position === 'TE' || p.position === 'RB') && 
                   p.team === qb.team && 
                   p !== qb
                 );
@@ -221,9 +223,9 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
                 }
               }
               
-              // Then look for secondary stacks among remaining WR/TEs
+              // Then look for secondary stacks among remaining WR/TE/RBs
               const unstackedReceivers = players.filter(p => 
-                (p.position === 'WR' || p.position === 'TE') && 
+                (p.position === 'WR' || p.position === 'TE' || p.position === 'RB') && 
                 !p.stack
               );
               
@@ -273,10 +275,25 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
   });
 });
 
-// GET all teams from DB
+// ---- In-memory cache for heavy endpoints ----
+const TEAMS_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+let teamsCache = { json: null, etag: null, timestamp: 0 };
+
 app.get("/teams", (req, res) => {
+  // Serve from cache if fresh
+  if (teamsCache.json && (Date.now() - teamsCache.timestamp < TEAMS_CACHE_TTL_MS)) {
+    if (req.headers["if-none-match"] === teamsCache.etag) {
+      return res.status(304).end();
+    }
+    res.setHeader("ETag", teamsCache.etag);
+    res.setHeader("Cache-Control", "public, max-age=30");
+    res.type("application/json").send(teamsCache.json);
+    return;
+  }
+
+  // Rebuild the payload from DB
   const sql = `
-    SELECT t.id as team_id, t.tournament, t.username, p.position, p.name, p.pick, p.team, p.stack
+    SELECT t.id as team_id, t.tournament, t.username, t.user_id, p.position, p.name, p.pick, p.team, p.stack
     FROM teams t
     JOIN players p ON p.team_id = t.id
   `;
@@ -287,12 +304,14 @@ app.get("/teams", (req, res) => {
     const teams = {};
     const tournaments = {};
     const usernames = {};
+    const userIds = {}; // NEW: map teamId -> user_id
 
     rows.forEach((row) => {
       if (!teams[row.team_id]) {
         teams[row.team_id] = [];
         tournaments[row.team_id] = row.tournament;
         usernames[row.team_id] = row.username;
+        userIds[row.team_id] = row.user_id; // NEW
       }
       teams[row.team_id].push({
         position: row.position,
@@ -303,7 +322,20 @@ app.get("/teams", (req, res) => {
       });
     });
 
-    res.json({ teams: Object.entries(teams), tournaments, usernames });
+    const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds }; // NEW include userIds
+    const jsonStr = JSON.stringify(payloadObj);
+    const etag = crypto.createHash("md5").update(jsonStr).digest("hex");
+
+    // Update cache
+    teamsCache = { json: jsonStr, etag, timestamp: Date.now() };
+
+    if (req.headers["if-none-match"] === etag) {
+      return res.status(304).end();
+    }
+
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "public, max-age=30");
+    res.type("application/json").send(jsonStr);
   });
 });
 
@@ -415,6 +447,47 @@ app.get("/versus-stats/:teamId", (req, res) => {
       res.json(stats);
     }
   );
+});
+
+// Combined meta endpoint: owner info + versus stats (wins/losses)
+app.get("/team-meta/:teamId", (req, res) => {
+  const { teamId } = req.params;
+
+  const sql = `
+    SELECT 
+      t.username,
+      u.twitter_username,
+      (
+        SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = $id
+      ) AS wins,
+      (
+        SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = $id
+      ) AS losses
+    FROM teams t
+    LEFT JOIN users u ON t.user_id = u.id
+    WHERE t.id = $id
+  `;
+
+  const params = { $id: teamId };
+
+  db.get(sql, params, (err, row) => {
+    if (err) {
+      console.error('Error getting team meta:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    const meta = row || { username: null, twitter_username: null, wins: 0, losses: 0 };
+    const total = (meta.wins || 0) + (meta.losses || 0);
+    let win_pct = 0;
+    if (total > 0) {
+      win_pct = (meta.wins / total) * 100;
+    } else if (meta.wins > 0) {
+      win_pct = 100;
+    }
+    meta.win_pct = Number(win_pct.toFixed(1));
+
+    res.json(meta);
+  });
 });
 
 // Leaderboard endpoint (team)
@@ -770,6 +843,21 @@ app.get('/api/reports/versus-votes-by-user', requireAdmin, (req, res) => {
 // Serve simple admin dashboard (protected)
 app.get('/dashboard', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
+// === NEW: Return total number of versus votes cast by the logged-in user ===
+app.get("/my/votes-count", requireAuth, (req, res) => {
+  db.get(
+    `SELECT COUNT(*) as count FROM versus_matches WHERE voter_id = ?`,
+    [req.user.id],
+    (err, row) => {
+      if (err) {
+        console.error('Error fetching vote count:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ count: (row && row.count) ? row.count : 0 });
+    }
+  );
 });
 
 // ✅ Updated to support Replit or local dev port

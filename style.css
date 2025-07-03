@@ -1371,6 +1371,15 @@ body {
     text-align: center;
   }
   
+  /* Header showing category (Marathon, Sprint, etc.) centered above matchup */
+  .matchup-category-header {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #f0f6fc;
+    text-align: center;
+  }
+  
   /* ---- New: Start Voting CTA button ---- */
   .start-voting-btn {
     display: block;
