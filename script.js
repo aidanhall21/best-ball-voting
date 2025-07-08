@@ -1,3 +1,16 @@
+// 👇 Disable noisy console logging in production builds
+(function(){
+  const meta = document.querySelector('meta[name="env"]');
+  const env = meta ? meta.getAttribute('content') : (window.NODE_ENV || 'production');
+  const isProd = env === 'production';
+  if (isProd && !window.DEBUG_LOGS) {
+    // Suppress only verbose logs; keep warn/error visible for troubleshooting
+    ['log','info','debug'].forEach(fn => {
+      console[fn] = () => {};
+    });
+  }
+})();
+
 let teams = [];
 let currentIndex = 0;
 let userVotes = {};
@@ -938,6 +951,9 @@ function renderVersus() {
     console.log(`⏸️ Preserving vote function - ${clickQueue.length} clicks pending`);
   }
 
+  // Declare here so it is in scope for sendVersusVote
+  let nextButton; // will be created later and shown after a successful vote
+
   if (teams.length < 2) return;
 
   const ALPHA = 0.7; // exponent between 0.5 (sqrt) and 1 (linear)
@@ -1197,7 +1213,12 @@ function renderVersus() {
         </div>
       `;
 
-      // Note: "Next Matchup" button is now always visible (no need to create it here)
+      // Reveal the "Next Matchup" button now that a vote has been made
+      if (nextButton) {
+        nextButton.style.display = 'block';
+      }
+
+      // Note: "Next Matchup" button is now revealed only after voting
 
       // Increment local vote count optimistically
       if (currentUserId) {
@@ -1272,10 +1293,11 @@ function renderVersus() {
   // Add versus wrapper to outer container
   outerContainer.appendChild(versusWrapper);
   
-  // Add "Next Matchup" button (always visible - can be used as "pass" button)
-  const nextButton = document.createElement("button");
+  // Create "Next Matchup" button but keep it hidden until the user votes
+  nextButton = document.createElement("button");
   nextButton.textContent = "Next Matchup →";
   nextButton.className = "next-button";
+  nextButton.style.display = "none"; // initially hidden
   nextButton.onclick = () => renderVersus();
   outerContainer.appendChild(nextButton);
   
@@ -1992,8 +2014,20 @@ async function processVoteQueue() {
 
 // Extracted vote submission function
 async function submitVote(winnerId, loserId) {
-  const captchaToken = await getCaptchaToken();
-  
+  let captchaToken;
+  try {
+    captchaToken = await getCaptchaToken();
+  } catch (err) {
+    console.error('❌ Unable to obtain Turnstile token – aborting vote:', err);
+    throw err; // Bail early so we never hit the server
+  }
+
+  // Extra guard – if we somehow got here without a token, stop.
+  if (!captchaToken) {
+    console.warn('🚫 No captcha token available, vote not sent');
+    throw new Error('Captcha token unavailable');
+  }
+
   const voteResponse = await fetch("/versus", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -87,7 +87,28 @@
   </div>
 
   <div class="chart-container" style="margin-top:40px;">
+    <h2>Analytics Summary</h2>
+    <div id="analyticsSummaryStats" style="display:flex;gap:40px;justify-content:center;margin-bottom:30px;font-size:1.2rem;"></div>
+    
+    <h3 style="margin-top:30px;">Average Time by Page</h3>
+    <table id="pageTimeTable" style="width:100%;border-collapse:collapse;text-align:left;">
+      <thead>
+        <tr>
+          <th style="padding:8px;border-bottom:1px solid #ddd;">Page</th>
+          <th style="padding:8px;border-bottom:1px solid #ddd;">Views</th>
+          <th style="padding:8px;border-bottom:1px solid #ddd;">Avg Time</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="chart-container" style="margin-top:40px;">
     <canvas id="versusDayChart"></canvas>
+  </div>
+  <!-- NEW: Votes per Day bar chart -->
+  <div class="chart-container" style="margin-top:40px;">
+    <canvas id="versusDailyChart"></canvas>
   </div>
 
   <div class="tables-container">
@@ -139,6 +160,17 @@
         <div><strong>Total Signups:</strong> ${summary.total_signups}</div>
         <div><strong>Users with Uploads:</strong> ${summary.users_with_uploads}</div>
         <div><strong>Votes (Last Hour):</strong> ${summary.votes_last_hour}</div>
+      `;
+
+      // ---- Analytics summary ----
+      const aSummary = await fetch('/api/reports/analytics-summary').then(r=>r.json());
+      document.getElementById('analyticsSummaryStats').innerHTML = `
+        <div><strong>Total Page Views (24h):</strong> ${aSummary.total_page_views}</div>
+        <div><strong>Logged-in Page Views (24h):</strong> ${aSummary.logged_in_page_views}</div>
+        <div><strong>Unique Visitors (24h):</strong> ${aSummary.unique_visitors}</div>
+        <div><strong>Unique Users (24h):</strong> ${aSummary.unique_users_last_24h}</div>
+        <div><strong>Avg Page Time:</strong> ${(aSummary.avg_duration_ms/60000).toFixed(1)}m</div>
+        <div><strong>Avg Session Time (Logged-in):</strong> ${(aSummary.avg_session_ms_logged_in/60000).toFixed(1)}m</div>
       `;
 
       // ---- Versus votes by hour bar chart ----
@@ -203,6 +235,75 @@
         }
       });
 
+      // ---- Versus votes by day bar chart ----
+      const dRows = await fetch('/api/reports/versus-by-day').then(r=>r.json());
+      const comparison = await fetch('/api/reports/vote-projection').then(r=>r.json());
+
+      // Formatters for ET (America/New_York)
+      const dateFmt = new Intl.DateTimeFormat('en-US', { month:'short', day:'numeric', timeZone:'America/New_York' });
+      const timeFmt = new Intl.DateTimeFormat('en-US', { hour:'numeric', minute:'2-digit', timeZone:'America/New_York' });
+      
+      // Build labels & counts
+      const dayLabels = dRows.map(r => {
+        // r.day is already in ET (YYYY-MM-DD)
+        const [y,m,d] = r.day.split('-');
+        const date = new Date(Number(y), Number(m)-1, Number(d)); // Local date object
+        return dateFmt.format(date);
+      });
+      const dayCounts = dRows.map(r=>r.votes);
+
+      // Determine today's ET label
+      const nowEt = new Date(new Date().toLocaleString('en-US', { timeZone:'America/New_York' }));
+      const todayStr = dateFmt.format(nowEt);
+      const todayIndex = dayLabels.findIndex(l => l === todayStr);
+
+      // Comparison dataset (yesterday at same time)
+      const comparisonData = dayCounts.map((_, i) => i === todayIndex ? comparison.yesterday_votes_at_time : null);
+
+      const timeStr = timeFmt.format(nowEt);
+
+      new Chart(document.getElementById('versusDailyChart'), {
+        type:'bar',
+        data:{ 
+          labels:dayLabels, 
+          datasets:[
+            { 
+              label:'Votes', 
+              data:dayCounts, 
+              backgroundColor:'rgba(34,197,94,0.7)',
+              order:1
+            },
+            {
+              label:`Votes by ${timeStr} ET yesterday`,
+              data:comparisonData,
+              backgroundColor:'rgba(99,102,241,0.4)',
+              order:2,
+              grouped:false,
+              barPercentage:1.0
+            }
+          ]
+        },
+        options:{ 
+          responsive:true,
+          plugins:{ 
+            title:{display:true,text:'Votes per Day (ET)'},
+            tooltip:{
+              callbacks:{
+                label:(ctx)=>`${ctx.parsed.y} votes`,
+                title:(items)=>{
+                  const lbl = items[0].label;
+                  if(lbl===todayStr && items[0].datasetIndex===1){
+                    return `Yesterday by ${timeStr} ET`;
+                  }
+                  return lbl;
+                }
+              }
+            }
+          },
+          scales:{ x:{ stacked:false }, y:{ stacked:false } }
+        }
+      });
+
       // ---- Lineups by user table ----
       const lRows = await fetch('/api/reports/lineups-by-user').then(r=>r.json());
       const tbody = document.querySelector('#lineupsTable tbody');
@@ -228,6 +329,16 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `<td style="padding:8px;border-bottom:1px solid #eee;">${r.tournament}</td><td style="padding:8px;border-bottom:1px solid #eee;">${r.count}</td>`;
         tournamentTbody.appendChild(tr);
+      });
+
+      // ---- Avg time per page table ----
+      const pageRows = await fetch('/api/reports/avg-duration-by-page').then(r=>r.json());
+      const pageTbody = document.querySelector('#pageTimeTable tbody');
+      function fmt(ms){ return (ms/60000).toFixed(1)+'m'; }
+      pageRows.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="padding:8px;border-bottom:1px solid #eee;">${r.page}</td><td style="padding:8px;border-bottom:1px solid #eee;">${r.views}</td><td style="padding:8px;border-bottom:1px solid #eee;">${fmt(r.avg_duration_ms)}</td>`;
+        pageTbody.appendChild(tr);
       });
 
     } catch(err) {

@@ -1,4 +1,11 @@
 require('dotenv').config();
+// Silence console logging in production unless explicitly enabled
+if (process.env.NODE_ENV === 'production' && !process.env.ENABLE_LOGS) {
+  // Mute only verbose logs; keep warnings & errors
+  ['log','info','debug'].forEach(fn => {
+    console[fn] = () => {};
+  });
+}
 const express = require("express");
 const app = express();
 const path = require("path");
@@ -106,6 +113,39 @@ const csrfProtection = csrf({ sessionKey: 'session' });
 const CF_SECRET = process.env.CF_TURNSTILE_SECRET || "1x0000000000000000000000000000000AA"; // demo key
 const CF_SITE_KEY = process.env.CF_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"; // demo key
 
+// ✨ Static asset version (cache-buster)
+// Priority:
+// 1. Manual override via ASSET_VERSION env var
+// 2. Git commit hash (if available) + timestamp
+// 3. Timestamp only (YYYYMMDDHHmmss)
+const ASSET_VERSION = (() => {
+  // 1. Check for manual override
+  if (process.env.ASSET_VERSION) return process.env.ASSET_VERSION;
+
+  // 2. Try to get git commit hash
+  let gitHash = '';
+  try {
+    gitHash = require('child_process')
+      .execSync('git rev-parse --short HEAD')
+      .toString()
+      .trim();
+  } catch (e) {
+    console.log('No git hash available:', e.message);
+  }
+
+  // 3. Generate timestamp (YYYYMMDD.HHmmss)
+  const now = new Date();
+  const date = now.toISOString().slice(0,10).replace(/-/g, '');
+  const time = now.toISOString().slice(11,19).replace(/:/g, '');
+  
+  // Combine parts that are available
+  return gitHash 
+    ? `${date}.${time}.${gitHash}` 
+    : `${date}.${time}`;
+})();
+
+console.log(`🏷️ Asset version: ${ASSET_VERSION}`);
+
 // Middleware to verify Turnstile captcha token
 async function verifyCaptcha(req, res, next) {
   const token = req.body.captcha;
@@ -177,10 +217,10 @@ async function verifyCaptcha(req, res, next) {
 app.get('/', (req, res) => {
   const htmlPath = path.join(__dirname, 'index.html');
   let html = fs.readFileSync(htmlPath, 'utf8');
-  const tokenScript = `\n<script>
-    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';
-  </script>\n`;
+  const tokenScript = `\n<script>\n    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';\n  </script>\n`;
   html = html.replace('</head>', tokenScript + '</head>');
+  // Inject cache-busting query string into main bundle
+  html = html.replace('script.js"', `script.js?v=${ASSET_VERSION}"`);
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
 });
@@ -1027,12 +1067,12 @@ app.get('/api/reports/summary', requireAdmin, (req, res) => {
   });
 });
 
-// Versus votes by day (UTC)
+// Versus votes by day (Eastern Time – UTC-4)
 app.get('/api/reports/versus-by-day', requireAdmin, (req, res) => {
   const sql = `
-    SELECT DATE(created_at) AS day, COUNT(*) AS votes
+    SELECT DATE(datetime(created_at, '-4 hours')) AS day, COUNT(*) AS votes
     FROM versus_matches
-    GROUP BY DATE(created_at)
+    GROUP BY DATE(datetime(created_at, '-4 hours'))
     ORDER BY day
   `;
   db.all(sql, [], (err, rows) => {
@@ -1727,6 +1767,83 @@ app.post('/usage', (req, res) => {
       res.json({ status: 'ok' });
     }
   );
+});
+
+// Get vote counts up to current time for today and yesterday
+app.get('/api/reports/vote-projection', requireAdmin, (req, res) => {
+  const sql = `
+    WITH current_day AS (
+      -- Get today's vote count (in ET)
+      SELECT COUNT(*) as today_votes
+      FROM versus_matches
+      WHERE DATE(datetime(created_at, '-4 hours')) = DATE(datetime('now', '-4 hours'))
+    ),
+    yesterday_count AS (
+      -- Get yesterday's vote count up to current time of day
+      SELECT COUNT(*) as yesterday_votes_at_time
+      FROM versus_matches
+      WHERE 
+        DATE(datetime(created_at, '-4 hours')) = DATE(datetime('now', '-4 hours', '-1 day'))
+        AND
+        strftime('%H:%M:%S', datetime(created_at, '-4 hours')) <= strftime('%H:%M:%S', datetime('now', '-4 hours'))
+    )
+    SELECT 
+      today_votes,
+      yesterday_votes_at_time
+    FROM current_day, yesterday_count
+  `;
+  db.get(sql, [], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(row || { today_votes: 0, yesterday_votes_at_time: 0 });
+  });
+});
+
+// ---- Analytics reports ----
+// Summary of page visits & durations
+app.get('/api/reports/analytics-summary', requireAdmin, (req, res) => {
+  const sql = `
+    WITH logged_sessions AS (
+      SELECT session_id, SUM(duration_ms) AS total_ms
+      FROM page_time
+      WHERE user_id IS NOT NULL
+      AND created_at >= datetime('now', '-24 hours')
+      GROUP BY session_id
+    )
+    SELECT
+      (SELECT COUNT(*) FROM page_time 
+       WHERE created_at >= datetime('now', '-24 hours'))                         AS total_page_views,
+      (SELECT COUNT(*) FROM page_time 
+       WHERE user_id IS NOT NULL 
+       AND created_at >= datetime('now', '-24 hours'))                          AS logged_in_page_views,
+      (SELECT COUNT(DISTINCT visitor_id) FROM page_time
+       WHERE created_at >= datetime('now', '-24 hours'))                        AS unique_visitors,
+      (SELECT ROUND(AVG(duration_ms), 0) FROM page_time)                        AS avg_duration_ms,
+      (SELECT ROUND(AVG(total_ms), 0) FROM logged_sessions)                     AS avg_session_ms_logged_in,
+      (SELECT COUNT(DISTINCT user_id) FROM page_time 
+       WHERE user_id IS NOT NULL 
+       AND created_at >= datetime('now', '-24 hours'))                         AS unique_users_last_24h
+  `;
+  analyticsDb.get(sql, [], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(row);
+  });
+});
+
+// Average duration by page for logged-in users
+app.get('/api/reports/avg-duration-by-page', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT page,
+           COUNT(*) AS views,
+           ROUND(AVG(duration_ms), 0) AS avg_duration_ms
+    FROM page_time
+    WHERE user_id IS NOT NULL
+    GROUP BY page
+    ORDER BY views DESC
+  `;
+  analyticsDb.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
 });
 
 // ✅ Updated to support Replit or local dev port
