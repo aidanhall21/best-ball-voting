@@ -1,9 +1,12 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams.db"; // allow override in prod
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-07-1523.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics.db";
 const db = new sqlite3.Database(DB_PATH);
+const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
 // Enable Write-Ahead Logging for better concurrency
 db.exec('PRAGMA journal_mode = WAL;');
+analyticsDb.exec('PRAGMA journal_mode = WAL;');
 
 // Create tables if not exist
 db.serialize(() => {
@@ -72,6 +75,27 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_twitter ON users(twitter_id)`);
 });
 
+// Create analytics tables in separate database
+analyticsDb.serialize(() => {
+  analyticsDb.run(`
+    CREATE TABLE IF NOT EXISTS page_time (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      visitor_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      user_id INTEGER NULL,
+      page TEXT,
+      duration_ms INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ---- Analytics indexes ----
+  analyticsDb.run(`CREATE INDEX IF NOT EXISTS idx_page_time_created ON page_time(created_at)`);
+  analyticsDb.run(`CREATE INDEX IF NOT EXISTS idx_page_time_visitor ON page_time(visitor_id)`);
+  analyticsDb.run(`CREATE INDEX IF NOT EXISTS idx_page_time_session ON page_time(session_id)`);
+  analyticsDb.run(`CREATE INDEX IF NOT EXISTS idx_page_time_user ON page_time(user_id)`);
+});
+
 // If the teams table was created in an older version without the username or draft_id columns,
 // add them now. SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we
 // inspect the existing schema first.
@@ -115,4 +139,4 @@ db.all('PRAGMA table_info(users)', (err, cols) => {
   db.run('CREATE INDEX IF NOT EXISTS idx_users_twitter_username ON users(twitter_username)');
 });
 
-module.exports = db;
+module.exports = { db, analyticsDb };

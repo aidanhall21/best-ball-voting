@@ -26,8 +26,14 @@
   <!-- Cloudflare Web Analytics -->
   <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
   <!-- End Cloudflare Web Analytics -->
+
+  <!-- Cloudflare Turnstile for bot protection -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
+  <!-- Hidden Turnstile container -->
+  <div id="cf-container" style="display:none;"></div>
+
   <div class="header">
     <h1 class="app-title">Draft or Pass</h1>
     
@@ -118,6 +124,7 @@
     </div>
   </div>
 
+  <script src="analytics.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="script.js"></script>
 

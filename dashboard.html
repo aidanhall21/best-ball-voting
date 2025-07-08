@@ -141,14 +141,66 @@
         <div><strong>Votes (Last Hour):</strong> ${summary.votes_last_hour}</div>
       `;
 
-      // ---- Versus votes by day line chart ----
-      const vRows = await fetch('/api/reports/versus-by-day').then(r=>r.json());
-      const dayLabels = vRows.map(r=>r.day);
-      const dayCounts = vRows.map(r=>r.votes);
+      // ---- Versus votes by hour bar chart ----
+      const vRows = await fetch('/api/reports/versus-by-hour').then(r=>r.json());
+      const parseETDate = (dateStr) => {
+        // Add ET timezone offset to make Date() parse it correctly
+        return new Date(dateStr.replace(' ', 'T') + '-04:00');
+      };
+      const formatDateTime = (dateStr) => {
+        const date = parseETDate(dateStr);
+        const month = date.toLocaleString('en-US', { month: 'long' });
+        const day = date.getDate();
+        const hour = date.getHours();
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+        return `${month} ${day} - ${displayHour} ${period} ET`;
+      };
+      const formatDateOnly = (dateStr) => {
+        // Parse the date directly from the ET string without timezone conversion
+        const dateParts = dateStr.split(' ')[0].split('-'); // "2025-07-07 00:00" -> ["2025", "07", "07"]
+        const year = parseInt(dateParts[0]);
+        const month = parseInt(dateParts[1]) - 1; // JS months are 0-indexed
+        const day = parseInt(dateParts[2]);
+        const date = new Date(year, month, day);
+        const monthName = date.toLocaleString('en-US', { month: 'long' });
+        return `${monthName} ${day}`;
+      };
+      const hourLabels = vRows.map(r => formatDateTime(r.hour));
+      const hourCounts = vRows.map(r=>r.votes);
       new Chart(document.getElementById('versusDayChart'), {
-        type:'line',
-        data:{ labels:dayLabels, datasets:[{ label:'Votes per Day', data:dayCounts, fill:false, borderColor:'rgba(59,130,246,0.9)', tension:0.2 }] },
-        options:{ responsive:true, plugins:{ title:{display:true,text:'Votes per Day'} } }
+        type:'bar',
+        data:{ labels:hourLabels, datasets:[{ label:'Votes per Hour (ET)', data:hourCounts, backgroundColor:'rgba(59,130,246,0.7)' }] },
+        options:{ 
+          responsive:true,
+          scales: {
+            x: {
+              ticks: {
+                maxTicksLimit: false,
+                autoSkip: false,
+                callback: function(val, index) {
+                  const dateStr = vRows[index].hour;
+                  // Check if the original ET time string ends with "00:00" (midnight in ET)
+                  const isMidnightET = dateStr.endsWith('00:00');
+                  return isMidnightET ? formatDateOnly(dateStr) : '';
+                }
+              }
+            }
+          },
+          plugins:{ 
+            title:{display:true,text:'Votes per Hour (ET)'},
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.parsed.y} votes`;
+                },
+                title: function(tooltipItems) {
+                  return tooltipItems[0].label;
+                }
+              }
+            }
+          } 
+        }
       });
 
       // ---- Lineups by user table ----

@@ -12,12 +12,315 @@ let teamUserIds = {}; // teamId -> user_id mapping
 let currentUserId = null; // logged-in user id
 let userVotesCount = 0;   // total versus votes cast by user
 let myTeamIds = [];       // array of teamIds owned by current user
-const MAX_LEADERBOARD_ROWS = 150; // how many rows to actually render after sorting
-let currentTournament = ""; // Add this at the top with other state variables
-let currentUsernameFilter = ""; // Username filter for team leaderboard
+const MAX_LEADERBOARD_ROWS = 1000; // how many rows to actually render after sorting
+let currentTournament = null;
+let currentUsernameFilter = null; // Username filter for team leaderboard
 let leaderboardRawData = []; // unfiltered data cache
 
+// Team metadata cache to reduce redundant API calls
+let teamMetaCache = new Map();
+const TEAM_META_CACHE_TTL = 30000; // 30 seconds cache TTL
+
+// Client-side rate limiting for Choose button clicks
+let chooseClickHistory = []; // Array of timestamps when Choose buttons were clicked
+const CHOOSE_CLICK_WINDOW_MS = 10 * 1000; // 10 seconds
+const MAX_CHOOSE_CLICKS = 3; // 3 clicks per window
+let chooseButtonsDisabled = false; // Track if buttons are currently disabled due to rate limit
+
+// Check if user has exceeded the choose button click rate limit
+function isChooseRateLimited() {
+  const now = Date.now();
+  // Remove clicks older than the window
+  chooseClickHistory = chooseClickHistory.filter(timestamp => now - timestamp < CHOOSE_CLICK_WINDOW_MS);
+  return chooseClickHistory.length >= MAX_CHOOSE_CLICKS;
+}
+
+// Record a choose button click and check rate limit
+function recordChooseClick() {
+  const now = Date.now();
+  chooseClickHistory.push(now);
+  
+  // Clean up old entries to keep only those within the window
+  chooseClickHistory = chooseClickHistory.filter(ts => now - ts < CHOOSE_CLICK_WINDOW_MS);
+  
+  // Determine current usage
+  const clickCount = chooseClickHistory.length;
+  
+  // If we've reached or exceeded the limit, visually disable buttons so the NEXT click is blocked
+  if (clickCount >= MAX_CHOOSE_CLICKS) {
+    chooseButtonsDisabled = true;
+    updateChooseButtonStates();
+  }
+  
+  // Return TRUE only if this click EXCEEDED the limit (i.e., would be the 4th or more in window)
+  return clickCount > MAX_CHOOSE_CLICKS;
+}
+
+// Update the visual state of choose buttons based on rate limit status
+function updateChooseButtonStates() {
+  const chooseButtons = document.querySelectorAll('.choose-button');
+  chooseButtons.forEach(button => {
+    if (chooseButtonsDisabled) {
+      // Disable and mark as rate-limit disabled
+      button.disabled = true;
+      button.dataset.rlDisabled = '1';
+      button.style.opacity = '0.5';
+      button.style.cursor = 'not-allowed';
+      button.style.filter = 'grayscale(1)';
+    } else {
+      // Re-enable only buttons we previously disabled for rate limit
+      if (button.dataset.rlDisabled === '1') {
+        delete button.dataset.rlDisabled;
+        button.disabled = false;
+      }
+      // Always clear visual styles regardless of disabled state to restore original look
+      button.style.opacity = '';
+      button.style.cursor = '';
+      button.style.filter = '';
+    }
+  });
+}
+
+// Continuously check if rate limit should be lifted
+function checkRateLimitRecovery() {
+  if (chooseButtonsDisabled) {
+    const now = Date.now();
+    // Clean up old entries
+    chooseClickHistory = chooseClickHistory.filter(timestamp => now - timestamp < CHOOSE_CLICK_WINDOW_MS);
+    
+    // If we're now below the limit, re-enable buttons
+    if (chooseClickHistory.length < MAX_CHOOSE_CLICKS) {
+      chooseButtonsDisabled = false;
+      console.log('✅ Choose button rate limit lifted, buttons re-enabled');
+      updateChooseButtonStates();
+    }
+  }
+}
+
+// Cached fetch for team metadata to reduce redundant API calls
+async function fetchTeamMeta(teamId, forceRefresh = false) {
+  const now = Date.now();
+  const cached = teamMetaCache.get(teamId);
+  
+  // Return cached data if it's fresh and not forcing refresh
+  if (!forceRefresh && cached && (now - cached.timestamp) < TEAM_META_CACHE_TTL) {
+    return cached.data;
+  }
+  
+  try {
+    const response = await fetch(`/team-meta/${teamId}`);
+    const data = await response.json();
+    
+    // Cache the result with timestamp
+    teamMetaCache.set(teamId, {
+      data,
+      timestamp: now
+    });
+    
+    return data;
+  } catch (error) {
+    console.warn(`Failed to fetch team-meta for ${teamId}:`, error);
+    // Return cached data if available, even if stale
+    if (cached) {
+      return cached.data;
+    }
+    // Return default data if no cache available
+    return { username: null, twitter_username: null, wins: 0, losses: 0, win_pct: 0 };
+  }
+}
+
+// Invalidate cache entries for teams that just voted
+function invalidateTeamMetaCache(teamId1, teamId2) {
+  teamMetaCache.delete(teamId1);
+  teamMetaCache.delete(teamId2);
+}
+
+// Turnstile widget management
+let widgetId = null;
+let pendingChallenges = 0; // Track concurrent challenges
+let voteQueue = []; // Queue for failed votes
+let processingQueue = false; // Prevent multiple queue processors
+let voteProcessingLock = false; // Global lock for vote processing
+let clickQueue = []; // Queue for user clicks when a vote is already processing
+let currentVoteFunction = null; // Reference to the current matchup's vote function
+
+// returns a Promise that resolves to a fresh captcha token
+function getCaptchaToken() {
+  return new Promise((resolve, reject) => {
+    if (!turnstile || typeof turnstile.render !== 'function') {
+      return reject(new Error('Turnstile not loaded'));
+    }
+
+    // Strict limit to prevent Cloudflare errors - only allow 1 concurrent challenge
+    if (pendingChallenges > 0) {
+      return reject(new Error('Too many concurrent challenges'));
+    }
+
+    pendingChallenges++;
+
+    // Always reset the widget if it exists before executing
+    if (widgetId) {
+      try {
+        turnstile.reset(widgetId);
+        console.log('Widget reset successfully');
+      } catch (e) {
+        console.warn('Failed to reset widget, removing and recreating:', e);
+        try { 
+          turnstile.remove(widgetId); 
+        } catch (removeErr) { 
+          console.warn('Failed to remove widget:', removeErr);
+        }
+        widgetId = null;
+      }
+    }
+
+    // Create new widget if needed
+    if (!widgetId) {
+      const container = document.getElementById('cf-container');
+      if (!container) {
+        pendingChallenges--;
+        return reject(new Error('Turnstile container not found'));
+      }
+      
+      try {
+        widgetId = turnstile.render(container, {
+          sitekey: window.TURNSTILE_SITE_KEY,
+          action: 'vote', // Identifier for analytics
+          execution: 'execute', // Only execute when explicitly called
+          size: 'invisible', // Keep it invisible
+          theme: 'auto', // Respect user's theme preference
+          retry: 'auto', // Auto-retry on failure
+          'retry-interval': 8000, // 8 second retry interval
+          'refresh-expired': 'auto', // Auto-refresh expired tokens
+          callback: () => {}, // Empty callback - we'll use execute's callback
+          'expired-callback': () => {
+            console.log('Turnstile token expired');
+          },
+          'error-callback': (error) => {
+            console.error('Turnstile widget error:', error);
+          },
+          'timeout-callback': () => {
+            console.warn('Turnstile challenge timed out');
+          },
+          'before-interactive-callback': () => {
+            console.log('Turnstile entering interactive mode');
+          },
+          'after-interactive-callback': () => {
+            console.log('Turnstile left interactive mode');
+          },
+          'unsupported-callback': () => {
+            console.error('Turnstile not supported in this browser');
+          }
+        });
+        console.log('New widget created:', widgetId);
+      } catch (e) {
+        pendingChallenges--;
+        return reject(new Error('Failed to create Turnstile widget: ' + e.message));
+      }
+    }
+
+    // Minimal delay for faster voting while ensuring widget stability
+    setTimeout(() => {
+      try {
+        turnstile.execute(widgetId, {
+          callback: (token) => {
+            pendingChallenges--;
+            if (!token) {
+              console.warn('Empty token received');
+              return reject(new Error('Empty Turnstile token'));
+            }
+            
+            // Validate token length (max 2048 characters)
+            if (token.length > 2048) {
+              console.warn('Token too long:', token.length);
+              return reject(new Error('Invalid token format'));
+            }
+            
+            console.log('Turnstile token received successfully');
+            resolve(token);
+          },
+          'error-callback': (error) => {
+            pendingChallenges--;
+            console.error('Turnstile execution error:', error);
+            reject(new Error('Turnstile execution error: ' + error));
+          }
+        });
+      } catch (e) {
+        pendingChallenges--;
+        console.error('Failed to execute Turnstile:', e);
+        reject(new Error('Failed to execute Turnstile: ' + e.message));
+      }
+    }, 100); // Reduced from 250ms to 100ms for faster processing
+  });
+}
+
+// Helper to process any queued clicks after a vote finishes
+function processClickQueue() {
+  console.log(`🔍 processClickQueue called - lock: ${voteProcessingLock}, queue: ${clickQueue.length}, function: ${!!currentVoteFunction}`);
+  
+  if (voteProcessingLock) {
+    console.log(`⏸️ Click queue processing skipped - vote lock active`);
+    return; // Wait until current vote fully released
+  }
+  if (clickQueue.length === 0) {
+    console.log(`⏸️ Click queue processing skipped - no clicks queued`);
+    return;
+  }
+  if (!currentVoteFunction) {
+    console.log(`⏸️ Click queue processing skipped - no vote function available`);
+    console.log(`🗑️ Clearing ${clickQueue.length} orphaned clicks`);
+    clickQueue.length = 0; // Clear orphaned clicks
+    return; // No active voting function available
+  }
+
+  // Process all queued clicks at once to prevent them being lost to UI updates
+  const clicksToProcess = [...clickQueue]; // Copy the queue
+  clickQueue.length = 0; // Clear the original queue
+  
+  console.log(`▶️ Processing ${clicksToProcess.length} queued clicks`);
+  
+      clicksToProcess.forEach((click, index) => {
+      console.log(`▶️ Processing queued click ${index + 1}/${clicksToProcess.length}: ${click.winnerId} vs ${click.loserId}`);
+      // Minimal stagger for faster processing while avoiding Turnstile overwhelm
+      setTimeout(() => {
+        const fn = click.voteFunc || currentVoteFunction;
+        if (typeof fn === 'function') {
+          fn(click.winnerId, click.loserId, click.isQueuedClick || true);
+        } else {
+          console.warn(`⚠️ Vote function unavailable for click ${index + 1}, skipping`);
+        }
+      }, index * 25); // Reduced from 60ms to 25ms for faster queue processing
+    });
+}
+
+// Check for potential browser extension conflicts
+function checkBrowserCompatibility() {
+  // Check for multiple ethereum providers (wallet conflicts)
+  if (window.ethereum && Object.getOwnPropertyDescriptor(window, 'ethereum')) {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'ethereum');
+    if (!descriptor.configurable) {
+      console.warn('⚠️ Multiple crypto wallet extensions detected - this may cause errors');
+    }
+  }
+  
+  // Check for ad blocker blocking Cloudflare resources
+  fetch('https://static.cloudflareinsights.com/beacon.min.js', { mode: 'no-cors' })
+    .catch(() => {
+      console.warn('⚠️ Ad blocker detected - some Cloudflare features may be blocked');
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  // Check for potential compatibility issues
+  checkBrowserCompatibility();
+  
+  // Pre-warm Turnstile so the first vote is instant
+  setTimeout(() => {
+    getCaptchaToken()
+      .then(() => console.log('⚡ Turnstile pre-warm complete'))
+      .catch(err => console.warn('Turnstile pre-warm failed', err));
+  }, 500);
+  
   // initial state: upload mode visible
   const uploadButton = document.getElementById("uploadButton");
   const loginTwitterBtn = document.getElementById('loginTwitterBtn');
@@ -627,6 +930,14 @@ function renderVersus() {
   const container = document.getElementById("teamsContainer");
   container.innerHTML = "";
 
+  // Clear any previous vote function reference only if no clicks are pending
+  if (clickQueue.length === 0) {
+    console.log(`🔄 Clearing vote function - no pending clicks`);
+    currentVoteFunction = null;
+  } else {
+    console.log(`⏸️ Preserving vote function - ${clickQueue.length} clicks pending`);
+  }
+
   if (teams.length < 2) return;
 
   const ALPHA = 0.7; // exponent between 0.5 (sqrt) and 1 (linear)
@@ -760,10 +1071,39 @@ function renderVersus() {
   chooseBtn2.innerHTML = "Choose <span>➡️</span>";
   chooseBtn2.className = "choose-button";
 
-  const sendVersusVote = (winnerId, loserId) => {
-    // Disable both buttons immediately
+  const sendVersusVote = async (winnerId, loserId, isQueuedClick = false) => {
+    // Check client-side rate limit first (but only for new clicks, not queued ones)
+    if (!isQueuedClick && (chooseButtonsDisabled || recordChooseClick())) {
+      console.warn('🚫 Choose button rate limited, ignoring click');
+      updateChooseButtonStates(); // Update button visual states
+      return;
+    }
+
+    // Prevent rapid successive clicks on the same matchup (UI guard only)
+    if (sendVersusVote.inProgress) {
+      console.warn('Vote already in progress for this matchup, ignoring click');
+      return;
+    }
+
+    // If a vote/network request is already in-flight, queue this click instead of sending
+    if (voteProcessingLock) {
+      console.log(`🔄 Vote currently processing – queuing click: ${winnerId} vs ${loserId}`);
+      if (clickQueue.length < 5) {
+        clickQueue.push({ winnerId, loserId, voteFunc: sendVersusVote, isQueuedClick: true });
+        console.log(`📋 Click added to queue (queue length: ${clickQueue.length})`);
+      } else {
+        console.warn('Click queue full, discarding click');
+      }
+      // We STILL want to update the UI right away so the user gets feedback, but we
+      // won't send the network request until the current vote finishes.  We fall
+      // through and run the normal UI code, but skip the network section at the end.
+    }
+
+    // Disable both buttons immediately to prevent double-clicks after passing UI guard
     chooseBtn1.disabled = true;
     chooseBtn2.disabled = true;
+
+    sendVersusVote.inProgress = true;
 
     // Create owner info sections if they don't exist
     let ownerInfo1 = card1.querySelector('.owner-info');
@@ -784,21 +1124,15 @@ function renderVersus() {
     ownerInfo1.classList.remove('winner','loser');
     ownerInfo2.classList.remove('winner','loser');
     
-    // Update button states visually
+    // Show immediate winner/loser state
     if (winnerId === teamId1) {
-      chooseBtn1.className = "choose-button selected";
-      chooseBtn2.className = "choose-button disabled";
-      chooseBtn1.innerHTML = "<span>⬅️</span> Winner";
-      chooseBtn2.innerHTML = "Loser <span>➡️</span>";
-      // Highlight corresponding owner info
+      chooseBtn1.innerHTML = "<span>⬅️</span> Winner!";
+      chooseBtn2.innerHTML = "Loser";
       ownerInfo1.classList.add('winner');
       ownerInfo2.classList.add('loser');
     } else {
-      chooseBtn2.className = "choose-button selected";
-      chooseBtn1.className = "choose-button disabled";
-      chooseBtn2.innerHTML = "Winner <span>➡️</span>";
+      chooseBtn2.innerHTML = "Winner! <span>➡️</span>";
       chooseBtn1.innerHTML = "<span>⬅️</span> Loser";
-      // Highlight corresponding owner info
       ownerInfo2.classList.add('winner');
       ownerInfo1.classList.add('loser');
     }
@@ -818,45 +1152,109 @@ function renderVersus() {
     revealTourLabel(card1, tournamentName1);
     revealTourLabel(card2, tournamentName2);
 
-    fetch("/versus", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ winnerId, loserId }),
-    }).then(res => {
-      if (handleRateLimit(res)) return;
+    // OPTIMISTIC UPDATE: Fetch current stats (cached) and immediately show predicted results
+    Promise.all([
+      fetchTeamMeta(teamId1),
+      fetchTeamMeta(teamId2)
+    ]).then(([meta1, meta2]) => {
+      // Create optimistic stats (predict the outcome of this vote)
+      const optimisticMeta1 = { ...meta1 };
+      const optimisticMeta2 = { ...meta2 };
       
-      // Show combined owner + versus stats for both teams after vote
-      Promise.all([
-        fetch(`/team-meta/${teamId1}`).then(r=>r.json()).catch(()=>({username:null,twitter_username:null,wins:0,losses:0,win_pct:0})),
-        fetch(`/team-meta/${teamId2}`).then(r=>r.json()).catch(()=>({username:null,twitter_username:null,wins:0,losses:0,win_pct:0}))
-      ]).then(([meta1, meta2])=>{
-        ownerInfo1.innerHTML = `
-          <div class="owner-stats">
-            ${meta1.username || 'Anonymous'}${meta1.twitter_username ? ` | @${meta1.twitter_username}` : ''} 
-            | <strong>W:</strong> ${meta1.wins || 0} | <strong>L:</strong> ${meta1.losses || 0} | <strong>Win %:</strong> ${meta1.win_pct || '0.0'}%
-          </div>
-        `;
-        ownerInfo2.innerHTML = `
-          <div class="owner-stats">
-            ${meta2.username || 'Anonymous'}${meta2.twitter_username ? ` | @${meta2.twitter_username}` : ''} 
-            | <strong>W:</strong> ${meta2.wins || 0} | <strong>L:</strong> ${meta2.losses || 0} | <strong>Win %:</strong> ${meta2.win_pct || '0.0'}%
-          </div>
-        `;
+      if (winnerId === teamId1) {
+        // Team 1 wins, Team 2 loses
+        optimisticMeta1.wins = (optimisticMeta1.wins || 0) + 1;
+        optimisticMeta2.losses = (optimisticMeta2.losses || 0) + 1;
+      } else {
+        // Team 2 wins, Team 1 loses
+        optimisticMeta2.wins = (optimisticMeta2.wins || 0) + 1;
+        optimisticMeta1.losses = (optimisticMeta1.losses || 0) + 1;
+      }
 
-        // Add "Next Matchup" button to outer container
-        const nextButton = document.createElement("button");
-        nextButton.textContent = "Next Matchup →";
-        nextButton.className = "next-button";
-        nextButton.onclick = () => renderVersus();
-        document.querySelector('.versus-outer-container').appendChild(nextButton);
-
-        // Increment local vote count so future probability adjusts on the fly
-        if (currentUserId) {
-          userVotesCount += 1;
+      // Recalculate win percentages with optimistic data
+      const updateWinPct = (meta) => {
+        const total = (meta.wins || 0) + (meta.losses || 0);
+        if (total > 0) {
+          meta.win_pct = Number(((meta.wins / total) * 100).toFixed(1));
+        } else {
+          meta.win_pct = 0;
         }
-      });
+      };
+      updateWinPct(optimisticMeta1);
+      updateWinPct(optimisticMeta2);
+
+      // Display optimistic results immediately
+      ownerInfo1.innerHTML = `
+        <div class="owner-stats">
+          ${optimisticMeta1.username || 'Anonymous'}${optimisticMeta1.twitter_username ? ` | @${optimisticMeta1.twitter_username}` : ''} 
+          | <strong>W:</strong> ${optimisticMeta1.wins || 0} | <strong>L:</strong> ${optimisticMeta1.losses || 0} | <strong>Win %:</strong> ${optimisticMeta1.win_pct || '0.0'}%
+        </div>
+      `;
+      ownerInfo2.innerHTML = `
+        <div class="owner-stats">
+          ${optimisticMeta2.username || 'Anonymous'}${optimisticMeta2.twitter_username ? ` | @${optimisticMeta2.twitter_username}` : ''} 
+          | <strong>W:</strong> ${optimisticMeta2.wins || 0} | <strong>L:</strong> ${optimisticMeta2.losses || 0} | <strong>Win %:</strong> ${optimisticMeta2.win_pct || '0.0'}%
+        </div>
+      `;
+
+      // Note: "Next Matchup" button is now always visible (no need to create it here)
+
+      // Increment local vote count optimistically
+      if (currentUserId) {
+        userVotesCount += 1;
+      }
+      
+      // Clear progress flag immediately (UI is ready)
+      sendVersusVote.inProgress = false;
     });
+
+    // Show brief loading state while fetching current stats
+    ownerInfo1.innerHTML = `<div class="owner-stats">Loading stats...</div>`;
+    ownerInfo2.innerHTML = `<div class="owner-stats">Loading stats...</div>`;
+
+    // Only submit to server if no vote is currently being processed; otherwise it was queued.
+    if (!voteProcessingLock) {
+      (async () => {
+        try {
+          // Set global lock to prevent concurrent vote processing
+          voteProcessingLock = true;
+          
+          console.log(`🔐 Processing vote in background: ${winnerId} vs ${loserId}`);
+          await submitVote(winnerId, loserId);
+          console.log('✅ Vote successfully recorded in database');
+          
+          // Invalidate cached team metadata so fresh stats are fetched
+          invalidateTeamMetaCache(winnerId, loserId);
+          
+        } catch (error) {
+          console.error(`❌ Background vote processing failed:`, error);
+          
+          // Add to queue for retry
+          voteQueue.push({ 
+            winnerId, 
+            loserId, 
+            retries: 0,
+            timestamp: Date.now()
+          });
+          console.log(`📋 Vote added to queue for retry (queue length: ${voteQueue.length})`);
+          
+          // Start processing the queue with shorter delays for faster voting
+          const delay = error.message.includes('Too many concurrent challenges') ? 1500 : 500;
+          setTimeout(() => processVoteQueue(), delay);
+        } finally {
+          // Always release the global lock
+          console.log(`🔓 Releasing vote processing lock`);
+          voteProcessingLock = false;
+          // Process any queued clicks immediately when the lock is free
+          console.log(`🔄 Processing click queue immediately`);
+          processClickQueue();
+        }
+      })();
+    }
   };
+
+  // Store reference for click queue processing
+  currentVoteFunction = sendVersusVote;
 
   chooseBtn1.onclick = () => sendVersusVote(teamId1, teamId2);
   chooseBtn2.onclick = () => sendVersusVote(teamId2, teamId1);
@@ -867,9 +1265,19 @@ function renderVersus() {
 
   versusWrapper.appendChild(card1);
   versusWrapper.appendChild(card2);
+  
+  // Update button states based on current rate limit status
+  setTimeout(() => updateChooseButtonStates(), 0);
 
   // Add versus wrapper to outer container
   outerContainer.appendChild(versusWrapper);
+  
+  // Add "Next Matchup" button (always visible - can be used as "pass" button)
+  const nextButton = document.createElement("button");
+  nextButton.textContent = "Next Matchup →";
+  nextButton.className = "next-button";
+  nextButton.onclick = () => renderVersus();
+  outerContainer.appendChild(nextButton);
   
   // Add outer container to main container
   container.appendChild(outerContainer);
@@ -1523,3 +1931,103 @@ if (window.location.pathname.endsWith('profile.html')) {
     loadProfile();
   });
 }
+
+// Vote queue processor
+async function processVoteQueue() {
+  if (processingQueue || voteQueue.length === 0 || voteProcessingLock) return;
+  
+  processingQueue = true;
+  console.log(`📋 Processing vote queue (${voteQueue.length} votes pending)`);
+  
+  while (voteQueue.length > 0) {
+    // Wait for any existing vote processing to complete (shorter wait)
+    while (voteProcessingLock) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    const vote = voteQueue.shift();
+    try {
+      voteProcessingLock = true;
+      console.log(`🔄 Retrying queued vote: ${vote.winnerId} vs ${vote.loserId}`);
+      await submitVote(vote.winnerId, vote.loserId);
+      console.log(`✅ Queued vote successfully processed`);
+    } catch (error) {
+      console.error(`❌ Queued vote failed:`, error);
+      // Put it back in queue for later retry (but limit retries)
+      if (vote.retries < 5) {
+        vote.retries = (vote.retries || 0) + 1;
+        voteQueue.push(vote);
+        console.log(`🔄 Vote re-queued (retry ${vote.retries}/5)`);
+      } else {
+        console.error(`❌ Vote permanently failed after 5 retries`);
+      }
+    } finally {
+      voteProcessingLock = false;
+    }
+    
+    // Minimal delay between queue processing for faster voting
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  
+  processingQueue = false;
+  console.log(`✅ Vote queue processing complete`);
+}
+
+// Extracted vote submission function
+async function submitVote(winnerId, loserId) {
+  const captchaToken = await getCaptchaToken();
+  
+  const voteResponse = await fetch("/versus", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ winnerId, loserId, captcha: captchaToken }),
+  });
+  
+  if (!voteResponse.ok) {
+    const errorText = await voteResponse.text();
+    throw new Error(`Vote failed (${voteResponse.status}): ${errorText}`);
+  }
+  
+  return voteResponse;
+}
+
+// Debug functions for monitoring vote system
+window.debugVoteSystem = () => {
+  console.log('🔍 Vote System Debug Info:');
+  console.log(`📋 Vote queue length: ${voteQueue.length}`);
+  console.log(`👆 Click queue length: ${clickQueue.length}`);
+  console.log(`🔄 Processing queue: ${processingQueue}`);
+  console.log(`🔒 Vote processing lock: ${voteProcessingLock}`);
+  console.log(`⚡ Pending challenges: ${pendingChallenges}`);
+  console.log(`🎯 Widget ID: ${widgetId}`);
+  console.log(`🎮 Current vote function: ${currentVoteFunction ? 'Available' : 'None'}`);
+  if (voteQueue.length > 0) {
+    console.log('📋 Queued votes:', voteQueue);
+  }
+  if (clickQueue.length > 0) {
+    console.log('👆 Queued clicks:', clickQueue);
+  }
+};
+
+// Periodically process the queue and reset stuck counters (safety net)
+setInterval(() => {
+  if (voteQueue.length > 0) {
+    console.log(`🔔 Periodic queue check: ${voteQueue.length} votes pending`);
+    processVoteQueue();
+  }
+  
+  // Process click queue if there are pending clicks and no active processing
+  if (clickQueue.length > 0 && !voteProcessingLock) {
+    console.log(`🔔 Periodic click queue check: ${clickQueue.length} clicks pending`);
+    processClickQueue();
+  }
+  
+  // Check if rate limit should be lifted
+  checkRateLimitRecovery();
+  
+  // Reset stuck pending challenges counter (safety net)
+  if (pendingChallenges > 0 && !voteProcessingLock && !processingQueue) {
+    console.warn(`🔧 Resetting stuck pending challenges counter: ${pendingChallenges} -> 0`);
+    pendingChallenges = 0;
+  }
+}, 1000); // Check every 1 second for faster rate limit recovery

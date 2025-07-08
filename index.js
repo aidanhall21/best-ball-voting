@@ -6,7 +6,7 @@ const fs = require("fs");
 const multer = require("multer");
 const morgan = require('morgan');
 const Papa = require("papaparse");
-const db = require("./db");
+const { db, analyticsDb } = require("./db");
 const crypto = require("crypto");
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
@@ -14,28 +14,50 @@ const passport = require('./auth');
 const bcrypt = require('bcryptjs');
 const sendMail = require('./mailer');
 const compression = require('compression');
+const zlib = require('zlib');
+const cookieParser = require('cookie-parser');
+const csrf = require('csurf');
+const fetch = require("node-fetch");
 
 const upload = multer({ dest: "uploads/" });
 app.use(compression());
-app.use(express.static(__dirname));
 app.use(express.json());
+app.use(cookieParser(process.env.COOKIE_SECRET || 'change_this_cookie_secret'));
 
 // Request logging
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 }
 
-// Middleware to identify user (basic fingerprint via cookie or IP)
+// Middleware to assign a stable, signed visitor ID cookie for anonymous voters
 app.use((req, res, next) => {
-  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-  req.voterId = ip || crypto.randomUUID();
+  let visitorId = (req.signedCookies && req.signedCookies.visitor_id) || null;
+  const hasExistingCookie = !!visitorId;
+  
+  // Get IP address for fallback identification
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || 'unknown';
+
+  if (!visitorId) {
+    visitorId = crypto.randomUUID();
+    // Signed, HTTP-only cookie so users can't trivially forge new IDs without clearing cookies
+    res.cookie('visitor_id', visitorId, {
+      maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+      httpOnly: true,
+      sameSite: 'lax',
+      signed: true
+    });
+  }
+
+  // Use cookie if it existed before this request, otherwise fall back to IP for rate limiting
+  req.voterId = visitorId;
+  req.voterKey = hasExistingCookie ? `v:${visitorId}` : `ip:${ip}`;
   next();
 });
 
 // Simple in-memory rate limiter for votes: max 5 per 10-second window per voter
 const voteHistory = new Map(); // voterId -> [timestamps]
 function voteRateLimiter(req, res, next) {
-  const id = req.user ? req.user.id : crypto.randomUUID();
+  const id = req.user ? `u:${req.user.id}` : req.voterKey;
   const now = Date.now();
   const WINDOW_MS = 10 * 1000; // 10 seconds
   const MAX_VOTES = 5;
@@ -43,6 +65,7 @@ function voteRateLimiter(req, res, next) {
   let arr = voteHistory.get(id) || [];
   // Keep only timestamps within the window
   arr = arr.filter(ts => now - ts < WINDOW_MS);
+  
   if (arr.length >= MAX_VOTES) {
     return res.status(429).json({ error: "Rate limit exceeded: max 5 votes per 10 seconds" });
   }
@@ -76,10 +99,94 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Home page
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+// CSRF protection stored in session (now that session is set up)
+const csrfProtection = csrf({ sessionKey: 'session' });
+
+// Cloudflare Turnstile configuration
+const CF_SECRET = process.env.CF_TURNSTILE_SECRET || "1x0000000000000000000000000000000AA"; // demo key
+const CF_SITE_KEY = process.env.CF_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"; // demo key
+
+// Middleware to verify Turnstile captcha token
+async function verifyCaptcha(req, res, next) {
+  const token = req.body.captcha;
+  if (!token) {
+    console.warn("Turnstile verification failed: missing token");
+    return res.status(400).json({ error: "Turnstile verification required" });
+  }
+
+  // Validate token length (max 2048 characters per documentation)
+  if (token.length > 2048) {
+    console.warn("Turnstile verification failed: token too long");
+    return res.status(400).json({ error: "Invalid token format" });
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('secret', CF_SECRET);
+    formData.append('response', token);
+    formData.append('remoteip', req.ip);
+
+    const cfRes = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData.toString()
+      }
+    );
+
+    if (!cfRes.ok) {
+      console.error("Turnstile API error:", cfRes.status, cfRes.statusText);
+      return res.status(500).json({ error: "Verification service error" });
+    }
+
+    const result = await cfRes.json();
+
+    if (result.success) {
+      // Optional: Log successful verification details
+      console.log("Turnstile verification successful:", {
+        hostname: result.hostname,
+        challenge_ts: result.challenge_ts,
+        action: result.action
+      });
+      return next();
+    } else {
+      // Log detailed error information
+      console.warn("Turnstile verification failed:", {
+        error_codes: result['error-codes'],
+        hostname: result.hostname
+      });
+      
+      // Handle specific error cases
+      const errorCodes = result['error-codes'] || [];
+      if (errorCodes.includes('timeout-or-duplicate')) {
+        return res.status(400).json({ error: "Token already used or expired" });
+      } else if (errorCodes.includes('invalid-input-response')) {
+        return res.status(400).json({ error: "Invalid or expired token" });
+      } else {
+        return res.status(403).json({ error: "Verification failed" });
+      }
+    }
+  } catch (e) {
+    console.error("Turnstile verification error:", e);
+    return res.status(500).json({ error: "Verification service unavailable" });
+  }
+}
+
+// Serve index.html without CSRF token since we're using Turnstile
+app.get('/', (req, res) => {
+  const htmlPath = path.join(__dirname, 'index.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  const tokenScript = `\n<script>
+    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';
+  </script>\n`;
+  html = html.replace('</head>', tokenScript + '</head>');
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
 });
+
+// Serve other static assets after the root HTML route so token injection wins
+app.use(express.static(__dirname));
 
 // Handle CSV Upload
 app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
@@ -275,72 +382,81 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
   });
 });
 
-// ---- In-memory cache for heavy endpoints ----
-const TEAMS_CACHE_TTL_MS = 30 * 1000; // 30 seconds
-let teamsCache = { json: null, etag: null, timestamp: 0 };
+// ---- File-based cache for heavy /teams endpoint ----
+const CACHE_FILE_PATH = process.env.TEAMS_CACHE_FILE || path.join(sessionDir, 'teams_cache.json.gz');
+const CACHE_REFRESH_MS = 15 * 60 * 1000; // 15 minutes
+let teamsCacheMeta = { etag: null, stamp: 0 };
 
-app.get("/teams", (req, res) => {
-  // Serve from cache if fresh
-  if (teamsCache.json && (Date.now() - teamsCache.timestamp < TEAMS_CACHE_TTL_MS)) {
-    if (req.headers["if-none-match"] === teamsCache.etag) {
-      return res.status(304).end();
-    }
-    res.setHeader("ETag", teamsCache.etag);
-    res.setHeader("Cache-Control", "public, max-age=30");
-    res.type("application/json").send(teamsCache.json);
-    return;
+async function buildTeamsCache() {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      SELECT t.id as team_id, t.tournament, t.username, t.user_id, p.position, p.name, p.pick, p.team, p.stack
+      FROM teams t
+      JOIN players p ON p.team_id = t.id
+    `;
+
+    db.all(sql, [], (err, rows) => {
+      if (err) return reject(err);
+
+      const teams = {};
+      const tournaments = {};
+      const usernames = {};
+      const userIds = {};
+
+      rows.forEach((row) => {
+        if (!teams[row.team_id]) {
+          teams[row.team_id] = [];
+          tournaments[row.team_id] = row.tournament;
+          usernames[row.team_id] = row.username;
+          userIds[row.team_id] = row.user_id;
+        }
+        teams[row.team_id].push({
+          position: row.position,
+          name: row.name,
+          pick: row.pick,
+          team: row.team,
+          stack: row.stack
+        });
+      });
+
+      const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds };
+      const jsonStr = JSON.stringify(payloadObj);
+      const gz = zlib.gzipSync(jsonStr);
+
+      fs.writeFileSync(CACHE_FILE_PATH, gz);
+      teamsCacheMeta = {
+        etag: crypto.createHash('md5').update(jsonStr).digest('hex'),
+        stamp: Date.now()
+      };
+      console.log(`✓ /teams cache rebuilt (${gz.length} bytes)`);
+      resolve();
+    });
+  });
+}
+
+// Initial build and periodic refresh
+buildTeamsCache().catch(err => console.error('Error building /teams cache:', err));
+setInterval(() => buildTeamsCache().catch(err => console.error('Error building /teams cache:', err)), CACHE_REFRESH_MS);
+
+app.get('/teams', (req, res) => {
+  if (!teamsCacheMeta.etag) {
+    return res.status(503).json({ error: 'Cache building, try again shortly.' });
   }
 
-  // Rebuild the payload from DB
-  const sql = `
-    SELECT t.id as team_id, t.tournament, t.username, t.user_id, p.position, p.name, p.pick, p.team, p.stack
-    FROM teams t
-    JOIN players p ON p.team_id = t.id
-  `;
+  if (req.headers['if-none-match'] === teamsCacheMeta.etag) {
+    return res.status(304).end();
+  }
 
-  db.all(sql, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: "DB error" });
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Encoding', 'gzip');
+  res.setHeader('Cache-Control', 'public, max-age=900');
+  res.setHeader('ETag', teamsCacheMeta.etag);
 
-    const teams = {};
-    const tournaments = {};
-    const usernames = {};
-    const userIds = {}; // NEW: map teamId -> user_id
-
-    rows.forEach((row) => {
-      if (!teams[row.team_id]) {
-        teams[row.team_id] = [];
-        tournaments[row.team_id] = row.tournament;
-        usernames[row.team_id] = row.username;
-        userIds[row.team_id] = row.user_id; // NEW
-      }
-      teams[row.team_id].push({
-        position: row.position,
-        name: row.name,
-        pick: row.pick,
-        team: row.team,
-        stack: row.stack
-      });
-    });
-
-    const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds }; // NEW include userIds
-    const jsonStr = JSON.stringify(payloadObj);
-    const etag = crypto.createHash("md5").update(jsonStr).digest("hex");
-
-    // Update cache
-    teamsCache = { json: jsonStr, etag, timestamp: Date.now() };
-
-    if (req.headers["if-none-match"] === etag) {
-      return res.status(304).end();
-    }
-
-    res.setHeader("ETag", etag);
-    res.setHeader("Cache-Control", "public, max-age=30");
-    res.type("application/json").send(jsonStr);
-  });
+  fs.createReadStream(CACHE_FILE_PATH).pipe(res);
 });
 
 // POST vote for a team
-app.post("/vote", voteRateLimiter, (req, res) => {
+app.post("/vote", csrfProtection, voteRateLimiter, (req, res) => {
   const { teamId, voteType } = req.body;
   const voterId = req.user ? req.user.id : null;
 
@@ -358,13 +474,17 @@ app.post("/vote", voteRateLimiter, (req, res) => {
         db.run(
           `INSERT INTO votes (team_id, vote_type, voter_id) VALUES (?, ?, ?)`,
           [teamId, voteType, voterId],
-          () => res.json({ status: "voted" })
+          () => {
+            res.json({ status: "voted" });
+          }
         );
       } else if (row.vote_type !== voteType) {
         db.run(
           `UPDATE votes SET vote_type = ? WHERE team_id = ? AND voter_id ${voterId ? '= ?' : 'IS NULL'}`,
           voterId ? [voteType, teamId, voterId] : [voteType, teamId],
-          () => res.json({ status: "updated" })
+          () => {
+            res.json({ status: "updated" });
+          }
         );
       } else {
         res.json({ status: "unchanged" });
@@ -392,8 +512,8 @@ app.get("/votes/:teamId", (req, res) => {
   );
 });
 
-// Record versus match result (rate-limited)
-app.post("/versus", voteRateLimiter, (req, res) => {
+// Record versus match result (captcha-protected, rate limiting handled client-side)
+app.post("/versus", verifyCaptcha, (req, res) => {
   const { winnerId, loserId } = req.body;
   const voterId = req.user ? req.user.id : null;
 
@@ -406,6 +526,11 @@ app.post("/versus", voteRateLimiter, (req, res) => {
     [winnerId, loserId, voterId],
     (err) => {
       if (err) return res.status(500).json({ error: "Failed to record match result" });
+      
+      // Clear cache for both teams since their stats changed
+      teamMetaCache.delete(winnerId);
+      teamMetaCache.delete(loserId);
+      
       res.json({ status: "recorded" });
     }
   );
@@ -449,9 +574,32 @@ app.get("/versus-stats/:teamId", (req, res) => {
   );
 });
 
+// Simple in-memory cache for team metadata (30 second TTL)
+const teamMetaCache = new Map();
+const TEAM_META_CACHE_TTL = 30 * 1000; // 30 seconds
+
+// Cleanup expired cache entries every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of teamMetaCache.entries()) {
+    if (now - value.timestamp > TEAM_META_CACHE_TTL) {
+      teamMetaCache.delete(key);
+    }
+  }
+}, 2 * 60 * 1000);
+
 // Combined meta endpoint: owner info + versus stats (wins/losses)
 app.get("/team-meta/:teamId", (req, res) => {
   const { teamId } = req.params;
+
+  // Add cache headers for better performance
+  res.setHeader('Cache-Control', 'public, max-age=30'); // Cache for 30 seconds
+
+  // Check in-memory cache first
+  const cached = teamMetaCache.get(teamId);
+  if (cached && (Date.now() - cached.timestamp) < TEAM_META_CACHE_TTL) {
+    return res.json(cached.data);
+  }
 
   const sql = `
     SELECT 
@@ -477,26 +625,111 @@ app.get("/team-meta/:teamId", (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
 
-    const meta = row || { username: null, twitter_username: null, tournament: null, wins: 0, losses: 0 };
-    const total = (meta.wins || 0) + (meta.losses || 0);
-    let win_pct = 0;
-    if (total > 0) {
-      win_pct = (meta.wins / total) * 100;
-    } else if (meta.wins > 0) {
-      win_pct = 100;
+    let meta;
+    if (!row) {
+      // Team not found, but return empty structure for consistency
+      meta = { 
+        username: null, 
+        twitter_username: null, 
+        tournament: null, 
+        wins: 0, 
+        losses: 0, 
+        win_pct: 0 
+      };
+    } else {
+      meta = {
+        username: row.username,
+        twitter_username: row.twitter_username,
+        tournament: row.tournament,
+        wins: parseInt(row.wins) || 0,
+        losses: parseInt(row.losses) || 0
+      };
+      
+      const total = meta.wins + meta.losses;
+      let win_pct = 0;
+      if (total > 0) {
+        win_pct = (meta.wins / total) * 100;
+      } else if (meta.wins > 0) {
+        win_pct = 100;
+      }
+      meta.win_pct = Number(win_pct.toFixed(1));
     }
-    meta.win_pct = Number(win_pct.toFixed(1));
+
+    // Cache the result
+    teamMetaCache.set(teamId, {
+      data: meta,
+      timestamp: Date.now()
+    });
 
     res.json(meta);
   });
 });
 
 // Leaderboard endpoint (team)
-app.get("/leaderboard", (req, res) => {
-  const tournament = req.query.tournament;
-  
-  const sql = `
-    WITH team_stats AS (
+const teamLeaderboardCacheMeta = new Map();
+const userLeaderboardCacheMeta = new Map();
+
+const LEADER_CACHE_REFRESH_MS = 15 * 60 * 1000; // 15 minutes
+
+// Helper to compute percentages for leaderboard rows
+function calcPercents(r) {
+  const voteTotal = (r.yes_votes || 0) + (r.no_votes || 0);
+  const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
+  const h2hTotal = (r.wins || 0) + (r.losses || 0);
+  const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
+  return { ...r, yes_pct, win_pct };
+}
+
+function sanitizeKey(t) {
+  return t ? t.replace(/[^a-zA-Z0-9_-]/g, '_') : 'ALL';
+}
+
+function buildTeamLeaderboardCache(tournament) {
+  return new Promise((resolve, reject) => {
+    const key = sanitizeKey(tournament);
+    const filePath = path.join(sessionDir, `leaderboard_${key}.json.gz`);
+
+    const sql = `
+      WITH team_stats AS (
+        SELECT
+          t.id,
+          t.username,
+          t.tournament,
+          COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
+          COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
+          COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
+          COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+        FROM teams t
+        WHERE (? IS NULL OR t.tournament = ?)
+      )
+      SELECT * FROM team_stats
+      WHERE (yes_votes + no_votes) > 0 OR (wins + losses) > 0
+    `;
+
+    db.all(sql, [tournament || null, tournament || null], (err, rows) => {
+      if (err) return reject(err);
+
+      const enriched = rows.map(calcPercents);
+      const jsonStr = JSON.stringify(enriched);
+      const gz = zlib.gzipSync(jsonStr);
+      fs.writeFileSync(filePath, gz);
+      teamLeaderboardCacheMeta.set(key, {
+        etag: crypto.createHash('md5').update(jsonStr).digest('hex'),
+        stamp: Date.now(),
+        filePath
+      });
+      console.log(`✓ /leaderboard cache rebuilt (${key}) (${gz.length} bytes)`);
+      resolve();
+    });
+  });
+}
+
+function buildUserLeaderboardCache(tournament) {
+  return new Promise((resolve, reject) => {
+    const key = sanitizeKey(tournament);
+    const filePath = path.join(sessionDir, `leaderboard_users_${key}.json.gz`);
+
+    const sql = `
       SELECT
         t.id,
         t.username,
@@ -506,70 +739,91 @@ app.get("/leaderboard", (req, res) => {
         COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
         COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
       FROM teams t
-      WHERE ($tournament IS NULL OR t.tournament = $tournament)
-    )
-    SELECT *
-    FROM team_stats
-    WHERE (yes_votes + no_votes) > 0 OR (wins + losses) > 0
-    ORDER BY (CAST(wins AS FLOAT) / NULLIF(wins + losses, 0)) DESC NULLS LAST,
-             (CAST(yes_votes AS FLOAT) / NULLIF(yes_votes + no_votes, 0)) DESC NULLS LAST
-  `;
-  
-  const params = { $tournament: tournament || null };
-  
-  db.all(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: "DB error" });
-    const enriched = rows.map(calcPercents);
-    res.json(enriched);
-  });
-});
+      WHERE (? IS NULL OR t.tournament = ?)
+    `;
 
-function calcPercents(r) {
-  const voteTotal = r.yes_votes + r.no_votes;
-  const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
-  const h2hTotal = r.wins + r.losses;
-  const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
-  return { ...r, yes_pct, win_pct };
+    db.all(sql, [tournament || null, tournament || null], (err, rows) => {
+      if (err) return reject(err);
+
+      const userStats = {};
+      rows.forEach((r) => {
+        const u = r.username || 'ANON';
+        if (!userStats[u]) {
+          userStats[u] = { username: u, yes_votes: 0, no_votes: 0, wins: 0, losses: 0 };
+        }
+        userStats[u].yes_votes += r.yes_votes;
+        userStats[u].no_votes += r.no_votes;
+        userStats[u].wins += r.wins;
+        userStats[u].losses += r.losses;
+      });
+
+      const result = Object.values(userStats).map(calcPercents);
+      const jsonStr = JSON.stringify(result);
+      const gz = zlib.gzipSync(jsonStr);
+      fs.writeFileSync(filePath, gz);
+      userLeaderboardCacheMeta.set(key, {
+        etag: crypto.createHash('md5').update(jsonStr).digest('hex'),
+        stamp: Date.now(),
+        filePath
+      });
+      console.log(`✓ /leaderboard/users cache rebuilt (${key}) (${gz.length} bytes)`);
+      resolve();
+    });
+  });
 }
 
-// Leaderboard by user
-app.get("/leaderboard/users", (req, res) => {
-  const tournament = req.query.tournament;
-  
-  const sql = `
-    SELECT
-      t.id,
-      t.username,
-      t.tournament,
-      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
-      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
-      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
-    FROM teams t
-    WHERE ($tournament IS NULL OR t.tournament = $tournament)
-  `;
-  
-  const params = { $tournament: tournament || null };
-  
-  db.all(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: "DB error" });
+app.get('/leaderboard', async (req, res) => {
+  const tournament = req.query.tournament || null;
+  const key = sanitizeKey(tournament);
+  let meta = teamLeaderboardCacheMeta.get(key);
 
-    // aggregate by username
-    const userStats = {};
-    rows.forEach((r) => {
-      const u = r.username || 'ANON';
-      if (!userStats[u]) {
-        userStats[u] = { username: u, yes_votes: 0, no_votes: 0, wins: 0, losses: 0 };
-      }
-      userStats[u].yes_votes += r.yes_votes;
-      userStats[u].no_votes += r.no_votes;
-      userStats[u].wins += r.wins;
-      userStats[u].losses += r.losses;
-    });
+  if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
+    try {
+      await buildTeamLeaderboardCache(tournament);
+      meta = teamLeaderboardCacheMeta.get(key);
+    } catch (e) {
+      console.error('Error building leaderboard cache:', e);
+      return res.status(500).json({ error: 'DB error' });
+    }
+  }
 
-    const result = Object.values(userStats).map(calcPercents);
-    res.json(result);
-  });
+  if (req.headers['if-none-match'] === meta.etag) {
+    return res.status(304).end();
+  }
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Encoding', 'gzip');
+  res.setHeader('Cache-Control', `public, max-age=${LEADER_CACHE_REFRESH_MS / 1000}`);
+  res.setHeader('ETag', meta.etag);
+
+  fs.createReadStream(meta.filePath).pipe(res);
+});
+
+app.get('/leaderboard/users', async (req, res) => {
+  const tournament = req.query.tournament || null;
+  const key = sanitizeKey(tournament);
+  let meta = userLeaderboardCacheMeta.get(key);
+
+  if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
+    try {
+      await buildUserLeaderboardCache(tournament);
+      meta = userLeaderboardCacheMeta.get(key);
+    } catch (e) {
+      console.error('Error building user leaderboard cache:', e);
+      return res.status(500).json({ error: 'DB error' });
+    }
+  }
+
+  if (req.headers['if-none-match'] === meta.etag) {
+    return res.status(304).end();
+  }
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Encoding', 'gzip');
+  res.setHeader('Cache-Control', `public, max-age=${LEADER_CACHE_REFRESH_MS / 1000}`);
+  res.setHeader('ETag', meta.etag);
+
+  fs.createReadStream(meta.filePath).pipe(res);
 });
 
 // Get available tournaments for filter
@@ -780,6 +1034,21 @@ app.get('/api/reports/versus-by-day', requireAdmin, (req, res) => {
     FROM versus_matches
     GROUP BY DATE(created_at)
     ORDER BY day
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// Versus votes by hour (Eastern Time – UTC-4)
+app.get('/api/reports/versus-by-hour', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT strftime('%Y-%m-%d %H:00', datetime(created_at, '-4 hours')) AS hour,
+           COUNT(*) AS votes
+    FROM versus_matches
+    GROUP BY hour
+    ORDER BY hour
   `;
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
@@ -1437,6 +1706,27 @@ app.get('/team-votes/:teamId', (req, res) => {
       res.json({ votes: votes || [] });
     });
   });
+});
+
+// === NEW: Usage endpoint ===
+app.post('/usage', (req, res) => {
+  const { visitorId, sessionId, durationMs, page } = req.body || {};
+  if (!visitorId || !sessionId || !durationMs) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  const userId = req.user ? req.user.id : null;
+  analyticsDb.run(
+    `INSERT INTO page_time (visitor_id, session_id, user_id, page, duration_ms)
+     VALUES (?,?,?,?,?)`,
+    [visitorId, sessionId, userId, page || null, durationMs],
+    (err) => {
+      if (err) {
+        console.error('DB error inserting page_time:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      res.json({ status: 'ok' });
+    }
+  );
 });
 
 // ✅ Updated to support Replit or local dev port

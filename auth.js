@@ -3,7 +3,7 @@ const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const TwitterStrategy = require('passport-twitter').Strategy;
 const bcrypt = require('bcryptjs');
-const db = require('./db');
+const { db } = require('./db');
 
 // --- Local Strategy: email + password ---
 passport.use(new LocalStrategy({ usernameField: 'email' }, (email, password, done) => {
