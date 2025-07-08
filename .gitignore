@@ -27,10 +27,6 @@ requirements.txt
 # scripts/
 team_ratings.csv
 
-# Local test / temp artifacts
-c.txt
-vote_test.py
-
 # Runtime-generated caches
 leaderboard_*.json.gz
 leaderboard_users_*.json.gz

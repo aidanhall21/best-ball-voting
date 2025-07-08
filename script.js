@@ -5,7 +5,7 @@ let teamTournaments = {};
 let currentMode = "upload"; // 'upload' | 'versus' | 'leaderboard'
 let leaderboardType = "team"; // 'team' or 'user'
 let leaderboardData = [];
-let sortKey = "wins";
+let sortKey = "win_pct";
 let sortDir = "desc";
 let teamUsernames = {};
 let teamUserIds = {}; // teamId -> user_id mapping
@@ -13,8 +13,8 @@ let currentUserId = null; // logged-in user id
 let userVotesCount = 0;   // total versus votes cast by user
 let myTeamIds = [];       // array of teamIds owned by current user
 const MAX_LEADERBOARD_ROWS = 1000; // how many rows to actually render after sorting
-let currentTournament = null;
-let currentUsernameFilter = null; // Username filter for team leaderboard
+let currentTournament = "";
+let currentUsernameFilter = ""; // Username filter for team leaderboard
 let leaderboardRawData = []; // unfiltered data cache
 
 // Team metadata cache to reduce redundant API calls
@@ -1285,9 +1285,9 @@ function renderVersus() {
 
 // fetchLeaderboard
 function fetchLeaderboard(force = false) {
-  // Ensure default sort for both views is by Versus Wins (desc)
-  if (sortKey !== "wins") {
-    sortKey = "wins";
+  // Ensure default sort for both views is by Win Percentage (desc)
+  if (sortKey !== "win_pct") {
+    sortKey = "win_pct";
     sortDir = "desc";
   }
 
@@ -1373,7 +1373,7 @@ function renderLeaderboard(data) {
     btnUser.classList.toggle("active", leaderboardType === "user");
     btnTeam.onclick = () => {
       leaderboardType = "team";
-      sortKey = "wins";
+      sortKey = "win_pct";
       sortDir = "desc";
       currentTournament = ""; // reset tournament
       // Keep currentUsernameFilter as-is
@@ -1384,7 +1384,7 @@ function renderLeaderboard(data) {
     };
     btnUser.onclick = () => {
       leaderboardType = "user";
-      sortKey = "wins";
+      sortKey = "win_pct";
       sortDir = "desc";
       currentTournament = "";
       currentUsernameFilter = ""; // reset user filter when switching views
@@ -1473,9 +1473,19 @@ function renderLeaderboard(data) {
         tournamentSelect.dataset.usernameFilter = currentUsernameFilter || "";
       } else {
         // User leaderboard: show all tournaments
+        // Add loading placeholder to maintain dropdown width
+        const loadingOpt = document.createElement("option");
+        loadingOpt.value = "";
+        loadingOpt.textContent = "Loading tournaments...";
+        loadingOpt.disabled = true;
+        tournamentSelect.appendChild(loadingOpt);
+        
         fetch("/tournaments")
           .then(res => res.json())
           .then(tournaments => {
+            // Remove loading placeholder
+            tournamentSelect.removeChild(loadingOpt);
+            
             const sorted = tournaments.sort((a,b)=>a.localeCompare(b));
             sorted.forEach(t => {
               const opt = document.createElement("option");
@@ -1489,6 +1499,13 @@ function renderLeaderboard(data) {
             }
             tournamentSelect.value = currentTournament;
             tournamentSelect.dataset.viewType = "user";
+          })
+          .catch(error => {
+            console.error('Failed to fetch tournaments:', error);
+            // Remove loading placeholder on error
+            if (tournamentSelect.contains(loadingOpt)) {
+              tournamentSelect.removeChild(loadingOpt);
+            }
           });
       }
 
