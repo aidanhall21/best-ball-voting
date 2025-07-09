@@ -234,12 +234,70 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
   const fileContent = fs.readFileSync(csvPath, "utf8");
 
   // Username supplied by the uploader (sent as a regular form field alongside the file)
-  const uploaderUsername = (req.body.username || "anonymous")
-    .trim()
+  let uploaderUsername = (req.body.username || "").trim();
+  
+  // If no username provided and user is logged in with a display_name, use that
+  if (!uploaderUsername && req.user && req.user.display_name) {
+    uploaderUsername = req.user.display_name;
+  }
+  
+  // If still no username, fall back to anonymous
+  if (!uploaderUsername) {
+    uploaderUsername = "anonymous";
+  }
+  
+  // Clean and format the username
+  uploaderUsername = uploaderUsername
     .replace(/[^a-zA-Z0-9]/g, '') // Remove all non-alphanumeric characters
     .toUpperCase();
 
-  Papa.parse(fileContent, {
+  // If user provided a username and doesn't have a display_name, check if username is available
+  if (req.body.username && req.body.username.trim() && req.user && !req.user.display_name) {
+    // Check if username already exists (case-insensitive)
+    db.get(
+      `SELECT id FROM users WHERE LOWER(display_name) = LOWER(?) AND id != ?`,
+      [uploaderUsername, req.user.id],
+      (err, existingUser) => {
+        if (err) {
+          console.error('Error checking username availability:', err);
+          return res.status(500).json({ error: "Database error checking username" });
+        }
+        
+        if (existingUser) {
+          // Username is taken
+          console.log(`Upload rejected: Username "${uploaderUsername}" already taken for user ${req.user.id}`);
+          fs.unlinkSync(csvPath); // Clean up uploaded file
+          return res.status(400).json({ error: "Username already taken" });
+        }
+        
+        // Username is available, update user's display_name and continue with upload
+        db.run(
+          `UPDATE users SET display_name = ? WHERE id = ?`,
+          [uploaderUsername, req.user.id],
+          (updateErr) => {
+            if (updateErr) {
+              console.error('Error updating user display_name:', updateErr);
+              fs.unlinkSync(csvPath); // Clean up uploaded file
+              return res.status(500).json({ error: "Error updating username" });
+            }
+            console.log(`Updated display_name for user ${req.user.id} to ${uploaderUsername}`);
+            // Update the user object in the session
+            req.user.display_name = uploaderUsername;
+            
+            // Continue with CSV processing
+            processCsvUpload();
+          }
+        );
+      }
+    );
+    return; // Exit early, CSV processing will continue in callback
+  }
+
+  // Continue with CSV processing immediately if no username validation needed
+  processCsvUpload();
+
+  function processCsvUpload() {
+    Papa.parse(fileContent, {
     header: true,
     complete: (result) => {
       const rows = result.data;
@@ -420,6 +478,7 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
       });
     }
   });
+  }
 });
 
 // ---- File-based cache for heavy /teams endpoint ----
@@ -735,15 +794,13 @@ function buildTeamLeaderboardCache(tournament) {
           t.id,
           t.username,
           t.tournament,
-          COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
-          COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
           COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
           COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
         FROM teams t
         WHERE (? IS NULL OR t.tournament = ?)
       )
       SELECT * FROM team_stats
-      WHERE (yes_votes + no_votes) > 0 OR (wins + losses) > 0
+      WHERE (wins + losses) > 0
     `;
 
     db.all(sql, [tournament || null, tournament || null], (err, rows) => {
@@ -774,8 +831,6 @@ function buildUserLeaderboardCache(tournament) {
         t.id,
         t.username,
         t.tournament,
-        COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
-        COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
         COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
         COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
       FROM teams t
@@ -789,10 +844,8 @@ function buildUserLeaderboardCache(tournament) {
       rows.forEach((r) => {
         const u = r.username || 'ANON';
         if (!userStats[u]) {
-          userStats[u] = { username: u, yes_votes: 0, no_votes: 0, wins: 0, losses: 0 };
+          userStats[u] = { username: u, wins: 0, losses: 0 };
         }
-        userStats[u].yes_votes += r.yes_votes;
-        userStats[u].no_votes += r.no_votes;
         userStats[u].wins += r.wins;
         userStats[u].losses += r.losses;
       });
@@ -907,13 +960,36 @@ app.get("/team-owner/:teamId", (req, res) => {
 
 // ---- Auth Routes ----
 app.post('/register', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  const { username, email, emailConfirm, password } = req.body || {};
+  if (!username || !email || !emailConfirm || !password) {
+    return res.status(400).json({ error: 'Username, email, confirmed email and password required' });
+  }
+  if (email !== emailConfirm) {
+    return res.status(400).json({ error: 'Emails do not match' });
+  }
+  
+  // Validate username (alphanumeric only, reasonable length)
+  const cleanUsername = username.trim();
+  
+  if (cleanUsername.length < 2 || cleanUsername.length > 30) {
+    return res.status(400).json({ error: 'Username must be 2-30 characters' });
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(cleanUsername)) {
+    return res.status(400).json({ error: 'Username can only contain letters, numbers, and underscores' });
+  }
+  
   try {
     const hash = await bcrypt.hash(password, 12);
-    db.run('INSERT INTO users (email, password_hash) VALUES (?, ?)', [email, hash], function(err) {
+    
+    db.run('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)', [email, hash, cleanUsername.toUpperCase()], function(err) {
       if (err) {
-        return res.status(400).json({ error: 'User already exists' });
+        if (err.message && err.message.includes('UNIQUE constraint failed: users.email')) {
+          return res.status(400).json({ error: 'Email already registered' });
+        }
+        if (err.message && (err.message.includes('idx_users_display_name_unique') || err.message.includes('UNIQUE constraint failed: users.display_name'))) {
+          return res.status(400).json({ error: 'Username already taken' });
+        }
+        return res.status(400).json({ error: 'Registration failed' });
       }
       res.json({ status: 'registered', id: this.lastID });
     });
@@ -1605,79 +1681,78 @@ app.get('/my/team-votes/:teamId', requireAuth, (req, res) => {
   );
 });
 
-// === NEW: Update username for a tournament's teams ===
-app.post('/my/update-username', requireAuth, express.json(), (req, res) => {
-  const { oldUsername, newUsername, tournament } = req.body;
-  const userId = req.user.id;
-
-  if (!oldUsername || !newUsername || !tournament) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  // Verify the new username is one they've used before
-  db.get(
-    'SELECT 1 FROM teams WHERE user_id = ? AND username = ?',
-    [userId, newUsername],
-    (err, exists) => {
-      if (err) {
-        console.error('DB error checking username:', err);
-        return res.status(500).json({ error: 'DB error' });
-      }
-
-      if (!exists) {
-        return res.status(400).json({ error: 'Username not found in your uploads' });
-      }
-
-      // Update all matching teams
-      db.run(
-        `UPDATE teams 
-         SET username = ? 
-         WHERE user_id = ? 
-         AND username = ? 
-         AND tournament = ?`,
-        [newUsername, userId, oldUsername, tournament],
-        function(err2) {
-          if (err2) {
-            console.error('DB error updating username:', err2);
-            return res.status(500).json({ error: 'Failed to update username' });
-          }
-
-          res.json({ 
-            message: 'Username updated successfully',
-            rowsAffected: this.changes
-          });
-        }
-      );
-    }
-  );
-});
-
 // === NEW: Update display name endpoint ===
 app.post('/my/update-display-name', requireAuth, express.json(), (req, res) => {
   const { displayName } = req.body;
   const userId = req.user.id;
 
-  // Validate display name
-  if (displayName && displayName.length > 50) {
-    return res.status(400).json({ error: 'Display name too long (max 50 characters)' });
+  // Normalize and validate display name
+  const displayNameUpper = (displayName || '').trim().toUpperCase();
+
+  if (displayNameUpper && displayNameUpper.length > 50) {
+    return res.status(400).json({ error: 'Username too long (max 50 characters)' });
   }
 
-  // Update the display name
-  db.run(
-    'UPDATE users SET display_name = ? WHERE id = ?',
-    [displayName || null, userId],
-    function(err) {
-      if (err) {
-        console.error('DB error updating display name:', err);
-        return res.status(500).json({ error: 'Failed to update display name' });
-      }
+  // Start a transaction to update both users and teams tables
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
 
-      res.json({ 
-        message: 'Display name updated successfully',
-        displayName: displayName || null
-      });
-    }
-  );
+    // Update the display name in users table (always use upper-case value, can be null)
+    db.run(
+      'UPDATE users SET display_name = ? WHERE id = ?',
+      [displayNameUpper || null, userId],
+      function(err) {
+        if (err) {
+          console.error('DB error updating display name:', err);
+          // Handle duplicate display name (unique constraint violation)
+          if (
+            err.code === 'SQLITE_CONSTRAINT' &&
+            (err.message || '').includes('UNIQUE constraint failed: users.display_name')
+          ) {
+            db.run('ROLLBACK');
+            return res.status(409).json({ error: 'Username already taken' });
+          }
+
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Failed to update display name' });
+        }
+
+        // If a non-empty name supplied, also update team usernames to same upper-case string
+        if (displayNameUpper) {
+          db.run(
+            'UPDATE teams SET username = ? WHERE user_id = ?',
+            [displayNameUpper, userId],
+            function(err2) {
+              if (err2) {
+                console.error('DB error updating teams username:', err2);
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Failed to update teams username' });
+              }
+
+              console.log(`Updated display_name to "${displayNameUpper}" for user ${userId} and updated username in ${this.changes} teams`);
+              
+              db.run('COMMIT');
+              res.json({ 
+                message: 'Username and team usernames updated successfully',
+                displayName: displayNameUpper,
+                teamsUpdated: this.changes,
+                username: displayNameUpper
+              });
+            }
+          );
+        } else {
+          // Name was cleared – commit users update only
+          console.log(`Cleared display_name for user ${userId}`);
+          db.run('COMMIT');
+          res.json({ 
+            message: 'Username cleared',
+            displayName: null,
+            teamsUpdated: 0
+          });
+        }
+      }
+    );
+  });
 });
 
 // === NEW: Public voting history for any team ===

@@ -132,7 +132,9 @@
       font-size: 14px;
     }
 
-    .uploads-table td:last-child {
+    /* Right-align Count column (3rd column) */
+    .uploads-table th:nth-child(3),
+    .uploads-table td:nth-child(3) {
       text-align: right;
     }
 
@@ -866,7 +868,6 @@
                       <th>Username</th>
                       <th>Tournament</th>
                       <th>Count</th>
-                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -878,9 +879,6 @@
                     <td>${row.username}</td>
                     <td>${row.tournament}</td>
                     <td>${row.count}</td>
-                    <td>
-                      <button class="edit-username" onclick="editUsername('${row.username}', '${row.tournament}')">Edit</button>
-                    </td>
                   </tr>
                 `;
               });
@@ -1190,70 +1188,7 @@
       });
     });
 
-    // Username editing functionality
-    function editUsername(currentUsername, tournament) {
-      const cell = event.target.parentElement.previousElementSibling.previousElementSibling.previousElementSibling;
-      const originalContent = cell.innerHTML;
-
-      // Create select element with available usernames
-      const select = document.createElement('select');
-      select.className = 'username-select';
-      
-      window.availableUsernames.forEach(username => {
-        if (username !== currentUsername) { // Don't include current username
-          const option = document.createElement('option');
-          option.value = username;
-          option.textContent = username;
-          select.appendChild(option);
-        }
-      });
-
-      // Add cancel option
-      const cancelOption = document.createElement('option');
-      cancelOption.value = '';
-      cancelOption.textContent = '-- Cancel --';
-      select.insertBefore(cancelOption, select.firstChild);
-      select.value = '';
-
-      // Handle selection change
-      select.addEventListener('change', async () => {
-        const newUsername = select.value;
-        if (!newUsername) {
-          cell.innerHTML = originalContent;
-          return;
-        }
-
-        try {
-          const res = await fetch('/my/update-username', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              oldUsername: currentUsername,
-              newUsername,
-              tournament
-            })
-          });
-
-          const data = await res.json();
-          if (res.ok) {
-            // Refresh the page to show updated data
-            window.location.reload();
-          } else {
-            alert(data.error || 'Failed to update username');
-            cell.innerHTML = originalContent;
-          }
-        } catch (err) {
-          console.error('Failed to update username:', err);
-          alert('Failed to update username');
-          cell.innerHTML = originalContent;
-        }
-      });
-
-      // Replace cell content with select
-      cell.innerHTML = '';
-      cell.appendChild(select);
-      select.focus();
-    }
+    // Username editing functionality removed – usernames are updated via display name now
 
     // Display name editing functionality
     function editDisplayName(currentDisplayName) {
@@ -1263,14 +1198,21 @@
 
       // Create edit interface
       container.innerHTML = `
-        <input type="text" class="display-name-input" value="${currentDisplayName}" placeholder="Enter display name">
+        <input type="text" class="display-name-input" value="${currentDisplayName}" placeholder="Enter username">
         <button class="save-display-name">Save</button>
         <button class="cancel-display-name">Cancel</button>
+        <div class="display-name-error" style="display:none; color:#f85149; margin-top:8px; font-size:14px;"></div>
       `;
 
       const input = container.querySelector('.display-name-input');
       const saveBtn = container.querySelector('.save-display-name');
       const cancelBtn = container.querySelector('.cancel-display-name');
+      const errorDiv = container.querySelector('.display-name-error');
+
+      // Hide error when user types again
+      input.addEventListener('input', () => {
+        errorDiv.style.display = 'none';
+      });
 
       input.focus();
       input.select();
@@ -1289,7 +1231,7 @@
           const data = await res.json();
           if (res.ok) {
             // Update the display without refreshing
-            container.innerHTML = newDisplayName || 'Create Display Name';
+            container.innerHTML = newDisplayName || 'Create Username';
             // Set styling class based on whether we have a display name
             if (newDisplayName) {
               container.classList.remove('no-display-name');
@@ -1297,15 +1239,13 @@
               container.classList.add('no-display-name');
             }
           } else {
-            alert(data.error || 'Failed to update display name');
-            container.innerHTML = originalContent;
-            if (wasEmpty) container.classList.add('no-display-name');
+            errorDiv.textContent = data.error || 'Username already taken.';
+            errorDiv.style.display = 'block';
           }
         } catch (err) {
-          console.error('Failed to update display name:', err);
-          alert('Failed to update display name');
-          container.innerHTML = originalContent;
-          if (wasEmpty) container.classList.add('no-display-name');
+          console.error('Username already taken.', err);
+          errorDiv.textContent = 'Username already taken.';
+          errorDiv.style.display = 'block';
         }
       });
 

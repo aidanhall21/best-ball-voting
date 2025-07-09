@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-07-1523.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-09-0811.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-09-0811.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -137,6 +137,48 @@ db.all('PRAGMA table_info(users)', (err, cols) => {
     db.run('ALTER TABLE users ADD COLUMN twitter_username TEXT');
   }
   db.run('CREATE INDEX IF NOT EXISTS idx_users_twitter_username ON users(twitter_username)');
+  
+  // Add unique constraint on display_name (case-insensitive)
+  // First, check if there are existing duplicates and handle them
+  db.get("SELECT COUNT(*) as count FROM users WHERE display_name IS NOT NULL", (err, result) => {
+    if (err) return;
+    
+    if (result.count > 0) {
+      // Check for duplicates and resolve them before adding constraint
+      db.all(`
+        SELECT display_name, COUNT(*) as count, GROUP_CONCAT(id) as ids 
+        FROM users 
+        WHERE display_name IS NOT NULL 
+        GROUP BY display_name COLLATE NOCASE 
+        HAVING count > 1
+      `, (err, duplicates) => {
+        if (err) return;
+        
+        if (duplicates.length > 0) {
+          console.log(`Found ${duplicates.length} duplicate display names, resolving...`);
+          
+          // For each set of duplicates, append numbers to make them unique
+          duplicates.forEach(dup => {
+            const ids = dup.ids.split(',');
+            ids.forEach((id, index) => {
+              if (index > 0) { // Keep first one as-is, modify others
+                const newName = `${dup.display_name}${index + 1}`;
+                db.run('UPDATE users SET display_name = ? WHERE id = ?', [newName, id]);
+              }
+            });
+          });
+        }
+        
+        // After resolving duplicates, add the unique constraint
+        setTimeout(() => {
+          db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name_unique ON users(display_name COLLATE NOCASE)');
+        }, 100);
+      });
+    } else {
+      // No existing data, safe to add constraint immediately
+      db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name_unique ON users(display_name COLLATE NOCASE)');
+    }
+  });
 });
 
 module.exports = { db, analyticsDb };

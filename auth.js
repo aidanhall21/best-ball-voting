@@ -6,10 +6,11 @@ const bcrypt = require('bcryptjs');
 const { db } = require('./db');
 
 // --- Local Strategy: email + password ---
-passport.use(new LocalStrategy({ usernameField: 'email' }, (email, password, done) => {
-  db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
+passport.use(new LocalStrategy({ usernameField: 'identifier' }, (identifier, password, done) => {
+  // Allow login with either email or display_name (username) – case-insensitive for both
+  db.get('SELECT * FROM users WHERE email = ? COLLATE NOCASE OR LOWER(display_name) = LOWER(?)', [identifier, identifier], async (err, user) => {
     if (err) return done(err);
-    if (!user) return done(null, false, { message: 'Incorrect email' });
+    if (!user) return done(null, false, { message: 'Incorrect email or username' });
     try {
       const match = await bcrypt.compare(password, user.password_hash || '');
       if (!match) return done(null, false, { message: 'Incorrect password' });

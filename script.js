@@ -339,7 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginTwitterBtn = document.getElementById('loginTwitterBtn');
   const loginEmailForm = document.getElementById('loginEmailForm');
   const logoutBtn = document.getElementById('logoutBtn');
-  const registerBtn = document.getElementById('registerBtn');
+
   const forgotPasswordLink = document.getElementById('forgotPasswordLink');
   const authStatus = document.getElementById('authStatus');
   const loginMessageEl = document.getElementById('loginMessage');
@@ -383,7 +383,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Clicking the overlay shows a helpful message
     fileInputOverlay.addEventListener('click', () => {
-      showUploadMessage('Please input Underdog or Twitter handle', 'error');
+      showUploadMessage('Create a username to upload teams', 'error');
     });
 
     fileInputContainer.appendChild(fileInputOverlay);
@@ -391,10 +391,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Helper to keep file input state & overlay in sync
   function updateFileInputState() {
+    // Check if we're in a state where username is required
+    const needsUsername = currentUserId && document.querySelector('#usernameInput').style.display !== 'none';
     const hasUsername = !!usernameInput.value.trim();
-    csvUpload.disabled = !hasUsername;
-    if (fileInputOverlay) {
-      fileInputOverlay.style.display = hasUsername ? 'none' : 'block';
+    
+    if (needsUsername && !hasUsername) {
+      // User needs to enter username first
+      csvUpload.disabled = true;
+      uploadButton.disabled = true;
+      if (fileInputOverlay) {
+        fileInputOverlay.style.display = 'block';
+      }
+    } else {
+      // File input is enabled
+      const hasFile = csvUpload.files && csvUpload.files.length > 0;
+      csvUpload.disabled = false;
+      uploadButton.disabled = !hasFile;
+      if (fileInputOverlay) {
+        fileInputOverlay.style.display = 'none';
+      }
     }
   }
 
@@ -465,6 +480,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (loggedIn) {
+      const hasDisplayName = !!(data.user.display_name && data.user.display_name.trim());
       const displayName = data.user.display_name || data.user.email || 'User';
       
       // Update desktop user controls
@@ -481,10 +497,27 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById('uploadSection').style.display = 'block';
       loginPanel.style.display = 'none';
       
+      // Show/hide username input based on whether user has display_name
+      if (hasDisplayName) {
+        usernameInput.style.display = 'none';
+        usernameInput.previousElementSibling.textContent = 'Add your drafts to the community vote pool';
+        // Enable file input since user has display_name
+        csvUpload.disabled = false;
+        uploadButton.disabled = !csvUpload.files.length;
+      } else {
+        usernameInput.style.display = 'block';
+        usernameInput.placeholder = 'You must create a username to upload teams';
+        usernameInput.previousElementSibling.textContent = 'Add your drafts to the community vote pool';
+        // Disable file input until username is entered
+        const hasUsername = !!usernameInput.value.trim();
+        csvUpload.disabled = !hasUsername;
+        uploadButton.disabled = !csvUpload.files.length || !hasUsername;
+      }
+      
       // Enable upload controls
       usernameInput.disabled = false;
-      csvUpload.disabled = !usernameInput.value.trim();
-      uploadButton.disabled = !csvUpload.files.length || !usernameInput.value.trim();
+      csvUpload.disabled = false; // Always enabled for logged-in users
+      uploadButton.disabled = !csvUpload.files.length; // Only depends on file selection
       document.getElementById('uploadSection').style.opacity = '1';
     } else {
       // Update desktop user controls
@@ -530,6 +563,41 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location = '/auth/twitter';
   });
 
+  // Event: Twitter signup (same as login)
+  document.getElementById('signupTwitterBtn').addEventListener('click', () => {
+    window.location = '/auth/twitter';
+  });
+
+  // Tab switching
+  document.getElementById('loginTab').addEventListener('click', () => {
+    setAuthTab('login');
+  });
+  
+  document.getElementById('signupTab').addEventListener('click', () => {
+    setAuthTab('signup');
+  });
+
+  function setAuthTab(tab) {
+    const loginTab = document.getElementById('loginTab');
+    const signupTab = document.getElementById('signupTab');
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    
+    if (tab === 'login') {
+      loginTab.classList.add('active');
+      signupTab.classList.remove('active');
+      loginForm.style.display = '';
+      signupForm.style.display = 'none';
+    } else {
+      loginTab.classList.remove('active');
+      signupTab.classList.add('active');
+      loginForm.style.display = 'none';
+      signupForm.style.display = '';
+    }
+    // Clear any previous messages when switching tabs
+    showLoginMessage('', '');
+  }
+
   // Event: Email login
   loginEmailForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -539,7 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = await fetch('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ identifier: email, password })
     });
     if (res.ok) {
       await refreshAuth();
@@ -549,31 +617,53 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Event: Register
-  registerBtn.addEventListener('click', async () => {
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    if (!email || !password) {
-      showLoginMessage('Provide email and password', 'error');
+  // Event: Email signup
+  document.getElementById('signupEmailForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('signupUsername').value.trim();
+    const email = document.getElementById('signupEmail').value.trim();
+    const password = document.getElementById('signupPassword').value;
+    const passwordConfirm = document.getElementById('signupPasswordConfirm').value;
+    const emailConfirm = document.getElementById('signupEmailConfirm').value.trim();
+    
+    // Validation
+    if (!username || !email || !emailConfirm || !password || !passwordConfirm) {
+      showLoginMessage('All fields are required', 'error');
       return;
     }
+    if (email !== emailConfirm) {
+      showLoginMessage('Emails do not match', 'error');
+      return;
+    }
+    
+    if (password !== passwordConfirm) {
+      showLoginMessage('Passwords do not match', 'error');
+      return;
+    }
+    
+    if (password.length < 6) {
+      showLoginMessage('Password must be at least 6 characters', 'error');
+      return;
+    }
+    
     const res = await fetch('/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ username, email, emailConfirm, password })
     });
+    
     if (res.ok) {
       // automatically log in after register
       const loginRes = await fetch('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ identifier: email, password })
       });
       if (loginRes.ok) {
         await refreshAuth();
-        showLoginMessage('Registration successful', 'success');
+        showLoginMessage('Account created successfully!', 'success');
       } else {
-        showLoginMessage('Registered but auto login failed. Please try logging in.', 'error');
+        showLoginMessage('Account created but auto login failed. Please try logging in.', 'error');
       }
     } else {
       const err = await res.json().catch(() => ({}));
@@ -619,36 +709,34 @@ document.addEventListener("DOMContentLoaded", () => {
     setMode("upload");
   });
 
-  // Enable/disable file input and upload button based on username presence
+  // Enable/disable file input and upload button based on file selection and username
   usernameInput.addEventListener("input", (e) => {
     updateFileInputState();
-    if (!e.target.value.trim()) {
-      uploadButton.disabled = true;
-      csvUpload.value = ""; // Clear file input if username is cleared
-    } else {
-      // Clear any previous warning once typing starts
-      showUploadMessage('', '');
-    }
+    // Clear any previous warning once typing starts
+    showUploadMessage('', '');
   });
 
   // Enable/disable upload button based on file selection
   csvUpload.addEventListener("change", (e) => {
-    uploadButton.disabled = !e.target.files.length || !usernameInput.value.trim();
+    uploadButton.disabled = !e.target.files.length;
   });
 
   // Handle file upload when button is clicked
   uploadButton.addEventListener("click", () => {
     const file = csvUpload.files[0];
-    const username = usernameInput.value.trim();
+    const username = usernameInput.value.trim(); // Optional now
 
-    if (!file || !username) {
-      showUploadMessage("Please select a file and enter your username", "error");
+    if (!file) {
+      showUploadMessage("Please select a file", "error");
       return;
     }
 
     const formData = new FormData();
     formData.append("csv", file);
-    formData.append("username", username);
+    if (username) {
+      formData.append("username", username);
+    }
+    // If no username provided, backend will use account display_name
 
     uploadButton.disabled = true;
     showUploadMessage("Uploading...", "");
@@ -660,7 +748,7 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(response => {
         if (!response.ok) {
           return response.json().then(err => {
-            throw new Error(err.message || "Upload failed");
+            throw new Error(err.error || err.message || "Upload failed");
           });
         }
         return response.json();
@@ -669,8 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Clear inputs after any successful upload attempt
         csvUpload.value = "";
         usernameInput.value = "";
-        csvUpload.disabled = true;
-        uploadButton.disabled = true;
+        uploadButton.disabled = true; // Disabled until new file selected
         updateFileInputState();
 
         if (data.message === "No new teams to add") {
@@ -1926,7 +2013,7 @@ function showLoginRequired() {
         const res = await fetch('/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ identifier: email, password })
         });
 
         if (res.ok) {

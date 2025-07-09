@@ -97,9 +97,9 @@
       <div id="uploadSection">
         <h2>Upload Your Teams</h2>
         <p>Add your drafts to the community vote pool</p>
-        <input type="text" id="usernameInput" placeholder="Underdog or Twitter handle" />
+        <input type="text" id="usernameInput" placeholder="Username (leave blank to use your account name)" />
         <div class="file-input-container">
-          <input type="file" id="csvUpload" accept=".csv" disabled />
+          <input type="file" id="csvUpload" accept=".csv" />
           <button id="uploadButton" class="upload-button" disabled>Upload Teams</button>
         </div>
         <div id="uploadMessage" class="upload-message"></div>
@@ -108,17 +108,43 @@
       <!-- Login section (shown when not logged in) -->
       <div id="loginPanel" style="display:none;">
         <h2>Sign In to Upload Teams</h2>
-        <button id="loginTwitterBtn" class="x-btn">Log in with X</button>
-        <div class="login-divider">or</div>
-        <form id="loginEmailForm">
-          <input type="email" id="loginEmail" placeholder="Email" required>
-          <input type="password" id="loginPassword" placeholder="Password" required>
-          <div class="login-actions">
-            <button type="submit">Log in</button>
-            <button type="button" id="registerBtn">Sign up</button>
-          </div>
-          <a href="#" id="forgotPasswordLink">Forgot password?</a>
-        </form>
+        
+        <!-- Tab headers -->
+        <div class="auth-tabs">
+          <button id="loginTab" class="auth-tab active">Sign In</button>
+          <button id="signupTab" class="auth-tab">Create Account</button>
+        </div>
+        
+        <!-- Login form -->
+        <div id="loginForm" class="auth-form">
+          <button id="loginTwitterBtn" class="x-btn">Log in with X</button>
+          <div class="login-divider">or</div>
+          <form id="loginEmailForm">
+            <input type="text" id="loginEmail" placeholder="Email or Username" required>
+            <input type="password" id="loginPassword" placeholder="Password" required>
+            <div class="login-actions">
+              <button type="submit">Log in</button>
+            </div>
+            <a href="#" id="forgotPasswordLink">Forgot password?</a>
+          </form>
+        </div>
+        
+        <!-- Signup form -->
+        <div id="signupForm" class="auth-form" style="display:none;">
+          <button id="signupTwitterBtn" class="x-btn">Sign up with X</button>
+          <div class="login-divider">or</div>
+          <form id="signupEmailForm">
+            <input type="text" id="signupUsername" placeholder="Username" required maxlength="30">
+            <input type="email" id="signupEmail" placeholder="Email" required>
+            <input type="email" id="signupEmailConfirm" placeholder="Confirm Email" required>
+            <input type="password" id="signupPassword" placeholder="Password" required>
+            <input type="password" id="signupPasswordConfirm" placeholder="Confirm Password" required>
+            <div class="login-actions">
+              <button type="submit">Create Account</button>
+            </div>
+          </form>
+        </div>
+        
         <div id="loginMessage" class="upload-message" style="display:none;"></div>
       </div>
     </div>

@@ -252,8 +252,10 @@
       });
       const dayCounts = dRows.map(r=>r.votes);
 
+      // Get current instant and let the formatter handle the time-zone conversion to ET.
+      const nowEt = new Date();
+
       // Determine today's ET label
-      const nowEt = new Date(new Date().toLocaleString('en-US', { timeZone:'America/New_York' }));
       const todayStr = dateFmt.format(nowEt);
       const todayIndex = dayLabels.findIndex(l => l === todayStr);
 
