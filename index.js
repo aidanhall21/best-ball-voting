@@ -1504,6 +1504,7 @@ app.get('/my/profile', requireAuth, (req, res) => {
 
                   // Compute median madden rating
                   const maddens = teamRows
+                    .filter(r => (r.wins + r.losses) >= 1) // Only include teams with at least one vote
                     .map(r => r.madden)
                     .filter(m => m && m > 0)
                     .sort((a, b) => a - b);
@@ -1625,6 +1626,7 @@ app.get('/profile/:username', (req, res) => {
 
                 // Compute median madden rating
                 const maddens = teamRows
+                  .filter(r => (r.wins + r.losses) >= 1) // Only include teams with at least one vote
                   .map(r => r.madden)
                   .filter(m => m && m > 0)
                   .sort((a, b) => a - b);

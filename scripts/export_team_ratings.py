@@ -289,4 +289,17 @@ con.executemany(
 )
 
 con.commit()
+
+# -------------------------------------------------------------
+# 4. Invalidate cached leaderboard files so fresh ratings appear
+# -------------------------------------------------------------
+session_dir = os.getenv("SESSION_DIR") or (os.path.dirname(DB_PATH) if DB_PATH else ".")
+for pattern in ("leaderboard_*.json.gz", "leaderboard_users_*.json.gz"):
+    for f in Path(session_dir).glob(pattern):
+        try:
+            f.unlink()
+            print(f"Deleted stale cache file: {f}")
+        except Exception as e:
+            print(f"Failed to delete {f}: {e}")
+
 # ------------------------------------------------------------- 
