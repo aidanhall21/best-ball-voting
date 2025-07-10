@@ -16,6 +16,9 @@ Defaults:
     DB_PATH     = ./teams-2025-07-02-0843.db   (same default as the Node app)
     OUTPUT_CSV  = team_ratings.csv
 """
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file into environment variables
+
 import sys
 import os
 import sqlite3
@@ -38,7 +41,7 @@ SD_MULTIPLIER = 0       # unused
 # -------------------------------------------------------------
 # 0. Parse command-line arguments
 # -------------------------------------------------------------
-DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-09-1727.db")
+DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-10-1426.db")
 # OUTPUT_CSV = sys.argv[2] if len(sys.argv) > 2 else "team_ratings.csv"
 print(f"DB_PATH: {DB_PATH}")
 
@@ -238,15 +241,15 @@ ratings_df = pd.DataFrame(results)
 def pct_to_madden(p: float) -> float:
     """Convert a percentile (0-1) to a 10-99 Madden-style rating with decimals."""
     if p < 0.10:
-        score = 10 + (p / 0.10 * 49)  # 10-59 range
+        score = 10 + (p / 0.10 * 49)  # 0-10 percentile
     elif p < 0.25:
-        score = 60 + ((p - 0.10) / 0.15 * 9)
+        score = 60 + ((p - 0.10) / 0.15 * 9)  # 10-25 percentile
     elif p < 0.55:
-        score = 70 + ((p - 0.25) / 0.30 * 9)
+        score = 70 + ((p - 0.25) / 0.30 * 9)  # 25-55 percentile
     elif p < 0.95:
-        score = 80 + ((p - 0.55) / 0.40 * 9)
+        score = 80 + ((p - 0.55) / 0.40 * 9)  # 55-95 percentile
     else:
-        score = 90 + ((p - 0.95) / 0.05 * 9)
+        score = 90 + ((p - 0.95) / 0.05 * 9)  # 95-100 percentile
     return max(10.0, min(99.0, score))
 
 # Percentile rank of each team’s ability across *all* tournaments
@@ -294,12 +297,47 @@ con.commit()
 # 4. Invalidate cached leaderboard files so fresh ratings appear
 # -------------------------------------------------------------
 session_dir = os.getenv("SESSION_DIR") or (os.path.dirname(DB_PATH) if DB_PATH else ".")
+deleted_files = 0
 for pattern in ("leaderboard_*.json.gz", "leaderboard_users_*.json.gz"):
     for f in Path(session_dir).glob(pattern):
         try:
             f.unlink()
             print(f"Deleted stale cache file: {f}")
+            deleted_files += 1
         except Exception as e:
             print(f"Failed to delete {f}: {e}")
+
+# Clear in-memory cache in the Node.js process if any files were deleted
+if deleted_files > 0:
+    try:
+        import urllib.request
+        import urllib.parse
+        import json
+        
+        # Try to notify the web app to clear its in-memory cache
+        base_url = os.getenv("BASE_URL", "http://localhost:3000")
+        internal_secret = os.getenv("INTERNAL_SECRET", "change_this_internal_secret")
+        
+
+        
+        # Send secret in header instead of body for better reliability
+        req = urllib.request.Request(
+            f"{base_url}/internal/clear-cache",
+            data=b"",  # Empty body
+            headers={
+                "Content-Type": "application/json",
+                "X-Internal-Secret": internal_secret
+            },
+            method="POST"
+        )
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            print(f"✓ Cleared in-memory cache: {result}")
+            
+    except Exception as e:
+        # Don't fail the whole script if cache clearing fails
+        print(f"Warning: Failed to clear in-memory cache: {e}")
+        print("This is not critical - the web app will rebuild cache on next request")
 
 # ------------------------------------------------------------- 

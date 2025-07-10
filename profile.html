@@ -1071,6 +1071,7 @@
             
             const displayName = user.display_name || (viewingUsername || 'User Profile Name Needed');
             const displayNameClass = !user.display_name && isOwnProfile ? 'class="no-display-name"' : '';
+            window.profileUserName = (user.display_name || viewingUsername || '').toLowerCase();
             
             // Add median rating if available
             const ratingDisplay = medianMadden ? formatRatingBox(medianMadden) : '';
@@ -1121,7 +1122,7 @@
 
             // --- Store and render Vote Results with sortable table ---
             window.voteResultsData = voteResults || [];
-            window.voteSortKey = 'win_pct';
+            window.voteSortKey = 'madden';
             window.voteSortDir = 'desc';
             const resultsDiv = document.getElementById('voteResultsContent');
 
@@ -1309,11 +1310,16 @@
         friendsTbody.parentElement.parentElement.style.display = 'block'; // ensure visible
         foesTbody.parentElement.parentElement.style.display = 'block';
 
-        noFriendsMsg.style.display = stats.friends.length ? 'none' : 'block';
-        noFoesMsg.style.display = stats.foes.length ? 'none' : 'block';
+        // Exclude the profile owner from friends & foes lists
+        const profileName = (window.profileUserName || '').toLowerCase();
+        const filteredFriends = stats.friends.filter(v => (v.name || '').toLowerCase() !== profileName);
+        const filteredFoes = stats.foes.filter(v => (v.name || '').toLowerCase() !== profileName);
 
-        stats.friends.forEach(f => friendsTbody.appendChild(createRow(f)));
-        stats.foes.forEach(f => foesTbody.appendChild(createRow(f)));
+        noFriendsMsg.style.display = filteredFriends.length ? 'none' : 'block';
+        noFoesMsg.style.display = filteredFoes.length ? 'none' : 'block';
+
+        filteredFriends.forEach(f => friendsTbody.appendChild(createRow(f)));
+        filteredFoes.forEach(f => foesTbody.appendChild(createRow(f)));
       }
 
       // Logout button

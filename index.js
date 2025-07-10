@@ -215,6 +215,16 @@ async function verifyCaptcha(req, res, next) {
   }
 }
 
+// Health check endpoint (lightweight, no database dependency)
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: ASSET_VERSION
+  });
+});
+
 // Serve index.html without CSRF token since we're using Turnstile
 app.get('/', (req, res) => {
   const htmlPath = path.join(__dirname, 'index.html');
@@ -971,7 +981,37 @@ app.get('/leaderboard', async (req, res) => {
   res.setHeader('Cache-Control', `public, max-age=${LEADER_CACHE_REFRESH_MS / 1000}`);
   res.setHeader('ETag', meta.etag);
 
-  fs.createReadStream(meta.filePath).pipe(res);
+  // Create read stream with error handling for missing cache files
+  const stream = fs.createReadStream(meta.filePath);
+  stream.on('error', async (err) => {
+    if (err.code === 'ENOENT') {
+      console.log(`Cache file missing for leaderboard (${key}), rebuilding...`);
+      try {
+        // Clear stale meta and rebuild cache
+        teamLeaderboardCacheMeta.delete(key);
+        await buildTeamLeaderboardCache(tournament);
+        const newMeta = teamLeaderboardCacheMeta.get(key);
+        
+        // Update response headers with new ETag
+        res.setHeader('ETag', newMeta.etag);
+        
+        // Try streaming the newly created file
+        const newStream = fs.createReadStream(newMeta.filePath);
+        newStream.on('error', (newErr) => {
+          console.error('Failed to stream rebuilt cache:', newErr);
+          res.status(500).json({ error: 'Cache rebuild failed' });
+        });
+        newStream.pipe(res);
+      } catch (e) {
+        console.error('Failed to rebuild leaderboard cache after ENOENT:', e);
+        res.status(500).json({ error: 'Cache rebuild failed' });
+      }
+    } else {
+      console.error('Leaderboard stream error:', err);
+      res.status(500).json({ error: 'File stream error' });
+    }
+  });
+  stream.pipe(res);
 });
 
 app.get('/leaderboard/users', async (req, res) => {
@@ -998,7 +1038,37 @@ app.get('/leaderboard/users', async (req, res) => {
   res.setHeader('Cache-Control', `public, max-age=${LEADER_CACHE_REFRESH_MS / 1000}`);
   res.setHeader('ETag', meta.etag);
 
-  fs.createReadStream(meta.filePath).pipe(res);
+  // Create read stream with error handling for missing cache files
+  const stream = fs.createReadStream(meta.filePath);
+  stream.on('error', async (err) => {
+    if (err.code === 'ENOENT') {
+      console.log(`Cache file missing for user leaderboard (${key}), rebuilding...`);
+      try {
+        // Clear stale meta and rebuild cache
+        userLeaderboardCacheMeta.delete(key);
+        await buildUserLeaderboardCache(tournament);
+        const newMeta = userLeaderboardCacheMeta.get(key);
+        
+        // Update response headers with new ETag
+        res.setHeader('ETag', newMeta.etag);
+        
+        // Try streaming the newly created file
+        const newStream = fs.createReadStream(newMeta.filePath);
+        newStream.on('error', (newErr) => {
+          console.error('Failed to stream rebuilt user cache:', newErr);
+          res.status(500).json({ error: 'Cache rebuild failed' });
+        });
+        newStream.pipe(res);
+      } catch (e) {
+        console.error('Failed to rebuild user leaderboard cache after ENOENT:', e);
+        res.status(500).json({ error: 'Cache rebuild failed' });
+      }
+    } else {
+      console.error('User leaderboard stream error:', err);
+      res.status(500).json({ error: 'File stream error' });
+    }
+  });
+  stream.pipe(res);
 });
 
 // Get available tournaments for filter
@@ -1014,6 +1084,59 @@ app.get("/tournaments", (req, res) => {
     if (err) return res.status(500).json({ error: "DB error" });
     res.json(rows.map(r => r.tournament));
   });
+});
+
+// Admin endpoint to clear leaderboard cache (called by rating script)
+app.post('/admin/clear-cache', requireAdmin, (req, res) => {
+  try {
+    const teamCacheSize = teamLeaderboardCacheMeta.size;
+    const userCacheSize = userLeaderboardCacheMeta.size;
+    
+    teamLeaderboardCacheMeta.clear();
+    userLeaderboardCacheMeta.clear();
+    
+    console.log(`Cleared ${teamCacheSize} team cache entries and ${userCacheSize} user cache entries`);
+    res.json({ 
+      status: 'cleared', 
+      teamCacheCleared: teamCacheSize, 
+      userCacheCleared: userCacheSize 
+    });
+  } catch (e) {
+    console.error('Error clearing cache:', e);
+    res.status(500).json({ error: 'Failed to clear cache' });
+  }
+});
+
+// Internal endpoint to clear leaderboard cache (called by rating script with secret)
+app.post('/internal/clear-cache', (req, res) => {
+  const secret = (req.body && req.body.secret) || req.headers['x-internal-secret'];
+  const expectedSecret = process.env.INTERNAL_SECRET || 'change_this_internal_secret';
+  
+  if (!secret) {
+    return res.status(400).json({ error: 'Secret required in body or x-internal-secret header' });
+  }
+  
+  if (secret !== expectedSecret) {
+    return res.status(403).json({ error: 'Invalid secret' });
+  }
+  
+  try {
+    const teamCacheSize = teamLeaderboardCacheMeta.size;
+    const userCacheSize = userLeaderboardCacheMeta.size;
+    
+    teamLeaderboardCacheMeta.clear();
+    userLeaderboardCacheMeta.clear();
+    
+    console.log(`Internal: Cleared ${teamCacheSize} team cache entries and ${userCacheSize} user cache entries`);
+    res.json({ 
+      status: 'cleared', 
+      teamCacheCleared: teamCacheSize, 
+      userCacheCleared: userCacheSize 
+    });
+  } catch (e) {
+    console.error('Error clearing cache:', e);
+    res.status(500).json({ error: 'Failed to clear cache' });
+  }
 });
 
 // Single team detail
