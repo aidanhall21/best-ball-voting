@@ -20,7 +20,7 @@ let teamTournaments = {};
 let currentMode = "upload"; // 'upload' | 'versus' | 'leaderboard'
 let leaderboardType = "team"; // 'team' or 'user'
 let leaderboardData = [];
-let sortKey = "win_pct";
+let sortKey = "madden"; // Default to Draftr Rating (team view is default)
 let sortDir = "desc";
 let teamUsernames = {};
 let teamUserIds = {}; // teamId -> user_id mapping
@@ -1484,9 +1484,10 @@ async function renderVersus() {
 
 // fetchLeaderboard
 function fetchLeaderboard(force = false) {
-  // Ensure default sort for both views is by Win Percentage (desc)
-  if (sortKey !== "win_pct") {
-    sortKey = "win_pct";
+  // Ensure default sort for both views is by Draftr Rating (desc)
+  const expectedRatingKey = leaderboardType === "team" ? "madden" : "median_madden";
+  if (sortKey !== expectedRatingKey) {
+    sortKey = expectedRatingKey;
     sortDir = "desc";
   }
 
@@ -1579,7 +1580,7 @@ function renderLeaderboard(data) {
     btnUser.classList.toggle("active", leaderboardType === "user");
     btnTeam.onclick = () => {
       leaderboardType = "team";
-      sortKey = "win_pct";
+      sortKey = "madden"; // Default to Draftr Rating for team view
       sortDir = "desc";
       currentTournament = ""; // reset tournament
       // Keep currentUsernameFilter as-is
@@ -1590,7 +1591,7 @@ function renderLeaderboard(data) {
     };
     btnUser.onclick = () => {
       leaderboardType = "user";
-      sortKey = "win_pct";
+      sortKey = "median_madden"; // Default to Draftr Rating for user view
       sortDir = "desc";
       currentTournament = "";
       currentUsernameFilter = ""; // reset user filter when switching views

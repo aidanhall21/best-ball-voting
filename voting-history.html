@@ -137,9 +137,8 @@
     .votes-history-table td:nth-child(3) { width: 80px; text-align: center; }  /* Draftr Rating */
     .votes-history-table th:nth-child(3) { text-align: center; white-space: nowrap; min-width: 100px; }  /* Center header and keep on one line */
     .votes-history-table td:nth-child(4) { width: 70px; }  /* View */
-    .votes-history-table td:nth-child(5) { min-width: 160px; max-width: 250px; } /* Contest */
-    .votes-history-table td:nth-child(6) { min-width: 120px; max-width: 180px; } /* Voter */
-    .votes-history-table td:nth-child(7) { width: 120px; } /* Date */
+    .votes-history-table td:nth-child(5) { min-width: 140px; max-width: 200px; } /* Voter */
+    .votes-history-table td:nth-child(6) { width: 120px; } /* Date */
 
     /* Rating box styles - match vote results table styling from profile.html */
     .rating-box {
@@ -266,10 +265,9 @@
       }
 
       /* Adjust column widths for mobile */
-      .votes-history-table td:nth-child(2) { min-width: 100px; max-width: 150px; }
+      .votes-history-table td:nth-child(2) { min-width: 100px; max-width: 150px; } /* Opponent */
       .votes-history-table td:nth-child(3) { width: 60px; } /* Rating column mobile width */
-      .votes-history-table td:nth-child(5) { min-width: 120px; max-width: 180px; }
-      .votes-history-table td:nth-child(6) { min-width: 80px; max-width: 120px; }
+      .votes-history-table td:nth-child(5) { min-width: 100px; max-width: 140px; } /* Voter */
 
       /* Make rating boxes slightly smaller on mobile - match profile.html */
       .rating-box {
@@ -523,7 +521,6 @@
                 <th>Opponent</th>
                 <th>Draftr Rating</th>
                 <th>View</th>
-                <th>Contest</th>
                 <th>Voter</th>
                 <th>Date</th>
               </tr>
@@ -543,7 +540,6 @@
               <td>${vote.opponent_username || 'Anonymous'}</td>
               <td>${ratingBox}</td>
               <td><button class="view-opponent-btn" data-id="${vote.opponent_id}">View</button></td>
-              <td>${vote.opponent_tournament || '-'}</td>
               <td>${vote.voter_name || 'Anonymous'}</td>
               <td>${date}</td>
             </tr>

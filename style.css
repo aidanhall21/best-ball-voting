@@ -1227,16 +1227,25 @@ body {
       min-width: 30px;
     }
     
-    /* Table responsive */
-    .leaderboard-table {
-      font-size: 14px;
-      width: 100%;
+    /* Table responsive - allow horizontal scrolling */
+    .leaderboard-table-container {
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 10px; /* Add some padding for the scrollbar */
+    }
+    
+    .leaderboard-table {
+      font-size: 11px; /* Smaller text for mobile */
+      width: 100%;
+      min-width: 480px; /* Reduced minimum width */
     }
     
     .leaderboard-table th,
     .leaderboard-table td {
-      padding: 4px 2px;
+      padding: 4px 6px; /* Tighter padding */
+      white-space: nowrap; /* Prevent text wrapping by default */
+      overflow: visible; /* Allow content to be fully visible */
+      text-overflow: clip; /* Don't clip text with ellipsis */
     }
 
     /* Allow wrapping only on mobile */
@@ -1244,28 +1253,31 @@ body {
       flex-wrap: wrap;          /* allow wrapping for next button container */
     }
 
-    /* Mobile adjustments */
-    .leaderboard-table th,
-    .leaderboard-table td {
-      padding: 4px 2px;
-      font-size: 10px;
+    /* Team view mobile adjustments - condensed widths */
+    .leaderboard-table.team-view th:nth-child(1) { width: 60px; } /* Team (View button) */
+    .leaderboard-table.team-view th:nth-child(2) { width: 80px; } /* Draftr Rating */
+    .leaderboard-table.team-view th:nth-child(3) { width: 90px; } /* User */
+    .leaderboard-table.team-view th:nth-child(4) { 
+      width: 110px; /* Contest - still wide enough for names */
+      white-space: normal; /* Allow contest names to wrap */
+      word-wrap: break-word;
+    }
+    .leaderboard-table.team-view th:nth-child(5) { width: 35px; } /* W */
+    .leaderboard-table.team-view th:nth-child(6) { width: 35px; } /* L */
+    .leaderboard-table.team-view th:nth-child(7) { width: 65px; } /* Win % */
+
+    /* Team view - allow contest column content to wrap */
+    .leaderboard-table.team-view td:nth-child(4) {
+      white-space: normal;
+      word-wrap: break-word;
     }
 
-    /* Team view mobile adjustments */
-    .leaderboard-table.team-view th:nth-child(1) { width: 8%; } /* Team */
-    .leaderboard-table.team-view th:nth-child(2) { width: 12%; } /* Rating */
-    .leaderboard-table.team-view th:nth-child(3) { width: 16%; } /* User */
-    .leaderboard-table.team-view th:nth-child(4) { width: 18%; } /* Contest */
-    .leaderboard-table.team-view th:nth-child(5) { width: 8%; } /* W */
-    .leaderboard-table.team-view th:nth-child(6) { width: 8%; } /* L */
-    .leaderboard-table.team-view th:nth-child(7) { width: 20%; } /* Win % */
-
-    /* User view mobile adjustments */
-    .leaderboard-table.user-view th:nth-child(1) { width: 18%; } /* Rating */
-    .leaderboard-table.user-view th:nth-child(2) { width: 40%; } /* User - give more space */
-    .leaderboard-table.user-view th:nth-child(3) { width: 12%; } /* W */
-    .leaderboard-table.user-view th:nth-child(4) { width: 12%; } /* L */
-    .leaderboard-table.user-view th:nth-child(5) { width: 18%; } /* Win % */
+    /* User view mobile adjustments - condensed */
+    .leaderboard-table.user-view th:nth-child(1) { width: 80px; } /* Rating */
+    .leaderboard-table.user-view th:nth-child(2) { width: 120px; } /* User */
+    .leaderboard-table.user-view th:nth-child(3) { width: 35px; } /* W */
+    .leaderboard-table.user-view th:nth-child(4) { width: 35px; } /* L */
+    .leaderboard-table.user-view th:nth-child(5) { width: 65px; } /* Win % */
 
     .leaderboard-switch button {
       font-size: 11px;
