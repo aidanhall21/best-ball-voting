@@ -285,13 +285,142 @@
     }
 
     /* Right-align numeric columns */
-    .vote-results-table td:nth-child(3),
     .vote-results-table td:nth-child(4),
-    .vote-results-table td:nth-child(5),
-    .vote-results-table th:nth-child(3),
+    .vote-results-table td:nth-child(6),
     .vote-results-table th:nth-child(4),
+    .vote-results-table th:nth-child(6) {
+      text-align: center;
+    }
+
+    /* Center-align rating column */
+    .vote-results-table td:nth-child(2),
+    .vote-results-table th:nth-child(2) {
+      text-align: center;
+    }
+
+    /* Left-align Contest column */
+    .vote-results-table td:nth-child(3),
+    .vote-results-table th:nth-child(3),
+    .vote-results-table td:nth-child(5),
     .vote-results-table th:nth-child(5) {
-      text-align: right;
+      text-align: left;
+    }
+
+    /* Column width optimizations */
+    .vote-results-table th,
+    .vote-results-table td {
+      padding: 8px;
+      white-space: nowrap;
+    }
+
+    /* Team column - allow wrapping but with min/max width */
+    .vote-results-table th:first-child,
+    .vote-results-table td:first-child {
+      min-width: 100px;
+      max-width: 200px;
+      white-space: normal;
+      width: 25%;
+    }
+
+    /* Rating column - fixed width for consistency */
+    .vote-results-table th:nth-child(2),
+    .vote-results-table td:nth-child(2) {
+      width: 80px;
+      min-width: 80px;
+    }
+
+    /* Contest column - allow wrapping with max width */
+    .vote-results-table th:nth-child(4),
+    .vote-results-table td:nth-child(4) {
+      max-width: 150px;
+      white-space: normal;
+      width: 20%;
+    }
+
+    /* W/L columns - minimal fixed width */
+    .vote-results-table th:nth-child(5),
+    .vote-results-table td:nth-child(5),
+    .vote-results-table th:nth-child(6),
+    .vote-results-table td:nth-child(6) {
+      width: 50px;
+      min-width: 50px;
+    }
+
+    /* Win % column - slightly wider fixed width */
+    .vote-results-table th:last-child,
+    .vote-results-table td:last-child {
+      width: 70px;
+      min-width: 70px;
+    }
+
+    /* Smaller rating boxes for tables (match leaderboard size) */
+    .vote-results-table .rating-box {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 12px;
+      min-width: 24px;
+      border: 1px solid;
+      margin: 0;
+    }
+
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      .vote-results-table {
+        font-size: 14px;
+      }
+
+      /* Make table container scrollable horizontally */
+      #voteResultsContent {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      }
+
+      /* Ensure table takes full width */
+      .vote-results-table {
+        min-width: 600px; /* Ensure all columns are visible when scrolling */
+      }
+
+      .vote-results-table th,
+      .vote-results-table td {
+        padding: 6px 4px;
+      }
+
+      /* Adjust column widths for mobile */
+      .vote-results-table th:first-child,
+      .vote-results-table td:first-child {
+        min-width: 80px;
+        max-width: 120px;
+      }
+
+      .vote-results-table th:nth-child(4),
+      .vote-results-table td:nth-child(4) {
+        max-width: 100px;
+      }
+
+      /* Make View Team and View Votes buttons smaller and fit on one line */
+      .view-team-btn, 
+      .view-votes-btn {
+        padding: 2px 4px;
+        font-size: 10px;
+        margin-right: 2px;
+        white-space: nowrap;
+        display: inline-block;
+        width: calc(50% - 2px); /* Split width evenly minus margin */
+      }
+
+      /* Remove right margin from last button */
+      .view-votes-btn {
+        margin-right: 0;
+      }
+
+      /* Container for buttons to ensure they stay on one line */
+      .vote-results-table td:first-child {
+        white-space: nowrap;
+        padding: 6px 2px;
+        width: auto;
+        min-width: 120px; /* Ensure enough space for both buttons */
+      }
     }
 
     /* Styling for View Team and View Votes buttons */
@@ -662,6 +791,85 @@
       visibility: visible;
       transition: opacity 0.2s ease;
     }
+
+    /* Rating boxes with tier-based colors */
+    .rating-box {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 18px;
+      min-width: 40px;
+      text-align: center;
+      border: 2px solid;
+      margin-right: 16px;
+    }
+
+    .profile-name-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+
+    @media (max-width: 768px) {
+      .rating-box {
+        padding: 6px 10px;
+        font-size: 16px;
+        min-width: 36px;
+        margin-right: 12px;
+      }
+      
+      .profile-name-container {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      /* Keep consistent table rating box size on mobile */
+      .vote-results-table .rating-box {
+        padding: 3px 6px;
+        font-size: 10px;
+        min-width: 20px;
+        margin: 0;
+      }
+    }
+
+    /* Tier colors based on Madden rating ranges */
+    .rating-box.tier-none {
+      background-color: #374151;
+      color: #9ca3af;
+      border-color: #4b5563;
+    }
+
+    .rating-box.tier-low {
+      background-color: #dc2626;
+      color: #ffffff;
+      border-color: #b91c1c;
+    }
+
+    .rating-box.tier-below {
+      background-color: #ea580c;
+      color: #ffffff;
+      border-color: #c2410c;
+    }
+
+    .rating-box.tier-average {
+      background-color: #ca8a04;
+      color: #ffffff;
+      border-color: #a16207;
+    }
+
+    .rating-box.tier-good {
+      background-color: #16a34a;
+      color: #ffffff;
+      border-color: #15803d;
+    }
+
+    .rating-box.tier-elite {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #1d4ed8;
+    }
   </style>
 </head>
 <body>
@@ -761,6 +969,22 @@
   </div>
 
   <script>
+    // Helper functions for rating display
+    function getRatingTierClass(rating) {
+      if (!rating || rating === 0) return 'tier-none';
+      if (rating < 60) return 'tier-low';      // 0-59: Red
+      if (rating < 70) return 'tier-below';    // 60-69: Orange  
+      if (rating < 80) return 'tier-average';  // 70-79: Yellow
+      if (rating < 90) return 'tier-good';     // 80-89: Green
+      return 'tier-elite';                     // 90-99: Blue
+    }
+
+    function formatRatingBox(rating) {
+      if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
+      const tierClass = getRatingTierClass(rating);
+      return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       // Track whether we're viewing our own profile globally
       let viewingOwnProfile = false;
@@ -834,7 +1058,7 @@
           .then(data => {
             if (!data) return;
 
-            const { user, uploads, voteResults, isOwnProfile, viewerLoggedIn } = data;
+            const { user, uploads, voteResults, isOwnProfile, viewerLoggedIn, medianMadden } = data;
             const infoDiv = document.getElementById('profileInfo');
             const uploadsDiv = document.getElementById('uploadsSummary');
 
@@ -848,12 +1072,18 @@
             const displayName = user.display_name || (viewingUsername || 'User Profile Name Needed');
             const displayNameClass = !user.display_name && isOwnProfile ? 'class="no-display-name"' : '';
             
+            // Add median rating if available
+            const ratingDisplay = medianMadden ? formatRatingBox(medianMadden) : '';
+            
             infoDiv.innerHTML = `
               ${editButton}
               <h2>
-                <span id="displayNameContainer" ${displayNameClass}>
-                  ${displayName}
-                </span>
+                <div class="profile-name-container">
+                  ${ratingDisplay}
+                  <span id="displayNameContainer" ${displayNameClass}>
+                    ${displayName}
+                  </span>
+                </div>
               </h2>
               ${user.twitter_username ? `<p>@${user.twitter_username}</p>` : ''}
             `;
@@ -911,16 +1141,22 @@
                   }
                 }
                 if (key === 'wins') {
-                  if (a.wins !== b.wins) return (a.wins - b.wins) * mul * -1; // since mul flips
+                  if (a.wins !== b.wins) return (b.wins - a.wins) * (dir === 'desc' ? 1 : -1);
                   return (b.win_pct - a.win_pct) * (dir === 'desc' ? 1 : -1);
                 }
                 if (key === 'losses') {
-                  if (a.losses !== b.losses) return (a.losses - b.losses) * mul * -1;
+                  if (a.losses !== b.losses) return (b.losses - a.losses) * (dir === 'desc' ? 1 : -1);
                   return (b.win_pct - a.win_pct) * (dir === 'desc' ? 1 : -1);
                 }
                 if (key === 'tournament') {
-                  const ta = (a.tournament || '').localeCompare(b.tournament || '');
-                  return ta * mul;
+                  const ta = (b.tournament || '').localeCompare(a.tournament || ''); // Reversed comparison for descending
+                  return ta * (dir === 'desc' ? 1 : -1);
+                }
+                if (key === 'madden') {
+                  const am = parseFloat(a.madden || 0);
+                  const bm = parseFloat(b.madden || 0);
+                  if (am !== bm) return (bm - am) * (dir === 'desc' ? 1 : -1); // Changed to bm-am for descending
+                  return (b.win_pct - a.win_pct) * (dir === 'desc' ? 1 : -1);
                 }
                 return 0;
               });
@@ -938,6 +1174,7 @@
                   <thead>
                     <tr>
                       <th>Team</th>
+                      <th class="sortable" data-key="madden">Draftr Rating</th>
                       <th class="sortable" data-key="tournament">Contest</th>
                       <th class="sortable" data-key="wins">W</th>
                       <th class="sortable" data-key="losses">L</th>
@@ -949,12 +1186,14 @@
 
               sorted.forEach(r => {
                 const winPct = parseFloat(r.win_pct) === 0 ? '0' : r.win_pct;
+                const ratingDisplay = r.madden ? formatRatingBox(r.madden) : '<span class="rating-box tier-none">-</span>';
                 html += `
                   <tr>
                     <td>
                       <button class="view-team-btn" data-id="${r.id}">View Team</button>
                       <button class="view-votes-btn" data-id="${r.id}">View Votes</button>
                     </td>
+                    <td>${ratingDisplay}</td>
                     <td>${r.tournament || '-'}</td>
                     <td>${r.wins}</td>
                     <td>${r.losses}</td>

@@ -23,7 +23,7 @@ archive/
 
 # --- Local Bradley-Terry rating tooling (ignored) ---
 venv/
-requirements.txt
+# requirements.txt
 # scripts/
 team_ratings.csv
 

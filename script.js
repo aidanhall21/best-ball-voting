@@ -3,7 +3,9 @@
   const meta = document.querySelector('meta[name="env"]');
   const env = meta ? meta.getAttribute('content') : (window.NODE_ENV || 'production');
   const isProd = env === 'production';
-  if (isProd && !window.DEBUG_LOGS) {
+  const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const suppressLogs = isProd && !isLocalhost && !window.DEBUG_LOGS;
+  if (suppressLogs) {
     // Suppress only verbose logs; keep warn/error visible for troubleshooting
     ['log','info','debug'].forEach(fn => {
       console[fn] = () => {};
@@ -923,6 +925,14 @@ function fetchTeams(force = false) {
       if (data.userIds) {
         teamUserIds = data.userIds;
       }
+      // NEW: vote totals map (wins & losses)
+      if (data.totals) {
+        teamVoteTotals = {};
+        Object.entries(data.totals).forEach(([tid, t]) => {
+          teamVoteTotals[tid] = (t.wins || 0) + (t.losses || 0);
+        });
+        console.debug(`📊 Loaded vote totals for ${Object.keys(teamVoteTotals).length} teams from /teams payload`);
+      }
       // Determine myTeamIds based on currentUserId
       if (currentUserId) {
         myTeamIds = Object.keys(teamUserIds).filter(tid => teamUserIds[tid] === currentUserId);
@@ -1026,7 +1036,8 @@ function buildTeamCard(teamId, players) {
   return card;
 }
 
-function renderVersus() {
+// Draft-vs-Draft matchup renderer (now async so we can look up team-meta on demand)
+async function renderVersus() {
   const container = document.getElementById("teamsContainer");
   container.innerHTML = "";
 
@@ -1055,6 +1066,9 @@ function renderVersus() {
     includeMyTeamChance = Math.max(0.05, Math.min(1, includeMyTeamChance));
   }
   const includeMyTeam = Math.random() < includeMyTeamChance;
+
+  // Debug: log include-my-team calculation
+  console.debug(`🧮 includeMyTeamChance=${(includeMyTeamChance*100).toFixed(1)}% → includeMyTeam=${includeMyTeam}`);
 
   // Create outer container for everything
   const outerContainer = document.createElement("div");
@@ -1093,28 +1107,98 @@ function renderVersus() {
 
   let teamId1, teamId2;
 
-  // --- Try to include one of the user's own teams if requested ---
-  if (includeMyTeam) {
-    const myEligible = myTeamIds.filter(tid => {
-      const tour = teamTournaments[tid];
-      if (!tour) return false;
-      const list = tourGroups[tour] || [];
-      if (list.length < 2) return false;
-      // ensure there is at least one opponent team not owned by the current user
-      return list.some(id => id !== tid && (teamUserIds[id] || null) !== currentUserId);
-    });
+  /*
+   * ===== Weighted vote-bucket selection (after "include my team" check) =====
+   * If we still don't have a first team picked, choose it based on total
+   * community votes the lineup has received so far.  Buckets & weights:
+   *   • 35% – 0 votes
+   *   • 35% – 1–5 votes
+   *   • 20% – 6–10 votes
+   *   •  5% – >10 votes
+   * (The remaining 5% probability is reserved for the "my team" logic above.)
+   */
 
-    if (myEligible.length) {
-      teamId1 = randElem(myEligible);
-      const tour = teamTournaments[teamId1];
-      const list = tourGroups[tour] || [];
-      const opponentCandidates = list.filter(id => id !== teamId1 && (teamUserIds[id] || null) !== currentUserId);
-      if (opponentCandidates.length) {
-        teamId2 = randElem(opponentCandidates);
-      } else {
-        // shouldn't happen, but fallback
-        teamId1 = null;
-      }
+  // Helper: determine bucket name from total votes
+  const getBucket = (total) => {
+    if (total === 0) return "ZERO";           // 0-0
+    if (total <= 5)  return "ONE_FIVE";       // 1-5
+    if (total <= 10) return "SIX_TEN";        // 6-10
+    return "OVER_TEN";                        // >10
+  };
+
+  // Helper: pick a bucket according to weights
+  const pickRandomBucket = () => {
+    const r = Math.random();
+    if (r < 0.40) return "ZERO";             // 35%
+    if (r < 0.75) return "ONE_FIVE";         // next 35%
+    if (r < 0.95) return "SIX_TEN";          // next 20%
+    return "OVER_TEN";                        // 5% (0.90–0.95); any value ≥0.95 falls through later
+  };
+
+  // Helper: find a random team that lives in the desired bucket.  We iterate
+  // through the shuffled team list until we find a match.  If none is found
+  // we return null so the legacy fallback can run.
+  const pickTeamInBucket = async (bucketName) => {
+    const shuffledTeams = shuffle([...teams]); // reuse existing shuffle helper
+    for (const [tid] of shuffledTeams) {
+      try {
+        let totalVotes;
+        if (teamVoteTotals[tid] !== undefined) {
+          totalVotes = teamVoteTotals[tid];
+        } else {
+          const meta = await fetchTeamMeta(tid); // cached; fast after first hit
+          totalVotes = (meta.wins || 0) + (meta.losses || 0);
+          teamVoteTotals[tid] = totalVotes; // cache for future
+        }
+        if (getBucket(totalVotes) === bucketName) {
+          console.debug(`✅ pickTeamInBucket: team ${tid} fits bucket ${bucketName} (totalVotes=${totalVotes})`);
+          return tid;
+        }
+      } catch (_) { /* ignore and keep searching */ }
+    }
+    console.debug(`⚠️ pickTeamInBucket: no team found in bucket ${bucketName}`);
+    return null; // bucket empty
+  };
+
+  // Helper: pick a team *from a provided list* that matches a bucket
+  const pickTeamInBucketFromList = async (bucketName, idList) => {
+    const shuffled = shuffle([...idList]);
+    for (const tid of shuffled) {
+      try {
+        let totalVotes;
+        if (teamVoteTotals[tid] !== undefined) {
+          totalVotes = teamVoteTotals[tid];
+        } else {
+          const meta = await fetchTeamMeta(tid);
+          totalVotes = (meta.wins || 0) + (meta.losses || 0);
+          teamVoteTotals[tid] = totalVotes;
+        }
+        if (getBucket(totalVotes) === bucketName) {
+          console.debug(`✅ pickTeamInBucketFromList: team ${tid} fits bucket ${bucketName} (totalVotes=${totalVotes})`);
+          return tid;
+        }
+      } catch (_) { /* skip */ }
+    }
+    console.debug(`⚠️ pickTeamInBucketFromList: no team found in bucket ${bucketName} within provided list`);
+    return null;
+  };
+
+  if (!teamId1) {
+    const targetBucket = pickRandomBucket();
+    console.debug(`🎲 Random bucket selected: ${targetBucket}`);
+    teamId1 = await pickTeamInBucket(targetBucket);
+  }
+
+  // If we successfully picked teamId1 via buckets, choose teamId2 respecting
+  // the existing tournament / different-user rules.  Otherwise fall through
+  // to the legacy random-tournament logic below.
+  if (teamId1 && !teamId2) {
+    const tour = teamTournaments[teamId1];
+    const list = (tour && tourGroups[tour]) ? tourGroups[tour] : [];
+    const differentUserTeams = list.filter(id => id !== teamId1 && (teamUserIds[id] || null) !== (teamUserIds[teamId1] || null));
+    if (differentUserTeams.length) {
+      const bucket2 = pickRandomBucket();
+      teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
     }
   }
 
@@ -1130,7 +1214,10 @@ function renderVersus() {
       teamId1 = randElem(list);
       const user1 = teamUsernames[teamId1] || "__anon__";
       const differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
-      teamId2 = randElem(differentUserTeams);
+      if (differentUserTeams.length) {
+        const bucket2 = pickRandomBucket();
+        teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
+      }
     } else {
       // ultimate fallback: any two distinct random teams
       let idx1 = Math.floor(Math.random() * teams.length);
@@ -1142,6 +1229,9 @@ function renderVersus() {
       teamId2 = teams[idx2][0];
     }
   }
+
+  // Final debug for the matchup that will be displayed
+  console.debug(`🏀 Matchup: teamId1=${teamId1} vs teamId2=${teamId2}`);
 
   // Retrieve players arrays
   const players1 = teams.find(([id]) => id === teamId1)[1];
@@ -1454,11 +1544,18 @@ function sortAndRender() {
         return b.wins - a.wins;      // tie-break: wins DESC
       }
       
-      // default single-column numeric sort
+      // default single-column numeric sort with proper null/undefined handling
       let aval = a[sortKey];
       let bval = b[sortKey];
-      aval = parseFloat(aval);
-      bval = parseFloat(bval);
+      
+      // Handle null/undefined values - treat them as 0 for sorting
+      aval = (aval === null || aval === undefined) ? 0 : parseFloat(aval);
+      bval = (bval === null || bval === undefined) ? 0 : parseFloat(bval);
+      
+      // Handle NaN values (just in case parseFloat fails)
+      if (isNaN(aval)) aval = 0;
+      if (isNaN(bval)) bval = 0;
+      
       if (sortDir === "asc") return aval - bval;
       return bval - aval;
     });
@@ -1713,12 +1810,14 @@ function renderLeaderboard(data) {
   const headerRow = document.createElement("tr");
   headerRow.innerHTML = leaderboardType === "team" ? `
     <th>Team</th>
+    <th class="sortable">Draftr Rating</th>
     <th>User</th>
     <th>Contest</th>
     <th class="sortable">W</th>
     <th class="sortable">L</th>
     <th class="sortable">Win %</th>
   ` : `
+    <th class="sortable">Draftr Rating</th>
     <th>User</th>
     <th class="sortable">W</th>
     <th class="sortable">L</th>
@@ -1736,12 +1835,14 @@ function renderLeaderboard(data) {
       const usernameCell = row.username && row.username !== "-" 
         ? `<a href="voting-history.html?teamId=${row.id}" class="username-link">${row.username}</a>`
         : "-";
-      tr.innerHTML = `<td>${viewBtn}</td><td>${usernameCell}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      const maddenFmt = formatRatingBox(row.madden);
+      tr.innerHTML = `<td>${viewBtn}</td><td>${maddenFmt}</td><td>${usernameCell}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     } else {
       const usernameCell = row.username && row.username !== "-" 
         ? `<a href="profile.html?user=${encodeURIComponent(row.username)}" class="username-link">${row.username}</a>`
         : "-";
-      tr.innerHTML = `<td>${usernameCell}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      const medMaddenFmt = formatRatingBox(row.median_madden);
+      tr.innerHTML = `<td>${medMaddenFmt}</td><td>${usernameCell}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     }
     tbody.appendChild(tr);
   });
@@ -1750,11 +1851,12 @@ function renderLeaderboard(data) {
 
   // Make W, L, Win% sortable
   const headerCells = headerRow.querySelectorAll("th");
-  const sortableKeys = ["wins","losses","win_pct"]; // always last three columns
+  const sortableKeys = leaderboardType === "team" 
+    ? [null, "madden", null, null, "wins", "losses", "win_pct"] // Team view: Team, Rating, User, Contest, W, L, Win%
+    : ["median_madden", null, "wins", "losses", "win_pct"];      // User view: Rating, User, W, L, Win%
   headerCells.forEach((th, idx) => {
-    const keyIdx = leaderboardType === "team" ? idx - 3 : idx - 1;
-    if (keyIdx < 0) return; // skip Team/User columns
-    const key = sortableKeys[keyIdx];
+    const key = sortableKeys[idx];
+    if (!key) return; // skip non-sortable columns
     
     th.onclick = () => {
       if (sortKey === key) {
@@ -2169,3 +2271,20 @@ setInterval(() => {
     pendingChallenges = 0;
   }
 }, 1000); // Check every 1 second for faster rate limit recovery
+
+// Helper to determine rating tier and return appropriate CSS class
+function getRatingTierClass(rating) {
+  if (!rating || rating === 0) return 'tier-none';
+  if (rating < 60) return 'tier-low';      // 0-59: Red
+  if (rating < 70) return 'tier-below';    // 60-69: Orange  
+  if (rating < 80) return 'tier-average';  // 70-79: Yellow
+  if (rating < 90) return 'tier-good';     // 80-89: Green
+  return 'tier-elite';                     // 90-99: Blue
+}
+
+// Helper to format rating in a colored box
+function formatRatingBox(rating) {
+  if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
+  const tierClass = getRatingTierClass(rating);
+  return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+}

@@ -504,18 +504,20 @@ body {
   }
   
   /* Column widths for team view */
-  .leaderboard-table.team-view th:nth-child(1) { width: 10%; } /* Team */
-  .leaderboard-table.team-view th:nth-child(2) { width: 25%; } /* User */
-  .leaderboard-table.team-view th:nth-child(3) { width: 25%; } /* Contest */
-  .leaderboard-table.team-view th:nth-child(4) { width: 10%; } /* W */
-  .leaderboard-table.team-view th:nth-child(5) { width: 10%; } /* L */
-  .leaderboard-table.team-view th:nth-child(6) { width: 20%; } /* Win % */
+  .leaderboard-table.team-view th:nth-child(1) { width: 8%; } /* Team */
+  .leaderboard-table.team-view th:nth-child(2) { width: 12%; } /* Rating */
+  .leaderboard-table.team-view th:nth-child(3) { width: 18%; } /* User */
+  .leaderboard-table.team-view th:nth-child(4) { width: 20%; } /* Contest */
+  .leaderboard-table.team-view th:nth-child(5) { width: 8%; } /* W */
+  .leaderboard-table.team-view th:nth-child(6) { width: 8%; } /* L */
+  .leaderboard-table.team-view th:nth-child(7) { width: 18%; } /* Win % */
   
   /* Column widths for user view */
-  .leaderboard-table.user-view th:nth-child(1) { width: 46%; } /* User */
-  .leaderboard-table.user-view th:nth-child(2) { width: 15%; } /* W */
-  .leaderboard-table.user-view th:nth-child(3) { width: 15%; } /* L */
-  .leaderboard-table.user-view th:nth-child(4) { width: 24%; } /* Win % */
+  .leaderboard-table.user-view th:nth-child(1) { width: 16%; } /* Rating */
+  .leaderboard-table.user-view th:nth-child(2) { width: 36%; } /* User */
+  .leaderboard-table.user-view th:nth-child(3) { width: 16%; } /* W */
+  .leaderboard-table.user-view th:nth-child(4) { width: 16%; } /* L */
+  .leaderboard-table.user-view th:nth-child(5) { width: 16%; } /* Win % */
   
   .leaderboard-table tr:nth-child(even) {
     background: #0d1117;
@@ -1250,18 +1252,20 @@ body {
     }
 
     /* Team view mobile adjustments */
-    .leaderboard-table.team-view th:nth-child(1) { width: 10%; } /* Team */
-    .leaderboard-table.team-view th:nth-child(2) { width: 25%; } /* User */
-    .leaderboard-table.team-view th:nth-child(3) { width: 25%; } /* Contest */
-    .leaderboard-table.team-view th:nth-child(4) { width: 10%; } /* W */
-    .leaderboard-table.team-view th:nth-child(5) { width: 10%; } /* L */
-    .leaderboard-table.team-view th:nth-child(6) { width: 20%; } /* Win % */
+    .leaderboard-table.team-view th:nth-child(1) { width: 8%; } /* Team */
+    .leaderboard-table.team-view th:nth-child(2) { width: 12%; } /* Rating */
+    .leaderboard-table.team-view th:nth-child(3) { width: 16%; } /* User */
+    .leaderboard-table.team-view th:nth-child(4) { width: 18%; } /* Contest */
+    .leaderboard-table.team-view th:nth-child(5) { width: 8%; } /* W */
+    .leaderboard-table.team-view th:nth-child(6) { width: 8%; } /* L */
+    .leaderboard-table.team-view th:nth-child(7) { width: 20%; } /* Win % */
 
     /* User view mobile adjustments */
-    .leaderboard-table.user-view th:nth-child(1) { width: 52%; } /* User - give more space */
-    .leaderboard-table.user-view th:nth-child(2) { width: 14%; } /* W */
-    .leaderboard-table.user-view th:nth-child(3) { width: 14%; } /* L */
-    .leaderboard-table.user-view th:nth-child(4) { width: 20%; } /* Win % */
+    .leaderboard-table.user-view th:nth-child(1) { width: 18%; } /* Rating */
+    .leaderboard-table.user-view th:nth-child(2) { width: 40%; } /* User - give more space */
+    .leaderboard-table.user-view th:nth-child(3) { width: 12%; } /* W */
+    .leaderboard-table.user-view th:nth-child(4) { width: 12%; } /* L */
+    .leaderboard-table.user-view th:nth-child(5) { width: 18%; } /* Win % */
 
     .leaderboard-switch button {
       font-size: 11px;
@@ -1683,6 +1687,55 @@ body {
 
 #signupTwitterBtn:hover {
   background: #111;
+}
+  
+  /* Rating boxes with tier-based colors */
+.rating-box {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+  min-width: 24px;
+  text-align: center;
+  border: 1px solid;
+}
+
+/* Tier colors based on Madden rating ranges */
+.rating-box.tier-none {
+  background-color: #374151;
+  color: #9ca3af;
+  border-color: #4b5563;
+}
+
+.rating-box.tier-low {
+  background-color: #dc2626;
+  color: #ffffff;
+  border-color: #b91c1c;
+}
+
+.rating-box.tier-below {
+  background-color: #ea580c;
+  color: #ffffff;
+  border-color: #c2410c;
+}
+
+.rating-box.tier-average {
+  background-color: #ca8a04;
+  color: #ffffff;
+  border-color: #a16207;
+}
+
+.rating-box.tier-good {
+  background-color: #16a34a;
+  color: #ffffff;
+  border-color: #15803d;
+}
+
+.rating-box.tier-elite {
+  background-color: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
 }
   
     

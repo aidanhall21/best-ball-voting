@@ -113,6 +113,8 @@ const csrfProtection = csrf({ sessionKey: 'session' });
 const CF_SECRET = process.env.CF_TURNSTILE_SECRET || "1x0000000000000000000000000000000AA"; // demo key
 const CF_SITE_KEY = process.env.CF_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"; // demo key
 
+console.log(CF_SECRET, CF_SITE_KEY);
+
 // ✨ Static asset version (cache-buster)
 // Priority:
 // 1. Manual override via ASSET_VERSION env var
@@ -489,9 +491,32 @@ let teamsCacheMeta = { etag: null, stamp: 0 };
 async function buildTeamsCache() {
   return new Promise((resolve, reject) => {
     const sql = `
-      SELECT t.id as team_id, t.tournament, t.username, t.user_id, p.position, p.name, p.pick, p.team, p.stack
+      WITH win_ct AS (
+        SELECT winner_id AS team_id, COUNT(*) AS wins
+        FROM versus_matches
+        GROUP BY winner_id
+      ),
+      loss_ct AS (
+        SELECT loser_id AS team_id, COUNT(*) AS losses
+        FROM versus_matches
+        GROUP BY loser_id
+      )
+      SELECT 
+        t.id            AS team_id,
+        t.tournament    AS tournament,
+        t.username      AS username,
+        t.user_id       AS user_id,
+        COALESCE(w.wins, 0)   AS wins,
+        COALESCE(l.losses, 0) AS losses,
+        p.position      AS position,
+        p.name          AS name,
+        p.pick          AS pick,
+        p.team          AS team,
+        p.stack         AS stack
       FROM teams t
-      JOIN players p ON p.team_id = t.id
+      JOIN players p     ON p.team_id = t.id
+      LEFT JOIN win_ct w ON w.team_id = t.id
+      LEFT JOIN loss_ct l ON l.team_id = t.id
     `;
 
     db.all(sql, [], (err, rows) => {
@@ -501,6 +526,7 @@ async function buildTeamsCache() {
       const tournaments = {};
       const usernames = {};
       const userIds = {};
+      const totals = {}; // wins & losses per team
 
       rows.forEach((row) => {
         if (!teams[row.team_id]) {
@@ -508,6 +534,7 @@ async function buildTeamsCache() {
           tournaments[row.team_id] = row.tournament;
           usernames[row.team_id] = row.username;
           userIds[row.team_id] = row.user_id;
+          totals[row.team_id] = { wins: row.wins, losses: row.losses };
         }
         teams[row.team_id].push({
           position: row.position,
@@ -518,7 +545,7 @@ async function buildTeamsCache() {
         });
       });
 
-      const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds };
+      const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds, totals };
       const jsonStr = JSON.stringify(payloadObj);
       const gz = zlib.gzipSync(jsonStr);
 
@@ -794,8 +821,21 @@ function buildTeamLeaderboardCache(tournament) {
           t.id,
           t.username,
           t.tournament,
-          COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-          COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+          COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
+          COALESCE((
+            SELECT COUNT(*) FROM versus_matches vm 
+            JOIN teams tw ON vm.winner_id = tw.id 
+            JOIN teams tl ON vm.loser_id = tl.id
+            WHERE vm.winner_id = t.id 
+            AND (? IS NULL OR (tw.tournament = ? AND tl.tournament = ?))
+          ), 0) AS wins,
+          COALESCE((
+            SELECT COUNT(*) FROM versus_matches vm 
+            JOIN teams tw ON vm.winner_id = tw.id 
+            JOIN teams tl ON vm.loser_id = tl.id
+            WHERE vm.loser_id = t.id 
+            AND (? IS NULL OR (tw.tournament = ? AND tl.tournament = ?))
+          ), 0) AS losses
         FROM teams t
         WHERE (? IS NULL OR t.tournament = ?)
       )
@@ -803,7 +843,11 @@ function buildTeamLeaderboardCache(tournament) {
       WHERE (wins + losses) > 0
     `;
 
-    db.all(sql, [tournament || null, tournament || null], (err, rows) => {
+    db.all(sql, [
+      tournament || null, tournament || null, tournament || null, // wins subquery
+      tournament || null, tournament || null, tournament || null, // losses subquery  
+      tournament || null, tournament || null                      // main WHERE clause
+    ], (err, rows) => {
       if (err) return reject(err);
 
       const enriched = rows.map(calcPercents);
@@ -815,7 +859,7 @@ function buildTeamLeaderboardCache(tournament) {
         stamp: Date.now(),
         filePath
       });
-      console.log(`✓ /leaderboard cache rebuilt (${key}) (${gz.length} bytes)`);
+      console.log(`✓ /leaderboard cache rebuilt (${key}) for tournament: ${tournament || 'ALL'} (${gz.length} bytes)`);
       resolve();
     });
   });
@@ -830,27 +874,65 @@ function buildUserLeaderboardCache(tournament) {
       SELECT
         t.id,
         t.username,
-        t.tournament,
-        COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-        COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+        COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
+        COALESCE((
+          SELECT COUNT(*) FROM versus_matches vm 
+          JOIN teams tw ON vm.winner_id = tw.id 
+          JOIN teams tl ON vm.loser_id = tl.id
+          WHERE vm.winner_id = t.id 
+          AND (? IS NULL OR (tw.tournament = ? AND tl.tournament = ?))
+        ), 0) AS wins,
+        COALESCE((
+          SELECT COUNT(*) FROM versus_matches vm 
+          JOIN teams tw ON vm.winner_id = tw.id 
+          JOIN teams tl ON vm.loser_id = tl.id
+          WHERE vm.loser_id = t.id 
+          AND (? IS NULL OR (tw.tournament = ? AND tl.tournament = ?))
+        ), 0) AS losses
       FROM teams t
       WHERE (? IS NULL OR t.tournament = ?)
     `;
 
-    db.all(sql, [tournament || null, tournament || null], (err, rows) => {
+    db.all(sql, [
+      tournament || null, tournament || null, tournament || null, // wins subquery
+      tournament || null, tournament || null, tournament || null, // losses subquery  
+      tournament || null, tournament || null                      // main WHERE clause
+    ], (err, rows) => {
       if (err) return reject(err);
 
       const userStats = {};
       rows.forEach((r) => {
         const u = r.username || 'ANON';
         if (!userStats[u]) {
-          userStats[u] = { username: u, wins: 0, losses: 0 };
+          userStats[u] = { username: u, wins: 0, losses: 0, maddens: [] };
         }
         userStats[u].wins += r.wins;
         userStats[u].losses += r.losses;
+        // Only include madden ratings for teams with more than 1 total vote
+        if (r.madden && (r.wins + r.losses) >= 1) {
+          userStats[u].maddens.push(r.madden);
+        }
       });
 
-      const result = Object.values(userStats).map(calcPercents);
+      const result = Object.values(userStats).map((u) => {
+        // Compute median madden rating
+        const arr = u.maddens.sort((a,b)=>a-b);
+        let median = 0;
+        if (arr.length) {
+          const mid = Math.floor(arr.length / 2);
+          median = arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+          median = Math.round(median);
+        }
+        const win_pct = (u.wins + u.losses) ? ((u.wins / (u.wins + u.losses)) * 100).toFixed(1) : 0;
+        return {
+          username: u.username,
+          wins: u.wins,
+          losses: u.losses,
+          win_pct,
+          median_madden: median
+        };
+      });
+
       const jsonStr = JSON.stringify(result);
       const gz = zlib.gzipSync(jsonStr);
       fs.writeFileSync(filePath, gz);
@@ -859,7 +941,7 @@ function buildUserLeaderboardCache(tournament) {
         stamp: Date.now(),
         filePath
       });
-      console.log(`✓ /leaderboard/users cache rebuilt (${key}) (${gz.length} bytes)`);
+      console.log(`✓ /leaderboard/users cache rebuilt (${key}) for tournament: ${tournament || 'ALL'} (${gz.length} bytes)`);
       resolve();
     });
   });
@@ -1327,10 +1409,7 @@ app.get('/my/profile', requireAuth, (req, res) => {
                 WITH voter_stats AS (
                   SELECT 
                     vm.voter_id,
-                    COALESCE(
-                      (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
-                      u.twitter_username
-                    ) as voter_name,
+                    u.display_name as voter_name,
                     COUNT(CASE WHEN vm.winner_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as wins,
                     COUNT(CASE WHEN vm.loser_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as losses,
                     COUNT(*) as total_votes
@@ -1396,7 +1475,8 @@ app.get('/my/profile', requireAuth, (req, res) => {
                       COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
                       COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
                       COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-                      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+                      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
+                      COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
                     FROM teams t
                     WHERE t.user_id = ?
                   )
@@ -1421,6 +1501,23 @@ app.get('/my/profile', requireAuth, (req, res) => {
                   });
 
                   response.voteResults = enriched;
+
+                  // Compute median madden rating
+                  const maddens = teamRows
+                    .map(r => r.madden)
+                    .filter(m => m && m > 0)
+                    .sort((a, b) => a - b);
+                  
+                  let medianMadden = 0;
+                  if (maddens.length > 0) {
+                    const mid = Math.floor(maddens.length / 2);
+                    medianMadden = maddens.length % 2 ? 
+                      maddens[mid] : 
+                      (maddens[mid - 1] + maddens[mid]) / 2;
+                    medianMadden = Math.round(medianMadden);
+                  }
+                  
+                  response.medianMadden = medianMadden;
                   res.json(response);
                 });
               });
@@ -1502,7 +1599,8 @@ app.get('/profile/:username', (req, res) => {
                     COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
                     COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-                    COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses
+                    COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
+                    COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
                   FROM teams t
                   WHERE t.user_id = ?
                 )
@@ -1524,6 +1622,23 @@ app.get('/profile/:username', (req, res) => {
                 });
 
                 response.voteResults = enriched;
+
+                // Compute median madden rating
+                const maddens = teamRows
+                  .map(r => r.madden)
+                  .filter(m => m && m > 0)
+                  .sort((a, b) => a - b);
+                
+                let medianMadden = 0;
+                if (maddens.length > 0) {
+                  const mid = Math.floor(maddens.length / 2);
+                  medianMadden = maddens.length % 2 ? 
+                    maddens[mid] : 
+                    (maddens[mid - 1] + maddens[mid]) / 2;
+                  medianMadden = Math.round(medianMadden);
+                }
+                
+                response.medianMadden = medianMadden;
                 res.json(response);
               });
             };
@@ -1538,10 +1653,7 @@ app.get('/profile/:username', (req, res) => {
               WITH voter_stats AS (
                 SELECT 
                   vm.voter_id,
-                  COALESCE(
-                    (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
-                    u.twitter_username
-                  ) as voter_name,
+                  u.display_name as voter_name,
                   COUNT(CASE WHEN vm.winner_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as wins,
                   COUNT(CASE WHEN vm.loser_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as losses,
                   COUNT(*) as total_votes
@@ -1795,6 +1907,18 @@ app.get('/team-votes/:teamId', (req, res) => {
           ELSE ot_winner.username
         END as opponent_username,
         CASE 
+          WHEN vm.winner_id = ? THEN (
+            SELECT madden FROM ratings_history rh_loser 
+            WHERE rh_loser.team_id = vm.loser_id 
+            ORDER BY rh_loser.computed_at DESC LIMIT 1
+          )
+          ELSE (
+            SELECT madden FROM ratings_history rh_winner 
+            WHERE rh_winner.team_id = vm.winner_id 
+            ORDER BY rh_winner.computed_at DESC LIMIT 1
+          )
+        END as opponent_madden,
+        CASE 
           WHEN vm.voter_id IS NULL THEN 'Anonymous'
           ELSE COALESCE(
             NULLIF(TRIM(u.display_name), ''),
@@ -1811,7 +1935,7 @@ app.get('/team-votes/:teamId', (req, res) => {
       LIMIT 50
     `;
 
-    const params = [teamId, teamId, teamId, teamId, teamId, teamId];
+    const params = [teamId, teamId, teamId, teamId, teamId, teamId, teamId];
 
     db.all(sql, params, (err2, votes) => {
       if (err2) {

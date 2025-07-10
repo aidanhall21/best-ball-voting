@@ -134,10 +134,61 @@
     /* Column widths for better space utilization */
     .votes-history-table td:nth-child(1) { width: 90px; }  /* Result */
     .votes-history-table td:nth-child(2) { min-width: 140px; max-width: 220px; } /* Opponent */
-    .votes-history-table td:nth-child(3) { width: 70px; }  /* View */
-    .votes-history-table td:nth-child(4) { min-width: 160px; max-width: 250px; } /* Contest */
-    .votes-history-table td:nth-child(5) { min-width: 120px; max-width: 180px; } /* Voter */
-    .votes-history-table td:nth-child(6) { width: 120px; } /* Date */
+    .votes-history-table td:nth-child(3) { width: 80px; text-align: center; }  /* Draftr Rating */
+    .votes-history-table th:nth-child(3) { text-align: center; white-space: nowrap; min-width: 100px; }  /* Center header and keep on one line */
+    .votes-history-table td:nth-child(4) { width: 70px; }  /* View */
+    .votes-history-table td:nth-child(5) { min-width: 160px; max-width: 250px; } /* Contest */
+    .votes-history-table td:nth-child(6) { min-width: 120px; max-width: 180px; } /* Voter */
+    .votes-history-table td:nth-child(7) { width: 120px; } /* Date */
+
+    /* Rating box styles - match vote results table styling from profile.html */
+    .rating-box {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 12px;
+      min-width: 24px;
+      border: 1px solid;
+      margin: 0;
+      text-align: center;
+    }
+
+    .rating-box.tier-none {
+      background-color: #374151;
+      color: #9ca3af;
+      border-color: #4b5563;
+    }
+
+    .rating-box.tier-low {
+      background-color: #dc2626;
+      color: #ffffff;
+      border-color: #b91c1c;
+    }
+
+    .rating-box.tier-below {
+      background-color: #ea580c;
+      color: #ffffff;
+      border-color: #c2410c;
+    }
+
+    .rating-box.tier-average {
+      background-color: #ca8a04;
+      color: #ffffff;
+      border-color: #a16207;
+    }
+
+    .rating-box.tier-good {
+      background-color: #16a34a;
+      color: #ffffff;
+      border-color: #15803d;
+    }
+
+    .rating-box.tier-elite {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #1d4ed8;
+    }
 
     .win-result {
       color: #238636;
@@ -216,13 +267,23 @@
 
       /* Adjust column widths for mobile */
       .votes-history-table td:nth-child(2) { min-width: 100px; max-width: 150px; }
-      .votes-history-table td:nth-child(4) { min-width: 120px; max-width: 180px; }
-      .votes-history-table td:nth-child(5) { min-width: 80px; max-width: 120px; }
+      .votes-history-table td:nth-child(3) { width: 60px; } /* Rating column mobile width */
+      .votes-history-table td:nth-child(5) { min-width: 120px; max-width: 180px; }
+      .votes-history-table td:nth-child(6) { min-width: 80px; max-width: 120px; }
+
+      /* Make rating boxes slightly smaller on mobile - match profile.html */
+      .rating-box {
+        padding: 3px 6px;
+        font-size: 10px;
+        min-width: 20px;
+        margin: 0;
+      }
 
       /* Make the table horizontally scrollable on mobile */
       .voting-history-content {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        padding-bottom: 20px; /* Add some padding for the scrollbar */
       }
     }
 
@@ -413,6 +474,23 @@
       window.location.href = '/';
     });
 
+    // Helper to determine rating tier and return appropriate CSS class
+    function getRatingTierClass(rating) {
+      if (!rating || rating === 0) return 'tier-none';
+      if (rating < 60) return 'tier-low';      // 0-59: Red
+      if (rating < 70) return 'tier-below';    // 60-69: Orange  
+      if (rating < 80) return 'tier-average';  // 70-79: Yellow
+      if (rating < 90) return 'tier-good';     // 80-89: Green
+      return 'tier-elite';                     // 90-99: Blue
+    }
+
+    // Helper to format rating in a colored box
+    function formatRatingBox(rating) {
+      if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
+      const tierClass = getRatingTierClass(rating);
+      return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+    }
+
     // Load voting history
     async function loadVotingHistory() {
       try {
@@ -443,6 +521,7 @@
               <tr>
                 <th>Result</th>
                 <th>Opponent</th>
+                <th>Draftr Rating</th>
                 <th>View</th>
                 <th>Contest</th>
                 <th>Voter</th>
@@ -456,11 +535,13 @@
           const date = new Date(vote.created_at).toLocaleDateString();
           const result = vote.result === 'win' ? '✅ Win' : '❌ Loss';
           const resultClass = vote.result === 'win' ? 'win-result' : 'loss-result';
+          const ratingBox = formatRatingBox(vote.opponent_madden);
           
           tableHtml += `
             <tr>
               <td class="${resultClass}">${result}</td>
               <td>${vote.opponent_username || 'Anonymous'}</td>
+              <td>${ratingBox}</td>
               <td><button class="view-opponent-btn" data-id="${vote.opponent_id}">View</button></td>
               <td>${vote.opponent_tournament || '-'}</td>
               <td>${vote.voter_name || 'Anonymous'}</td>
