@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from scipy.sparse import coo_matrix
 
 # -------------------- Salary scaling params --------------------
 # (Deprecated) Salary scaling params – kept for backward compatibility but
@@ -39,6 +40,7 @@ SD_MULTIPLIER = 0       # unused
 # -------------------------------------------------------------
 DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-09-1727.db")
 # OUTPUT_CSV = sys.argv[2] if len(sys.argv) > 2 else "team_ratings.csv"
+print(f"DB_PATH: {DB_PATH}")
 
 if not Path(DB_PATH).exists():
     sys.exit(f"Database file not found: {DB_PATH}")
@@ -131,34 +133,58 @@ for tournament, group in tourn_groups:
         win_counts[winner_id] = win_counts.get(winner_id, 0) + weight
         loss_counts[loser_id] = loss_counts.get(loser_id, 0) + weight
 
-    rows, labels, weights = [], [], []
+    # ---- Build sparse design matrix instead of dense to save memory ----
+    row_ind, col_ind, data_vals, labels, weights_list = [], [], [], [], []
+    row_counter = 0
 
     for _, row in matches_t_df.iterrows():
         winner_id = row["winner_id"]
         loser_id = row["loser_id"]
         weight = row["weight"]
-        
+
         if winner_id == loser_id:
             continue
-        # Skip if somehow ids not in current list (data inconsistency)
         if winner_id not in idx or loser_id not in idx:
             continue
-        x = np.zeros(n)
-        x[idx[winner_id]] = 1
-        x[idx[loser_id]] = -1
-        rows.append(x); labels.append(1); weights.append(weight)  # observed win with weight
-        rows.append(-x); labels.append(0); weights.append(weight) # symmetric loss with same weight
+
+        # Winner beats loser (label 1)
+        row_ind.extend([row_counter, row_counter])
+        col_ind.extend([idx[winner_id], idx[loser_id]])
+        data_vals.extend([1, -1])
+        labels.append(1)
+        weights_list.append(weight)
+        row_counter += 1
+
+        # Symmetric example (loser beats winner)
+        row_ind.extend([row_counter, row_counter])
+        col_ind.extend([idx[winner_id], idx[loser_id]])
+        data_vals.extend([-1, 1])
+        labels.append(0)
+        weights_list.append(weight)
+        row_counter += 1
 
     # ---- Dummy matches: one win + one loss vs baseline for every team ----
     for tid in team_ids:
-        x = np.zeros(n)
-        x[idx[tid]] = 1
-        rows.append(x); labels.append(1); weights.append(1.0)  # team beats baseline (full weight)
-        rows.append(-x); labels.append(0); weights.append(1.0) # baseline beats team (full weight)
+        # Team beats baseline (only +1 coefficient)
+        row_ind.append(row_counter)
+        col_ind.append(idx[tid])
+        data_vals.append(1)
+        labels.append(1)
+        weights_list.append(1.0)
+        row_counter += 1
 
-    X = np.vstack(rows)
+        # Baseline beats team (only -1 coefficient)
+        row_ind.append(row_counter)
+        col_ind.append(idx[tid])
+        data_vals.append(-1)
+        labels.append(0)
+        weights_list.append(1.0)
+        row_counter += 1
+
+    # Construct CSR sparse matrix for efficient math operations
+    X = coo_matrix((data_vals, (row_ind, col_ind)), shape=(row_counter, n)).tocsr()
     y = np.asarray(labels)
-    sample_weights = np.asarray(weights)
+    sample_weights = np.asarray(weights_list)
 
     # If somehow all labels are the same (degenerate), skip (should not happen)
     if len(np.unique(y)) < 2:
@@ -169,7 +195,7 @@ for tournament, group in tourn_groups:
             penalty="l2",  # regularised to avoid infinite estimates
             C=10.0,
             fit_intercept=False,
-            solver="lbfgs",
+            solver="liblinear",  # supports sparse CSR input
             max_iter=1000,
         )
         model.fit(X, y, sample_weight=sample_weights)
