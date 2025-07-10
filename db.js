@@ -1,5 +1,5 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-09-0811.db"; // allow override in prod
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-09-1727.db"; // allow override in prod
 const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-09-0811.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
@@ -49,6 +49,33 @@ db.serialize(() => {
       FOREIGN KEY (loser_id) REFERENCES teams (id)
     )
   `);
+
+  // (no single-row ratings table anymore; snapshots are stored in ratings_history)
+
+  // Store the computed Bradley-Terry ratings and Madden-style overall ratings
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ratings_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id TEXT NOT NULL,
+      tournament TEXT,
+      rating REAL,        -- Bradley-Terry rating (raw ability score)
+      madden REAL,        -- Madden-style 10-99 overall rating (with decimals)
+      wins INTEGER,
+      losses INTEGER,
+      computed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (team_id) REFERENCES teams(id)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_team ON ratings_history(team_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_tourn ON ratings_history(tournament)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_time ON ratings_history(computed_at)`);
+
+  // ---- Indexes for performance ----
+  db.run(`CREATE INDEX IF NOT EXISTS idx_votes_team_type ON votes(team_id, vote_type)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_winner ON versus_matches(winner_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_loser ON versus_matches(loser_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_twitter ON users(twitter_id)`);
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,13 +93,6 @@ db.serialize(() => {
       expires_at INTEGER
     )
   `);
-
-  // ---- Indexes for performance ----
-  db.run(`CREATE INDEX IF NOT EXISTS idx_votes_team_type ON votes(team_id, vote_type)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_winner ON versus_matches(winner_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_loser ON versus_matches(loser_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_users_twitter ON users(twitter_id)`);
 });
 
 // Create analytics tables in separate database
