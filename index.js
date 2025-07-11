@@ -1258,7 +1258,7 @@ app.post('/password-reset/request', async (req, res) => {
     db.run('INSERT OR REPLACE INTO password_resets (token, user_id, expires_at) VALUES (?,?,?)', [token, row.id, expires], async (insertErr) => {
       if (insertErr) return res.status(500).json({ error: 'DB error' });
 
-      const base = process.env.BASE_URL || 'https://draftrpass.com';
+      const base = 'https://draftrpass.com';
       const link = `${base}/reset-password.html?token=${token}`;
 
       try {
