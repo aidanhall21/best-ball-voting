@@ -777,6 +777,52 @@
       }
     }
 
+    /* Mobile notification button styling */
+    .mobile-notification-btn {
+      background: transparent;
+      border: 1px solid #30363d;
+      color: #f0f6fc;
+      padding: 12px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      width: 100%;
+      text-align: left;
+      margin: 8px 0;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mobile-notification-btn:hover {
+      background: #21262d;
+      border-color: #58a6ff;
+    }
+
+    .mobile-notification-count {
+      background: #f85149;
+      color: white;
+      border-radius: 12px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    /* Hamburger button notification dot */
+    .hamburger-notification-dot {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 12px;
+      height: 12px;
+      background: #f85149;
+      border-radius: 50%;
+      border: 2px solid #0d1117;
+      z-index: 1101;
+    }
+
     /* Initially hide main content until auth check completes */
     .layout,
     .header h1 {
@@ -884,6 +930,10 @@
         <a href="/" class="menu-item">Home</a>
         <div class="menu-divider"></div>
         <div class="auth-required">
+          <!-- Mobile notifications -->
+          <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
+            🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
+          </button>
           <a href="/profile.html" class="menu-item">Profile</a>
           <button class="menu-item logout-btn" onclick="logout()">Logout</button>
         </div>
@@ -1542,6 +1592,9 @@
           if (isAuthed && username) {
             const usernameLabel = document.querySelector('.menu-item.username');
             if (usernameLabel) usernameLabel.textContent = username;
+            
+            // Setup mobile notifications for authenticated users
+            setupMobileNotifications();
           }
         })
         .catch(err => {
@@ -1556,6 +1609,332 @@
       fetch('/logout', { method: 'POST' })
         .then(() => window.location.href = '/');
     }
+
+    // ---- Mobile Notification Functions ----
+    
+    let lastNotificationCount = 0;
+    let notificationPollingInterval = null;
+
+    function setupMobileNotifications() {
+      // Update notification count and badge
+      updateNotificationCount();
+      
+      // Setup mobile notification button click handler
+      const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+      if (mobileNotificationBtn) {
+        mobileNotificationBtn.style.display = 'block';
+        mobileNotificationBtn.addEventListener('click', () => {
+          showMobileNotifications();
+        });
+      }
+      
+      // Start notification polling
+      startNotificationPolling();
+    }
+
+    async function updateNotificationCount() {
+      try {
+        const res = await fetch('/notifications/count');
+        if (res.ok) {
+          const data = await res.json();
+          const count = data.count || 0;
+          lastNotificationCount = count;
+          updateNotificationBadge(count);
+        } else {
+          console.error('Failed to fetch notification count:', res.status, res.statusText);
+        }
+      } catch (e) {
+        console.error('Failed to fetch notification count:', e);
+      }
+    }
+
+    function updateNotificationBadge(count) {
+      // Update mobile badge
+      const mobileBadge = document.getElementById('mobileNotificationBadge');
+      if (mobileBadge) {
+        if (count > 0) {
+          mobileBadge.textContent = `${count > 99 ? '99+' : count}`;
+          mobileBadge.style.display = 'inline';
+        } else {
+          mobileBadge.style.display = 'none';
+        }
+      }
+
+      // Update hamburger button notification dot
+      const burgerIcon = document.querySelector('.burger-icon');
+      if (burgerIcon) {
+        let notificationDot = burgerIcon.querySelector('.hamburger-notification-dot');
+        if (count > 0) {
+          if (!notificationDot) {
+            notificationDot = document.createElement('div');
+            notificationDot.className = 'hamburger-notification-dot';
+            burgerIcon.appendChild(notificationDot);
+          }
+        } else {
+          if (notificationDot) {
+            notificationDot.remove();
+          }
+        }
+      }
+    }
+
+    function showMobileNotifications() {
+      // Create mobile notification overlay if it doesn't exist
+      let overlay = document.getElementById('mobileNotificationOverlay');
+      if (!overlay) {
+        overlay = createMobileNotificationOverlay();
+        document.body.appendChild(overlay);
+      }
+      
+      // Show the overlay
+      overlay.style.display = 'flex';
+      document.body.style.overflow = 'hidden'; // Prevent background scrolling
+      
+      // Load notifications
+      loadMobileNotifications();
+    }
+
+    function hideMobileNotifications() {
+      const overlay = document.getElementById('mobileNotificationOverlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+        document.body.style.overflow = ''; // Restore scrolling
+      }
+    }
+
+    function createMobileNotificationOverlay() {
+      const overlay = document.createElement('div');
+      overlay.id = 'mobileNotificationOverlay';
+      overlay.className = 'mobile-notification-overlay';
+      
+      overlay.innerHTML = `
+        <div class="mobile-notification-content">
+          <div class="mobile-notification-header">
+            <h3>Notifications</h3>
+            <div class="mobile-notification-actions">
+              <button id="mobileMarkAllRead" class="mobile-mark-all-read-btn">Mark all read</button>
+              <button id="closeMobileNotifications" class="mobile-close-notifications-btn">✖</button>
+            </div>
+          </div>
+          <div id="mobileNotificationList" class="mobile-notification-list">
+            <div class="loading">Loading notifications...</div>
+          </div>
+        </div>
+      `;
+
+      // Add event listeners
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          hideMobileNotifications();
+        }
+      });
+
+      overlay.querySelector('#closeMobileNotifications').addEventListener('click', hideMobileNotifications);
+      overlay.querySelector('#mobileMarkAllRead').addEventListener('click', markAllNotificationsAsReadMobile);
+      
+      return overlay;
+    }
+
+    async function loadMobileNotifications() {
+      const notificationList = document.getElementById('mobileNotificationList');
+      if (!notificationList) {
+        console.error('Mobile notification list element not found');
+        return;
+      }
+
+      notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+      try {
+        const res = await fetch('/notifications');
+        
+        if (!res.ok) {
+          console.error(`Notifications API error: ${res.status} ${res.statusText}`);
+          if (res.status === 401) {
+            notificationList.innerHTML = '<div class="no-notifications">Please log in to view notifications</div>';
+          } else {
+            notificationList.innerHTML = `<div class="no-notifications">Failed to load notifications (${res.status})</div>`;
+          }
+          return;
+        }
+
+        const data = await res.json();
+        const notifications = data.notifications || [];
+        
+        if (notifications.length === 0) {
+          notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+          return;
+        }
+
+        notificationList.innerHTML = '';
+        notifications.forEach((notification, index) => {
+          try {
+            const item = createMobileNotificationItem(notification);
+            notificationList.appendChild(item);
+          } catch (itemError) {
+            console.error(`Error creating mobile notification item ${index}:`, itemError);
+          }
+        });
+      } catch (e) {
+        console.error('Failed to load mobile notifications:', e);
+        notificationList.innerHTML = `<div class="no-notifications">Network error: ${e.message}</div>`;
+      }
+    }
+
+    function createMobileNotificationItem(notification) {
+      const item = document.createElement('div');
+      item.className = `mobile-notification-item ${notification.is_read ? '' : 'unread'}`;
+      item.dataset.notificationId = notification.id;
+
+      const timeAgo = formatTimeAgo(new Date(notification.created_at));
+      
+      // Create enhanced notification message with links for versus votes
+      let messageHTML = notification.message;
+      
+      if (notification.type === 'versus_vote' && notification.related_team_id) {
+        // First, create the team link
+        const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
+        messageHTML = messageHTML.replace('your team', teamLink);
+        
+        // If we have opponent info, find and replace just the opponent name at the very end
+        if (notification.opponent_team_id) {
+          const againstIndex = messageHTML.lastIndexOf('against ');
+          if (againstIndex !== -1) {
+            const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
+            const opponentName = messageHTML.substring(againstIndex + 8);
+            
+            if (opponentName.trim()) {
+              const opponentLink = `<span class="mobile-opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+              messageHTML = beforeAgainst + opponentLink;
+            }
+          }
+        }
+      }
+      
+      item.innerHTML = `
+        <div class="mobile-notification-message">${messageHTML}</div>
+        <div class="mobile-notification-time">${timeAgo}</div>
+      `;
+
+      // Add click handlers for opponent links
+      const opponentLinks = item.querySelectorAll('.mobile-opponent-link');
+      opponentLinks.forEach(link => {
+        link.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const teamId = link.getAttribute('data-team-id');
+          if (teamId) {
+            try {
+              // Navigate to profile page for this opponent
+              const meta = await fetchTeamMeta(teamId);
+              if (meta && meta.username) {
+                window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+              } else {
+                // Fallback: navigate to voting history page
+                window.location.href = `voting-history.html?teamId=${teamId}`;
+              }
+            } catch (error) {
+              console.error('Failed to navigate to opponent:', error);
+              // Fallback: navigate to voting history page
+              window.location.href = `voting-history.html?teamId=${teamId}`;
+            }
+          }
+        });
+      });
+
+      // Mark as read when clicked (but not when clicking links)
+      item.addEventListener('click', async (e) => {
+        if (e.target.tagName === 'A' || e.target.classList.contains('mobile-opponent-link')) {
+          return;
+        }
+        
+        if (!notification.is_read) {
+          await markNotificationAsRead(notification.id);
+          item.classList.remove('unread');
+          await updateNotificationCount();
+        }
+      });
+
+      return item;
+    }
+
+    async function markNotificationAsRead(notificationId) {
+      try {
+        await fetch('/notifications/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notificationIds: [notificationId] })
+        });
+      } catch (e) {
+        console.error('Failed to mark notification as read:', e);
+      }
+    }
+
+    async function markAllNotificationsAsReadMobile() {
+      try {
+        const res = await fetch('/notifications/read-all', {
+          method: 'POST'
+        });
+                if (res.ok) {
+          // Immediately update the badge to 0 for instant feedback
+          updateNotificationBadge(0);
+          
+          // Reload the notification list
+          await loadMobileNotifications();
+          
+          // Wait a moment for database to update, then refresh count
+          setTimeout(async () => {
+            await updateNotificationCount();
+          }, 500);
+        } else {
+          console.error('Failed to mark all notifications as read:', res.status, res.statusText);
+        }
+      } catch (e) {
+        console.error('Failed to mark all notifications as read:', e);
+      }
+    }
+
+    function formatTimeAgo(date) {
+      const now = new Date();
+      const diff = now - date;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days < 7) return `${days}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    async function fetchTeamMeta(teamId) {
+      try {
+        const response = await fetch(`/team-meta/${teamId}`);
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.warn(`Failed to fetch team-meta for ${teamId}:`, error);
+        return { username: null };
+      }
+    }
+
+    function startNotificationPolling() {
+      if (notificationPollingInterval) {
+        clearInterval(notificationPollingInterval);
+      }
+
+      // Poll every 30 seconds
+      notificationPollingInterval = setInterval(async () => {
+        await updateNotificationCount();
+      }, 30000);
+    }
+
+    function stopNotificationPolling() {
+      if (notificationPollingInterval) {
+        clearInterval(notificationPollingInterval);
+        notificationPollingInterval = null;
+      }
+    }
+
   </script>
 
   <!-- Modals for viewing team details and votes -->

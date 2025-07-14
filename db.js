@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-09-1727.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-09-0811.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-14-0849.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-14-0849.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -70,12 +70,34 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_tourn ON ratings_history(tournament)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_time ON ratings_history(computed_at)`);
 
+  // Notifications table for when users receive notifications about their teams
+  db.run(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      related_team_id TEXT,
+      related_user_id INTEGER,
+      opponent_team_id TEXT,
+      is_read BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (related_team_id) REFERENCES teams(id),
+      FOREIGN KEY (related_user_id) REFERENCES users(id),
+      FOREIGN KEY (opponent_team_id) REFERENCES teams(id)
+    )
+  `);
+
   // ---- Indexes for performance ----
   db.run(`CREATE INDEX IF NOT EXISTS idx_votes_team_type ON votes(team_id, vote_type)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_versus_winner ON versus_matches(winner_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_versus_loser ON versus_matches(loser_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_twitter ON users(twitter_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)`);
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,6 +221,15 @@ db.all('PRAGMA table_info(users)', (err, cols) => {
       db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name_unique ON users(display_name COLLATE NOCASE)');
     }
   });
+});
+
+// ---- Ensure opponent_team_id column exists in notifications table ----
+db.all('PRAGMA table_info(notifications)', (err, cols) => {
+  if (err) return; // silent fail
+  const hasOpponentTeamId = cols.some((c) => c.name === 'opponent_team_id');
+  if (!hasOpponentTeamId) {
+    db.run('ALTER TABLE notifications ADD COLUMN opponent_team_id TEXT');
+  }
 });
 
 module.exports = { db, analyticsDb };

@@ -32,6 +32,10 @@ let currentTournament = "";
 let currentUsernameFilter = ""; // Username filter for team leaderboard
 let leaderboardRawData = []; // unfiltered data cache
 
+// Global notification variables
+let lastNotificationCount = 0;
+let notificationPollingInterval = null;
+
 // Team metadata cache to reduce redundant API calls
 let teamMetaCache = new Map();
 const TEAM_META_CACHE_TTL = 30000; // 30 seconds cache TTL
@@ -325,6 +329,22 @@ function checkBrowserCompatibility() {
     });
 }
 
+// ---- Global Utility Functions ----
+
+function formatTimeAgo(date) {
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   // Check for potential compatibility issues
   checkBrowserCompatibility();
@@ -456,6 +476,56 @@ document.addEventListener("DOMContentLoaded", () => {
     closeMobileMenuFunc(); // Close menu after logout
   });
 
+  // ---- Notification Event Handlers ----
+  
+  // Desktop notification bell click
+  const notificationBell = document.getElementById('notificationBell');
+  const notificationDropdown = document.getElementById('notificationDropdown');
+  if (notificationBell && notificationDropdown) {
+    notificationBell.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = notificationDropdown.style.display !== 'none';
+      
+      if (isVisible) {
+        notificationDropdown.style.display = 'none';
+      } else {
+        // Hide user menu if open
+        if (userMenu) userMenu.style.display = 'none';
+        notificationDropdown.style.display = 'block';
+        loadNotifications();
+      }
+    });
+  }
+
+  // Mark all read button
+  const markAllReadBtn = document.getElementById('markAllRead');
+  if (markAllReadBtn) {
+    markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
+  }
+
+  // Mobile notification button
+  const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+  if (mobileNotificationBtn) {
+    mobileNotificationBtn.addEventListener('click', () => {
+      showMobileNotifications();
+    });
+  }
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (notificationDropdown && 
+        !notificationDropdown.contains(e.target) && 
+        !notificationBell.contains(e.target)) {
+      notificationDropdown.style.display = 'none';
+    }
+    
+    if (userMenu && 
+        !userMenu.contains(e.target) && 
+        !gearBtn.contains(e.target)) {
+      userMenu.style.display = 'none';
+    }
+  });
+
   async function refreshAuth() {
     const res = await fetch('/me');
     const data = await res.json();
@@ -477,8 +547,13 @@ document.addEventListener("DOMContentLoaded", () => {
         console.error('Failed to fetch vote count', e);
         userVotesCount = 0;
       }
+
+      // Fetch notification count and update badge
+      await updateNotificationCount();
     } else {
       userVotesCount = 0;
+      // Hide notification UI when not logged in
+      hideNotificationUI();
     }
 
     if (loggedIn) {
@@ -490,10 +565,22 @@ document.addEventListener("DOMContentLoaded", () => {
       gearBtn.style.display = 'inline-block';
       userMenu.style.display = 'none'; // Hide menu by default when logged in
       
+      // Show notification bell on desktop
+      const notificationBell = document.getElementById('notificationBell');
+      if (notificationBell) {
+        notificationBell.style.display = 'inline-block';
+      }
+      
       // Update mobile user controls
       mobileUserLabel.textContent = displayName;
       mobileUserInfo.style.display = 'block';
       mobileLoginPrompt.style.display = 'none';
+      
+      // Show mobile notification button
+      const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+      if (mobileNotificationBtn) {
+        mobileNotificationBtn.style.display = 'block';
+      }
       
       // Show upload section, hide login panel
       document.getElementById('uploadSection').style.display = 'block';
@@ -551,6 +638,256 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Show content now that auth check is complete
     document.body.classList.add('content-visible');
+  }
+
+  // ---- Notification Functions (now using global functions) ----
+
+  function hideNotificationUI() {
+    // Hide desktop notification UI
+    const notificationBell = document.getElementById('notificationBell');
+    const notificationDropdown = document.getElementById('notificationDropdown');
+    if (notificationBell) notificationBell.style.display = 'none';
+    if (notificationDropdown) notificationDropdown.style.display = 'none';
+
+    // Hide mobile notification UI
+    const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+    if (mobileNotificationBtn) mobileNotificationBtn.style.display = 'none';
+
+    // Stop notification polling
+    stopNotificationPolling();
+  }
+
+  async function loadNotifications() {
+    const notificationList = document.getElementById('notificationList');
+    if (!notificationList) return;
+
+    notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+    try {
+      const res = await fetch('/notifications');
+      if (res.ok) {
+        const data = await res.json();
+        const notifications = data.notifications || [];
+        
+        if (notifications.length === 0) {
+          notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+          return;
+        }
+
+        notificationList.innerHTML = '';
+        notifications.forEach(notification => {
+          const item = createNotificationItem(notification);
+          notificationList.appendChild(item);
+        });
+      } else {
+        notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+      }
+    } catch (e) {
+      console.error('Failed to load notifications:', e);
+      notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+    }
+  }
+
+  function createNotificationItem(notification) {
+    const item = document.createElement('div');
+    item.className = `notification-item ${notification.is_read ? '' : 'unread'}`;
+    item.dataset.notificationId = notification.id;
+
+    const timeAgo = formatTimeAgo(new Date(notification.created_at));
+    
+    // Create enhanced notification message with links for versus votes
+    let messageHTML = notification.message;
+    
+    if (notification.type === 'versus_vote' && notification.related_team_id) {
+      // The message format is: "{emoji}{voterName} voted {for/against} your team in the {tournament} against {opponentName}"
+      
+      // First, create the team link
+      const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
+      messageHTML = messageHTML.replace('your team', teamLink);
+      
+      // If we have opponent info, find and replace just the opponent name at the very end
+      if (notification.opponent_team_id) {
+        // Find the last occurrence of "against " and everything after it should be the opponent name
+        const againstIndex = messageHTML.lastIndexOf('against ');
+        if (againstIndex !== -1) {
+          const beforeAgainst = messageHTML.substring(0, againstIndex + 8); // Keep "against "
+          const opponentName = messageHTML.substring(againstIndex + 8); // Everything after "against "
+          
+          if (opponentName.trim()) {
+            const opponentLink = `<span class="opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+            messageHTML = beforeAgainst + opponentLink;
+          }
+        }
+      }
+    }
+    
+    item.innerHTML = `
+      <div class="notification-message">${messageHTML}</div>
+      <div class="notification-time">${timeAgo}</div>
+    `;
+
+    // Add click handlers for opponent links
+    const opponentLinks = item.querySelectorAll('.opponent-link');
+    opponentLinks.forEach(link => {
+      link.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const teamId = link.getAttribute('data-team-id');
+        if (teamId) {
+          // Fetch team metadata to get the opponent's username
+          try {
+            const meta = await fetchTeamMeta(teamId);
+            if (meta.username) {
+              // Navigate to the opponent's profile page
+              window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+            } else {
+              // Fallback: show team modal if no username available
+              showTeamModal(teamId);
+            }
+          } catch (error) {
+            console.error('Failed to fetch opponent info:', error);
+            // Fallback: show team modal on error
+            showTeamModal(teamId);
+          }
+        }
+      });
+    });
+
+    // Mark as read when clicked (but not when clicking links)
+    item.addEventListener('click', async (e) => {
+      // Don't mark as read if user clicked on a link
+      if (e.target.tagName === 'A' || e.target.classList.contains('opponent-link')) {
+        return;
+      }
+      
+      if (!notification.is_read) {
+        await markNotificationAsRead(notification.id);
+        item.classList.remove('unread');
+        await updateNotificationCount(); // Refresh count
+      }
+    });
+
+    return item;
+  }
+
+
+
+  async function markAllNotificationsAsRead() {
+    try {
+      const res = await fetch('/notifications/read-all', {
+        method: 'POST'
+      });
+      if (res.ok) {
+        // Immediately update the badge to 0 for instant feedback
+        updateNotificationBadge(0);
+        
+        // Refresh the notification list and count
+        await loadNotifications();
+        
+        // Wait a moment for database to update, then refresh count
+        setTimeout(async () => {
+          await updateNotificationCount();
+        }, 500);
+      } else {
+        console.error('Failed to mark all notifications as read:', res.status, res.statusText);
+      }
+    } catch (e) {
+      console.error('Failed to mark all notifications as read:', e);
+    }
+  }
+
+  // ---- Real-time Notification Updates ----
+
+  function startNotificationPolling() {
+    // Clear any existing polling
+    if (notificationPollingInterval) {
+      clearInterval(notificationPollingInterval);
+    }
+
+    // Only poll if user is logged in
+    if (!currentUserId) return;
+
+    // Poll every 30 seconds
+    notificationPollingInterval = setInterval(async () => {
+      if (currentUserId) {
+        await checkForNewNotifications();
+      } else {
+        // Stop polling if user logged out
+        stopNotificationPolling();
+      }
+    }, 30000);
+  }
+
+  function stopNotificationPolling() {
+    if (notificationPollingInterval) {
+      clearInterval(notificationPollingInterval);
+      notificationPollingInterval = null;
+    }
+  }
+
+  async function checkForNewNotifications() {
+    try {
+      const res = await fetch('/notifications/count');
+      if (res.ok) {
+        const data = await res.json();
+        const currentCount = data.count || 0;
+        
+        // Show a subtle notification if count increased
+        if (currentCount > lastNotificationCount && lastNotificationCount > 0) {
+          showNewNotificationToast(currentCount - lastNotificationCount);
+        }
+        
+        lastNotificationCount = currentCount;
+        updateNotificationBadge(currentCount);
+        
+        // If notification dropdown is open, refresh the list
+        const dropdown = document.getElementById('notificationDropdown');
+        if (dropdown && dropdown.style.display !== 'none') {
+          await loadNotifications();
+        }
+
+        // If mobile notification overlay is open, refresh the list
+        const mobileOverlay = document.getElementById('mobileNotificationOverlay');
+        if (mobileOverlay && mobileOverlay.style.display !== 'none') {
+          await loadMobileNotifications();
+        }
+      }
+    } catch (e) {
+      console.error('Failed to check for new notifications:', e);
+    }
+  }
+
+  function showNewNotificationToast(newCount) {
+    // Create a subtle toast notification
+    const toast = document.createElement('div');
+    toast.className = 'notification-toast';
+    toast.textContent = `${newCount} new notification${newCount > 1 ? 's' : ''}`;
+    
+    // Add toast styles
+    toast.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: #238636;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 9999;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: slideIn 0.3s ease-out;
+    `;
+
+    document.body.appendChild(toast);
+
+    // Remove toast after 3 seconds
+    setTimeout(() => {
+      toast.style.animation = 'slideOut 0.3s ease-in';
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }, 3000);
   }
 
   function showLoginMessage(msg, type) {
@@ -709,6 +1046,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.classList.add('content-visible');
     // Ensure correct initial layout after auth status is known
     setMode("upload");
+
+    // Start periodic notification checking for logged-in users
+    startNotificationPolling();
   });
 
   // Enable/disable file input and upload button based on file selection and username
@@ -1389,6 +1729,18 @@ async function renderVersus() {
           | <strong>W:</strong> ${optimisticMeta2.wins || 0} | <strong>L:</strong> ${optimisticMeta2.losses || 0} | <strong>Win %:</strong> ${optimisticMeta2.win_pct || '0.0'}%
         </div>
       `;
+
+      // --- NEW: Update tournament labels with rating boxes ---
+      const label1 = card1.querySelector('.tournament-label');
+      if (label1) {
+        const ratingBox = formatRatingBox((optimisticMeta1.madden !== undefined ? optimisticMeta1.madden : (optimisticMeta1.rating || 0)));
+        label1.innerHTML = `${ratingBox} ${tournamentName1}`;
+      }
+      const label2 = card2.querySelector('.tournament-label');
+      if (label2) {
+        const ratingBox = formatRatingBox((optimisticMeta2.madden !== undefined ? optimisticMeta2.madden : (optimisticMeta2.rating || 0)));
+        label2.innerHTML = `${ratingBox} ${tournamentName2}`;
+      }
 
       // Reveal the "Next Matchup" button now that a vote has been made
       if (nextButton) {
@@ -2273,6 +2625,79 @@ setInterval(() => {
   }
 }, 1000); // Check every 1 second for faster rate limit recovery
 
+// ---- Global Notification Functions (shared by desktop and mobile) ----
+
+async function markNotificationAsRead(notificationId) {
+  try {
+    await fetch('/notifications/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notificationIds: [notificationId] })
+    });
+  } catch (e) {
+    console.error('Failed to mark notification as read:', e);
+  }
+}
+
+async function updateNotificationCount() {
+  try {
+    const res = await fetch('/notifications/count');
+    if (res.ok) {
+      const data = await res.json();
+      const count = data.count || 0;
+      if (typeof lastNotificationCount !== 'undefined') {
+        lastNotificationCount = count; // Store for polling comparison
+      }
+      updateNotificationBadge(count);
+    } else {
+      console.error('Failed to fetch notification count:', res.status, res.statusText);
+    }
+  } catch (e) {
+    console.error('Failed to fetch notification count:', e);
+  }
+}
+
+function updateNotificationBadge(count) {
+  // Update desktop badge
+  const badge = document.getElementById('notificationBadge');
+  if (badge) {
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : count.toString();
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  // Update mobile badge
+  const mobileBadge = document.getElementById('mobileNotificationBadge');
+  if (mobileBadge) {
+    if (count > 0) {
+      mobileBadge.textContent = `${count > 99 ? '99+' : count}`;
+      mobileBadge.style.display = 'inline';
+    } else {
+      mobileBadge.style.display = 'none';
+    }
+  }
+
+  // Update hamburger button notification dot
+  const hamburgerBtn = document.getElementById('hamburgerBtn');
+  if (hamburgerBtn) {
+    let notificationDot = hamburgerBtn.querySelector('.hamburger-notification-dot');
+    if (count > 0) {
+      if (!notificationDot) {
+        notificationDot = document.createElement('div');
+        notificationDot.className = 'hamburger-notification-dot';
+        hamburgerBtn.appendChild(notificationDot);
+      }
+    } else {
+      if (notificationDot) {
+        notificationDot.remove();
+      }
+    }
+  }
+}
+
 // Helper to determine rating tier and return appropriate CSS class
 function getRatingTierClass(rating) {
   if (!rating || rating === 0) return 'tier-none';
@@ -2288,4 +2713,220 @@ function formatRatingBox(rating) {
   if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
   const tierClass = getRatingTierClass(rating);
   return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+}
+
+// ---- Mobile Notification Functions ----
+
+function showMobileNotifications() {
+  // Check if user is logged in first
+  if (!currentUserId) {
+    console.warn('User not logged in, cannot show notifications');
+    alert('Please log in to view notifications');
+    return;
+  }
+
+  // Create mobile notification overlay if it doesn't exist
+  let overlay = document.getElementById('mobileNotificationOverlay');
+  if (!overlay) {
+    overlay = createMobileNotificationOverlay();
+    document.body.appendChild(overlay);
+  }
+  
+  // Show the overlay
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden'; // Prevent background scrolling
+  
+  // Load notifications
+  loadMobileNotifications();
+}
+
+function hideMobileNotifications() {
+  const overlay = document.getElementById('mobileNotificationOverlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    document.body.style.overflow = ''; // Restore scrolling
+  }
+}
+
+function createMobileNotificationOverlay() {
+  const overlay = document.createElement('div');
+  overlay.id = 'mobileNotificationOverlay';
+  overlay.className = 'mobile-notification-overlay';
+  
+  overlay.innerHTML = `
+    <div class="mobile-notification-content">
+      <div class="mobile-notification-header">
+        <h3>Notifications</h3>
+        <div class="mobile-notification-actions">
+          <button id="mobileMarkAllRead" class="mobile-mark-all-read-btn">Mark all read</button>
+          <button id="closeMobileNotifications" class="mobile-close-notifications-btn">✖</button>
+        </div>
+      </div>
+      <div id="mobileNotificationList" class="mobile-notification-list">
+        <div class="loading">Loading notifications...</div>
+      </div>
+    </div>
+  `;
+
+  // Add event listeners
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      hideMobileNotifications();
+    }
+  });
+
+  overlay.querySelector('#closeMobileNotifications').addEventListener('click', hideMobileNotifications);
+  overlay.querySelector('#mobileMarkAllRead').addEventListener('click', markAllNotificationsAsReadMobile);
+  
+  return overlay;
+}
+
+async function loadMobileNotifications() {
+  const notificationList = document.getElementById('mobileNotificationList');
+  if (!notificationList) return;
+
+  notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+  try {
+    const res = await fetch('/notifications');
+    
+    if (!res.ok) {
+      if (res.status === 401) {
+        notificationList.innerHTML = '<div class="no-notifications">Please log in to view notifications</div>';
+      } else {
+        notificationList.innerHTML = `<div class="no-notifications">Failed to load notifications (${res.status})</div>`;
+      }
+      return;
+    }
+
+    const data = await res.json();
+    const notifications = data.notifications || [];
+    
+    if (notifications.length === 0) {
+      notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+      return;
+    }
+
+    notificationList.innerHTML = '';
+    notifications.forEach((notification, index) => {
+      try {
+        const item = createMobileNotificationItem(notification);
+        notificationList.appendChild(item);
+      } catch (itemError) {
+        console.error(`Error creating mobile notification item ${index}:`, itemError);
+      }
+    });
+  } catch (e) {
+    console.error('Failed to load mobile notifications:', e);
+    notificationList.innerHTML = `<div class="no-notifications">Network error: ${e.message}</div>`;
+  }
+}
+
+function createMobileNotificationItem(notification) {
+  const item = document.createElement('div');
+  item.className = `mobile-notification-item ${notification.is_read ? '' : 'unread'}`;
+  item.dataset.notificationId = notification.id;
+
+  const timeAgo = formatTimeAgo(new Date(notification.created_at));
+  
+  // Create enhanced notification message with links for versus votes
+  let messageHTML = notification.message;
+  
+  if (notification.type === 'versus_vote' && notification.related_team_id) {
+    // First, create the team link
+    const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
+    messageHTML = messageHTML.replace('your team', teamLink);
+    
+    // If we have opponent info, find and replace just the opponent name at the very end
+    if (notification.opponent_team_id) {
+      const againstIndex = messageHTML.lastIndexOf('against ');
+      if (againstIndex !== -1) {
+        const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
+        const opponentName = messageHTML.substring(againstIndex + 8);
+        
+        if (opponentName.trim()) {
+          const opponentLink = `<span class="mobile-opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+          messageHTML = beforeAgainst + opponentLink;
+        }
+      }
+    }
+  }
+  
+  item.innerHTML = `
+    <div class="mobile-notification-message">${messageHTML}</div>
+    <div class="mobile-notification-time">${timeAgo}</div>
+  `;
+
+  // Add click handlers for opponent links
+  const opponentLinks = item.querySelectorAll('.mobile-opponent-link');
+  opponentLinks.forEach(link => {
+    link.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const teamId = link.getAttribute('data-team-id');
+      if (teamId) {
+        try {
+          // Check if fetchTeamMeta function is available
+          if (typeof fetchTeamMeta === 'function') {
+            const meta = await fetchTeamMeta(teamId);
+            if (meta.username) {
+              window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+            } else {
+              // Check if showTeamModal function is available, otherwise navigate to voting history
+              if (typeof showTeamModal === 'function') {
+                showTeamModal(teamId);
+              } else {
+                window.location.href = `voting-history.html?teamId=${teamId}`;
+              }
+            }
+          } else {
+            // Fallback: navigate to voting history page
+            window.location.href = `voting-history.html?teamId=${teamId}`;
+          }
+        } catch (error) {
+          console.error('Failed to fetch opponent info:', error);
+          // Fallback: navigate to voting history page
+          window.location.href = `voting-history.html?teamId=${teamId}`;
+        }
+      }
+    });
+  });
+
+  // Mark as read when clicked (but not when clicking links)
+  item.addEventListener('click', async (e) => {
+    if (e.target.tagName === 'A' || e.target.classList.contains('mobile-opponent-link')) {
+      return;
+    }
+    
+    if (!notification.is_read) {
+      await markNotificationAsRead(notification.id);
+      item.classList.remove('unread');
+      await updateNotificationCount();
+    }
+  });
+
+  return item;
+}
+
+async function markAllNotificationsAsReadMobile() {
+  try {
+    const res = await fetch('/notifications/read-all', {
+      method: 'POST'
+    });
+    if (res.ok) {
+      // Immediately update the badge to 0 for instant feedback
+      updateNotificationBadge(0);
+      
+      // Reload the notification list
+      await loadMobileNotifications();
+      
+      // Wait a moment for database to update, then refresh count
+      setTimeout(async () => {
+        await updateNotificationCount();
+      }, 500);
+    } else {
+      console.error('Failed to mark all mobile notifications as read:', res.status, res.statusText);
+    }
+  } catch (e) {
+    console.error('Failed to mark all mobile notifications as read:', e);
+  }
 }

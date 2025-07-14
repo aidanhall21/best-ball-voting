@@ -41,7 +41,7 @@ SD_MULTIPLIER = 0       # unused
 # -------------------------------------------------------------
 # 0. Parse command-line arguments
 # -------------------------------------------------------------
-DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-10-1426.db")
+DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-11-1106.db")
 # OUTPUT_CSV = sys.argv[2] if len(sys.argv) > 2 else "team_ratings.csv"
 print(f"DB_PATH: {DB_PATH}")
 
@@ -315,7 +315,7 @@ if deleted_files > 0:
         import json
         
         # Try to notify the web app to clear its in-memory cache
-        base_url = os.getenv("BASE_URL", "http://localhost:3000")
+        base_url = os.getenv("BASE_URL") or os.getenv("BASE_URL", "http://localhost:3000")
         internal_secret = os.getenv("INTERNAL_SECRET", "change_this_internal_secret")
         
 

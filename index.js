@@ -591,62 +591,7 @@ app.get('/teams', (req, res) => {
   fs.createReadStream(CACHE_FILE_PATH).pipe(res);
 });
 
-// POST vote for a team
-app.post("/vote", csrfProtection, voteRateLimiter, (req, res) => {
-  const { teamId, voteType } = req.body;
-  const voterId = req.user ? req.user.id : null;
-
-  if (!["yes", "no"].includes(voteType)) {
-    return res.status(400).json({ error: "Invalid vote type" });
-  }
-
-  db.get(
-    `SELECT vote_type FROM votes WHERE team_id = ? AND voter_id ${voterId ? '= ?' : 'IS NULL'}`,
-    voterId ? [teamId, voterId] : [teamId],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: "DB error" });
-
-      if (!row) {
-        db.run(
-          `INSERT INTO votes (team_id, vote_type, voter_id) VALUES (?, ?, ?)`,
-          [teamId, voteType, voterId],
-          () => {
-            res.json({ status: "voted" });
-          }
-        );
-      } else if (row.vote_type !== voteType) {
-        db.run(
-          `UPDATE votes SET vote_type = ? WHERE team_id = ? AND voter_id ${voterId ? '= ?' : 'IS NULL'}`,
-          voterId ? [voteType, teamId, voterId] : [voteType, teamId],
-          () => {
-            res.json({ status: "updated" });
-          }
-        );
-      } else {
-        res.json({ status: "unchanged" });
-      }
-    }
-  );
-});
-
-// Get vote counts
-app.get("/votes/:teamId", (req, res) => {
-  const teamId = req.params.teamId;
-
-  db.all(
-    `SELECT vote_type, COUNT(*) as count FROM votes WHERE team_id = ? GROUP BY vote_type`,
-    [teamId],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: "DB error" });
-
-      const results = { yes: 0, no: 0 };
-      rows.forEach((r) => {
-        results[r.vote_type] = r.count;
-      });
-      res.json(results);
-    }
-  );
-});
+// Yes/No voting has been removed - only versus matchups are supported
 
 // Record versus match result (captcha-protected, rate limiting handled client-side)
 app.post("/versus", verifyCaptcha, (req, res) => {
@@ -666,6 +611,63 @@ app.post("/versus", verifyCaptcha, (req, res) => {
       // Clear cache for both teams since their stats changed
       teamMetaCache.delete(winnerId);
       teamMetaCache.delete(loserId);
+      
+      // Create detailed notifications for team owners (if voter is logged in and different from team owners)
+      if (voterId) {
+        // Get comprehensive team and voter information
+        db.all(
+          `SELECT t.id, t.user_id, t.username, t.tournament, u.display_name
+           FROM teams t 
+           LEFT JOIN users u ON t.user_id = u.id 
+           WHERE t.id IN (?, ?)`,
+          [winnerId, loserId],
+          (err2, teamRows) => {
+            if (err2) {
+              console.error('Error fetching team owners for notifications:', err2);
+              return; // Don't fail the entire request
+            }
+
+            // Get voter information
+            db.get(
+              `SELECT u.display_name
+               FROM users u WHERE u.id = ?`,
+              [voterId],
+              (err3, voterRow) => {
+                if (err3) {
+                  console.error('Error fetching voter info for notifications:', err3);
+                  return;
+                }
+
+                const voterName = voterRow?.display_name || 'Someone';
+
+                teamRows.forEach(team => {
+                  // Only create notification if team has an owner and it's not the voter themselves
+                  if (team.user_id && team.user_id !== voterId) {
+                    const isWinner = team.id === winnerId;
+                    const opponentTeam = teamRows.find(t => t.id !== team.id);
+                    const opponentName = opponentTeam?.display_name || opponentTeam?.username || 'another user';
+                    
+                    // Build the notification message
+                    const emoji = isWinner ? '🔥 ' : '❌ ';
+                    const message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in the ${team.tournament} against ${opponentName}`;
+                    
+                    db.run(
+                      `INSERT INTO notifications (user_id, type, message, related_team_id, related_user_id, opponent_team_id) 
+                       VALUES (?, ?, ?, ?, ?, ?)`,
+                      [team.user_id, 'versus_vote', message, team.id, voterId, opponentTeam?.id],
+                      (err4) => {
+                        if (err4) {
+                          console.error('Error creating notification:', err4);
+                        }
+                      }
+                    );
+                  }
+                });
+              }
+            );
+          }
+        );
+      }
       
       res.json({ status: "recorded" });
     }
@@ -742,6 +744,7 @@ app.get("/team-meta/:teamId", (req, res) => {
       t.username,
       t.tournament,
       u.twitter_username,
+      COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = $id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
       (
         SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = $id
       ) AS wins,
@@ -768,6 +771,7 @@ app.get("/team-meta/:teamId", (req, res) => {
         username: null, 
         twitter_username: null, 
         tournament: null, 
+        madden: 0, 
         wins: 0, 
         losses: 0, 
         win_pct: 0 
@@ -777,6 +781,7 @@ app.get("/team-meta/:teamId", (req, res) => {
         username: row.username,
         twitter_username: row.twitter_username,
         tournament: row.tournament,
+        madden: Math.round(row.madden) || 0,
         wins: parseInt(row.wins) || 0,
         losses: parseInt(row.losses) || 0
       };
@@ -2089,6 +2094,110 @@ app.post('/usage', (req, res) => {
         return res.status(500).json({ error: 'DB error' });
       }
       res.json({ status: 'ok' });
+    }
+  );
+});
+
+// ---- Notifications API ----
+
+// Get unread notification count
+app.get('/notifications/count', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  
+  db.get(
+    `SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0`,
+    [userId],
+    (err, row) => {
+      if (err) {
+        console.error('Error fetching notification count:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ count: row?.count || 0 });
+    }
+  );
+});
+
+// Get notifications for user (with pagination)
+app.get('/notifications', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  // const limit = parseInt(req.query.limit) || 20;
+  // const offset = parseInt(req.query.offset) || 0;
+  
+  db.all(
+    `SELECT 
+      id, 
+      type, 
+      message, 
+      related_team_id, 
+      related_user_id, 
+      opponent_team_id,
+      is_read, 
+      created_at
+     FROM notifications 
+     WHERE user_id = ?
+     ORDER BY created_at DESC`,
+    [userId],
+    (err, rows) => {
+      if (err) {
+        console.error('Error fetching notifications:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      // Convert SQLite timestamps to proper ISO format for JavaScript
+      const notifications = (rows || []).map(row => ({
+        ...row,
+        created_at: new Date(row.created_at + ' UTC').toISOString()
+      }));
+      
+      res.json({ notifications });
+    }
+  );
+});
+
+// Mark specific notifications as read
+app.post('/notifications/read', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const { notificationIds } = req.body;
+  
+  if (!notificationIds || !Array.isArray(notificationIds)) {
+    return res.status(400).json({ error: 'notificationIds array required' });
+  }
+  
+  if (notificationIds.length === 0) {
+    return res.json({ status: 'no notifications to mark' });
+  }
+  
+  const placeholders = notificationIds.map(() => '?').join(',');
+  const params = [userId, ...notificationIds];
+  
+  db.run(
+    `UPDATE notifications 
+     SET is_read = 1 
+     WHERE user_id = ? AND id IN (${placeholders})`,
+    params,
+    function(err) {
+      if (err) {
+        console.error('Error marking notifications as read:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ status: 'marked as read', updated: this.changes });
+    }
+  );
+});
+
+// Mark all notifications as read for user
+app.post('/notifications/read-all', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  
+  db.run(
+    `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0`,
+    [userId],
+    function(err) {
+      if (err) {
+        console.error('Error marking all notifications as read:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ status: 'all marked as read', updated: this.changes });
     }
   );
 });

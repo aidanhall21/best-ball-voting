@@ -659,13 +659,47 @@ body {
     text-decoration: underline;
   }
   
-  /* Gear icon */
+  .social-links {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .social-links a {
+    color: #8b949e;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+  }
+
+  .social-links a:hover {
+    color: #58a6ff;
+  }
+
+  .legal-links {
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .legal-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  
+  /* User controls and notifications */
   .user-controls {
     position: relative;
     position: fixed;
     top: 20px;
     right: 20px;
     z-index: 1100;
+    display: flex;
+    gap: 8px;
+    align-items: center;
   }
   
   .gear-btn {
@@ -686,6 +720,431 @@ body {
   
   .gear-btn:hover {
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Notification bell button */
+  .notification-btn {
+    background: transparent;
+    border: none;
+    color: #f0f6fc;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 8px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    position: relative;
+  }
+  
+  .notification-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Notification badge */
+  .notification-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: #f85149;
+    color: white;
+    border-radius: 50%;
+    min-width: 18px;
+    height: 18px;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 2px;
+    box-shadow: 0 0 0 2px #0d1117;
+  }
+
+  /* Notification dropdown */
+  .notification-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    min-width: 320px;
+    max-width: 400px;
+    max-height: 400px;
+    margin-top: 8px;
+    z-index: 1101;
+    overflow: hidden;
+  }
+
+  .notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid #30363d;
+    background: #1c2128;
+  }
+
+  .notification-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #f0f6fc;
+  }
+
+  .mark-all-read-btn {
+    background: transparent;
+    border: none;
+    color: #58a6ff;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  /* Only apply hover effect on devices that support true hovering (not touch) */
+  @media (hover: hover) {
+    .mark-all-read-btn:hover {
+      background: rgba(88, 166, 255, 0.1);
+    }
+  }
+
+  /* Active state for touch devices */
+  .mark-all-read-btn:active {
+    background: rgba(88, 166, 255, 0.2);
+  }
+
+  /* Ensure focus state doesn't stick */
+  .mark-all-read-btn:focus {
+    outline: none;
+    background: transparent;
+  }
+
+  .notification-list {
+    max-height: 350px;
+    overflow-y: auto;
+  }
+
+  .notification-item {
+    padding: 12px 20px;
+    border-bottom: 1px solid #21262d;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .notification-item:hover {
+    background: #21262d;
+  }
+
+  .notification-item:last-child {
+    border-bottom: none;
+  }
+
+  .notification-item.unread {
+    background: rgba(58, 166, 255, 0.05);
+    border-left: 3px solid #58a6ff;
+  }
+
+  .notification-item.unread:hover {
+    background: rgba(58, 166, 255, 0.1);
+  }
+
+  .notification-message {
+    font-size: 14px;
+    color: #f0f6fc;
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+
+  .notification-time {
+    font-size: 12px;
+    color: #8b949e;
+  }
+
+  .notification-list .loading {
+    padding: 20px;
+    text-align: center;
+    color: #8b949e;
+    font-style: italic;
+  }
+
+  .notification-list .no-notifications {
+    padding: 20px;
+    text-align: center;
+    color: #8b949e;
+    font-style: italic;
+  }
+
+  /* Toast notification animations */
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideOut {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+
+  /* ---- Mobile Notifications ---- */
+  
+  /* Hamburger button notification dot */
+  .hamburger-notification-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 12px;
+    height: 12px;
+    background: #f85149;
+    border-radius: 50%;
+    border: 2px solid #0d1117;
+    z-index: 1101;
+  }
+
+  /* Mobile notification overlay */
+  .mobile-notification-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 10000;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  .mobile-notification-content {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 80vh;
+    margin-top: 60px;
+    overflow: hidden;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .mobile-notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #30363d;
+    background: #1c2128;
+  }
+
+  .mobile-notification-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #f0f6fc;
+    font-weight: 600;
+  }
+
+  .mobile-notification-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .mobile-mark-all-read-btn {
+    background: transparent;
+    border: 1px solid #58a6ff;
+    color: #58a6ff;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    font-weight: 500;
+  }
+
+  /* Only apply hover effect on devices that support true hovering (not touch) */
+  @media (hover: hover) {
+    .mobile-mark-all-read-btn:hover {
+      background: #58a6ff;
+      color: #fff;
+    }
+  }
+
+  /* Active state for touch devices - brief visual feedback */
+  .mobile-mark-all-read-btn:active {
+    background: #58a6ff;
+    color: #fff;
+    transform: scale(0.98);
+  }
+
+  /* Ensure focus state doesn't stick */
+  .mobile-mark-all-read-btn:focus {
+    outline: none;
+    background: transparent;
+    color: #58a6ff;
+  }
+
+  .mobile-close-notifications-btn {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  /* Only apply hover effect on devices that support true hovering (not touch) */
+  @media (hover: hover) {
+    .mobile-close-notifications-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f0f6fc;
+    }
+  }
+
+  /* Active state for touch devices */
+  .mobile-close-notifications-btn:active {
+    background: rgba(255, 255, 255, 0.15);
+    color: #f0f6fc;
+    transform: scale(0.95);
+  }
+
+  /* Ensure focus state doesn't stick */
+  .mobile-close-notifications-btn:focus {
+    outline: none;
+    background: transparent;
+    color: #8b949e;
+  }
+
+  .mobile-notification-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-notification-item {
+    padding: 16px 20px;
+    border-bottom: 1px solid #21262d;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .mobile-notification-item:hover {
+    background: #21262d;
+  }
+
+  .mobile-notification-item:last-child {
+    border-bottom: none;
+  }
+
+  .mobile-notification-item.unread {
+    background: rgba(58, 166, 255, 0.06);
+    border-left: 4px solid #58a6ff;
+  }
+
+  .mobile-notification-item.unread:hover {
+    background: rgba(58, 166, 255, 0.12);
+  }
+
+  .mobile-notification-message {
+    font-size: 15px;
+    color: #f0f6fc;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+
+  .mobile-notification-time {
+    font-size: 13px;
+    color: #8b949e;
+  }
+
+  .mobile-notification-list .loading {
+    padding: 40px 20px;
+    text-align: center;
+    color: #8b949e;
+    font-style: italic;
+    font-size: 16px;
+  }
+
+  .mobile-notification-list .no-notifications {
+    padding: 40px 20px;
+    text-align: center;
+    color: #8b949e;
+    font-style: italic;
+    font-size: 16px;
+  }
+
+  /* Mobile notification button styling */
+  .mobile-notification-btn {
+    background: transparent;
+    border: 1px solid #30363d;
+    color: #f0f6fc;
+    padding: 12px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    text-align: left;
+    margin: 8px 0;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Only apply hover effect on devices that support true hovering (not touch) */
+  @media (hover: hover) {
+    .mobile-notification-btn:hover {
+      background: #21262d;
+      border-color: #58a6ff;
+    }
+  }
+
+  /* Active state for touch devices */
+  .mobile-notification-btn:active {
+    background: #21262d;
+    border-color: #58a6ff;
+    transform: scale(0.98);
+  }
+
+  /* Ensure focus state doesn't stick */
+  .mobile-notification-btn:focus {
+    outline: none;
+    background: transparent;
+    border-color: #30363d;
+  }
+
+  .mobile-notification-count {
+    background: #f85149;
+    color: white;
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
   }
   
   .user-menu {
@@ -1015,6 +1474,37 @@ body {
   
   .mobile-logout-btn:hover {
     background: #f85149;
+  }
+
+  /* Mobile notification styles */
+  .mobile-notification-btn {
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    padding: 12px 16px;
+    background: #30363d;
+    color: #f0f6fc;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    position: relative;
+  }
+
+  .mobile-notification-btn:hover {
+    background: #484f58;
+  }
+
+  .mobile-notification-count {
+    background: #f85149;
+    color: white;
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
   }
   
   /* Media queries for mobile */
@@ -1749,5 +2239,13 @@ body {
   color: #ffffff;
   border-color: #1d4ed8;
 }
+  
+  @media (max-width: 768px) {
+    .rating-box {
+      font-size: 10px;
+      padding: 3px 6px;
+      min-width: 22px;
+    }
+  }
   
     
