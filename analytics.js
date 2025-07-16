@@ -107,4 +107,25 @@
     clearInterval(idleCheckInterval);
     sendUsage();
   });
+
+  // ===============================================
+  // Mobile Menu Functionality
+  // ===============================================
+  const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+  const mobileNav = document.getElementById('mobileNav');
+
+  if (mobileMenuToggle && mobileNav) {
+    mobileMenuToggle.addEventListener('click', () => {
+      mobileNav.style.display = mobileNav.style.display === 'flex' ? 'none' : 'flex';
+      mobileMenuToggle.classList.toggle('active');
+    });
+
+    // Close mobile nav when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!mobileMenuToggle.contains(e.target) && !mobileNav.contains(e.target)) {
+        mobileNav.style.display = 'none';
+        mobileMenuToggle.classList.remove('active');
+      }
+    });
+  }
 })(); 

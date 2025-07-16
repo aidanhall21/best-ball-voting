@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-14-0849.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-14-0849.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-16-0757.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-16-0757.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -197,7 +197,6 @@ db.all('PRAGMA table_info(users)', (err, cols) => {
         if (err) return;
         
         if (duplicates.length > 0) {
-          console.log(`Found ${duplicates.length} duplicate display names, resolving...`);
           
           // For each set of duplicates, append numbers to make them unique
           duplicates.forEach(dup => {

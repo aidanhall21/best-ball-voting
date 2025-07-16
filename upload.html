@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upload Teams - Draft or Pass</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Favicons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/favicon_io/site.webmanifest">
+  <link rel="shortcut icon" href="/favicon_io/favicon.ico">
+
+  <!-- Social share metadata -->
+  <meta property="og:title" content="Upload Teams - Draft or Pass">
+  <meta property="og:description" content="Upload your fantasy football teams for community voting">
+  <meta property="og:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://draftrpass.com/upload" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Upload Teams - Draft or Pass">
+  <meta name="twitter:description" content="Upload your fantasy football teams for community voting">
+  <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta name="twitter:image:alt" content="Draft or Pass - Upload Teams page preview">
+  <!-- Cloudflare Web Analytics -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
+  <!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+  <!-- Main Header Navigation -->
+  <header class="main-header">
+    <div class="header-content">
+      <div class="logo">
+        <a href="/" class="logo-link">Draft or Pass</a>
+      </div>
+      
+      <!-- Desktop Navigation -->
+      <nav class="desktop-nav">
+        <a href="/upload" class="nav-link active">Upload</a>
+        <a href="/draftorpass" class="nav-link">Draft or Pass</a>
+        <a href="/leaderboard" class="nav-link">Leaderboard</a>
+      </nav>
+      
+      <!-- User Controls -->
+      <div class="user-controls">
+        <!-- Notification bell -->
+        <button id="notificationBell" class="notification-btn" style="display:none;">
+          🔔
+          <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
+        </button>
+        <button id="userGear" class="gear-btn" style="display:none;">Profile</button>
+        <div id="userMenu" class="user-menu" style="display:none;">
+          <p id="userLabel"></p>
+          <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
+          <button id="logoutBtn" class="logout-small">Logout</button>
+        </div>
+        <!-- Notification dropdown -->
+        <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
+          </div>
+          <div id="notificationList" class="notification-list">
+            <div class="loading">Loading notifications...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Mobile Menu Toggle -->
+      <button class="mobile-menu-toggle" id="mobileMenuToggle">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    
+    <!-- Mobile Navigation Menu -->
+    <div class="mobile-nav" id="mobileNav">
+      <a href="/upload" class="mobile-nav-link active">Upload</a>
+      <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
+      <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
+      <div class="mobile-user-section" id="mobileUserSection">
+        <div id="mobileUserInfo" style="display:none;">
+          <!-- Mobile notifications -->
+          <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
+            🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
+          </button>
+          <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="upload-container">
+      <!-- Upload section (shown when logged in) -->
+      <div id="uploadSection" class="upload-panel">
+        <h2>Upload Your Teams</h2>
+        <p>Add your drafts to the community vote pool</p>
+        <input type="text" id="usernameInput" placeholder="Username (leave blank to use your account name)" />
+        <div class="file-input-container">
+          <input type="file" id="csvUpload" accept=".csv" />
+          <button id="uploadButton" class="upload-button" disabled>Upload Teams</button>
+        </div>
+        <div id="uploadMessage" class="upload-message"></div>
+      </div>
+
+      <!-- Login section (shown when not logged in) -->
+      <div id="loginPanel" class="login-panel" style="display:none;">
+        <h2>Sign In to Upload Teams</h2>
+        
+        <!-- Tab headers -->
+        <div class="auth-tabs">
+          <button id="loginTab" class="auth-tab active">Sign In</button>
+          <button id="signupTab" class="auth-tab">Create Account</button>
+        </div>
+        
+        <!-- Login form -->
+        <div id="loginForm" class="auth-form">
+          <button id="loginTwitterBtn" class="x-btn">Log in with X</button>
+          <div class="login-divider">or</div>
+          <form id="loginEmailForm">
+            <input type="text" id="loginEmail" placeholder="Email or Username" required>
+            <input type="password" id="loginPassword" placeholder="Password" required>
+            <div class="login-actions">
+              <button type="submit">Log in</button>
+            </div>
+            <a href="#" id="forgotPasswordLink">Forgot password?</a>
+          </form>
+        </div>
+        
+        <!-- Signup form -->
+        <div id="signupForm" class="auth-form" style="display:none;">
+          <button id="signupTwitterBtn" class="x-btn">Sign up with X</button>
+          <div class="login-divider">or</div>
+          <form id="signupEmailForm">
+            <input type="text" id="signupUsername" placeholder="Username" required maxlength="30">
+            <input type="email" id="signupEmail" placeholder="Email" required>
+            <input type="email" id="signupEmailConfirm" placeholder="Confirm Email" required>
+            <input type="password" id="signupPassword" placeholder="Password" required>
+            <input type="password" id="signupPasswordConfirm" placeholder="Confirm Password" required>
+            <div class="login-actions">
+              <button type="submit">Create Account</button>
+            </div>
+          </form>
+        </div>
+        
+        <div id="loginMessage" class="upload-message" style="display:none;"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="analytics.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="upload.js"></script>
+
+  <footer class="legal-footer">
+    <div class="footer-content">
+      <div class="social-links">
+      <a href="https://x.com/DraftrPass" target="_blank" rel="noopener noreferrer" title="Follow us on X">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        </svg>
+      </a>
+      <a href="https://discord.gg/Y7hyQsfDQx" target="_blank" rel="noopener noreferrer" title="Join our Discord">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.246.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
+        </svg>
+      </a>
+      </div>
+      <div class="legal-links">
+      <a href="privacy.html" target="_blank">Privacy Policy</a>
+      <a href="terms.html" target="_blank">Terms of Service</a>
+    </div>
+    </div>
+  </footer>
+</body>
+</html> 

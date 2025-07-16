@@ -35,38 +35,38 @@
 
     /* Initially hide main content until auth check completes */
     .voting-history-container,
-    .header h1 {
+    .page-header h1 {
       opacity: 0;
       visibility: hidden;
     }
 
     /* Show content when auth is confirmed */
     .content-visible .voting-history-container,
-    .content-visible .header h1 {
+    .content-visible .page-header h1 {
       opacity: 1;
       visibility: visible;
       transition: opacity 0.2s ease;
     }
 
-    /* Add fixed positioning for hamburger button */
-    .hamburger-btn {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      z-index: 1100;
+    /* Ensure the team title header sits below the sticky site header */
+    .page-header {
+      margin-top: 5px; /* equal to .main-header height */
     }
 
-    /* Hamburger button notification dot */
-    .hamburger-notification-dot {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 12px;
-      height: 12px;
-      background: #f85149;
-      border-radius: 50%;
-      border: 2px solid #0d1117;
-      z-index: 1101;
+
+
+    /* Page header styling */
+    .page-header {
+      text-align: center;
+      padding: 20px;
+      background: #0d1117;
+    }
+
+    .page-header .team-title {
+      color: #c9d1d9;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
     }
 
     .voting-history-header {
@@ -288,26 +288,18 @@
         padding: 10px;
       }
 
-      /* Add spacing to the main header */
-      .header {
-        margin-top: 60px; /* Space for fixed hamburger button */
-        margin-bottom: 20px;
-      }
-
       .voting-history-header {
         flex-direction: column;
         align-items: center;
         text-align: center;
         gap: 15px;
-        padding: 0 40px; /* Add padding for hamburger button */
-        margin-top: 0; /* Remove since .header now has margin */
       }
 
       .team-info {
         width: 100%;
       }
 
-      .team-title {
+      .page-header .team-title {
         font-size: 20px;
         text-align: center;
       }
@@ -350,22 +342,6 @@
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         padding-bottom: 20px; /* Add some padding for the scrollbar */
-      }
-    }
-
-    /* Keep desktop styles for larger screens */
-    @media (min-width: 769px) {
-      .mobile-menu {
-        display: none !important;
-      }
-      
-      .hamburger-btn {
-        display: none !important;
-      }
-
-      /* Add more space at top of page on desktop */
-      .header {
-        margin-top: 40px;
       }
     }
 
@@ -419,47 +395,89 @@
       margin-left: 8px;
     }
 
+
+
     /* Make the roster counts stick to top and list scroll */
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1 class="team-title" id="teamTitle">Loading...</h1>
-    
-    <!-- Hamburger menu for mobile -->
-    <button id="hamburgerBtn" class="hamburger-btn">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
-  </div>
+  <!-- Main Header Navigation -->
+  <header class="main-header">
+    <div class="header-content">
+      <!-- Logo -->
+      <div class="logo">
+        <a href="/" class="logo-link">Draft or Pass</a>
+      </div>
 
-  <!-- Mobile menu overlay -->
-  <div id="mobileMenu" class="mobile-menu">
-    <div class="mobile-menu-content">
-      <button id="closeMobileMenu" class="close-menu-btn">✖</button>
-      
-      <!-- Navigation items in mobile menu -->
-      <div class="mobile-nav">
-        <button id="mobileHomeBtn" class="mobile-nav-btn">Home</button>
+      <!-- Desktop Navigation -->
+      <nav class="desktop-nav">
+        <a href="/upload" class="nav-link">Upload</a>
+        <a href="/draftorpass" class="nav-link">Draft or Pass</a>
+        <a href="/leaderboard" class="nav-link">Leaderboard</a>
+      </nav>
+
+      <!-- User Controls -->
+      <div class="user-controls">
+        <!-- Notification bell -->
+        <button id="notificationBell" class="notification-btn" style="display:none;">
+          🔔
+          <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
+        </button>
+        <button id="userGear" class="gear-btn" style="display:none;">Profile</button>
+        <div id="userMenu" class="user-menu" style="display:none;">
+          <p id="userLabel"></p>
+          <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
+          <button id="logoutBtn" class="logout-small">Logout</button>
+        </div>
+
+        <!-- Notification dropdown -->
+        <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
+          </div>
+          <div id="notificationList" class="notification-list">
+            <div class="loading">Loading notifications...</div>
+          </div>
+        </div>
       </div>
       
-      <!-- User controls in mobile menu -->
-      <div id="mobileUserSection" class="mobile-user-section">
+      <!-- Mobile Menu Toggle -->
+      <button class="mobile-menu-toggle" id="mobileMenuToggle">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+
+    <!-- Mobile Navigation -->
+    <nav class="mobile-nav" id="mobileNav">
+      <a href="/upload" class="mobile-nav-link">Upload</a>
+      <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
+      <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
+      
+      <!-- Mobile user section -->
+      <div class="mobile-user-section" id="mobileUserSection">
         <div id="mobileUserInfo" style="display:none;">
           <!-- Mobile notifications -->
           <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
             🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
           </button>
-          <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
-          <button id="mobileLogoutBtn" class="mobile-logout-btn">Logout</button>
+          <a href="/profile.html" class="mobile-profile-btn">Profile</a>
         </div>
         <div id="mobileLoginPrompt">
           <p>Sign in to upload teams</p>
         </div>
       </div>
-    </div>
+    </nav>
+  </header>
+<main class="main-content">
+  <!-- Page Title Section -->
+  <div class="page-header">
+    <h1 class="team-title" id="teamTitle">Loading...</h1>
   </div>
+
+
 
   <!-- Add after user-controls div -->
   <div id="loginRequiredMessage" class="login-required" style="display:none; text-align:center; padding:40px;">
@@ -508,98 +526,411 @@
     let lastNotificationCount = 0;
     let notificationPollingInterval = null;
 
-    // Mobile menu functionality
-    function toggleMobileMenu() {
-      const mobileMenu = document.getElementById('mobileMenu');
-      const hamburgerBtn = document.getElementById('hamburgerBtn');
-      const isActive = mobileMenu.classList.contains('active');
+    // Notification badge and polling functions
+    function updateNotificationBadge(count) {
+      // Update desktop badge
+      const desktopBadge = document.getElementById('notificationBadge');
+      if (desktopBadge) {
+        if (count > 0) {
+          desktopBadge.textContent = `${count > 99 ? '99+' : count}`;
+          desktopBadge.style.display = 'inline';
+        } else {
+          desktopBadge.style.display = 'none';
+        }
+      }
+
+      // Update mobile badge
+      const mobileBadge = document.getElementById('mobileNotificationBadge');
+      if (mobileBadge) {
+        if (count > 0) {
+          mobileBadge.textContent = `${count > 99 ? '99+' : count}`;
+          mobileBadge.style.display = 'inline';
+        } else {
+          mobileBadge.style.display = 'none';
+        }
+      }
+    }
+
+    async function updateNotificationCount() {
+      try {
+        const res = await fetch('/notifications/count');
+        if (res.ok) {
+          const data = await res.json();
+          const count = data.count || 0;
+          lastNotificationCount = count;
+          updateNotificationBadge(count);
+        } else {
+          console.error('Failed to fetch notification count:', res.status, res.statusText);
+        }
+      } catch (e) {
+        console.error('Failed to fetch notification count:', e);
+      }
+    }
+
+    // Header navigation functionality
+    function setupHeaderNavigation() {
+      console.log('Setting up header navigation');
       
-      if (isActive) {
-        closeMobileMenuFunc();
+      // Mobile menu toggle
+      const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+      const mobileNav = document.getElementById('mobileNav');
+      
+      console.log('Mobile menu toggle element:', mobileMenuToggle);
+      console.log('Mobile nav element:', mobileNav);
+      
+      if (mobileMenuToggle && mobileNav) {
+        console.log('Setting up mobile menu toggle handler');
+        mobileMenuToggle.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Mobile menu toggle clicked');
+          
+          const isCurrentlyActive = mobileNav.classList.contains('active');
+          console.log('Menu currently active:', isCurrentlyActive);
+          
+          if (isCurrentlyActive) {
+            mobileNav.classList.remove('active');
+            mobileMenuToggle.classList.remove('active');
+            console.log('Menu closed');
+          } else {
+            mobileNav.classList.add('active');
+            mobileMenuToggle.classList.add('active');
+            console.log('Menu opened');
+          }
+        });
+        
+        // Close mobile menu when clicking on a link
+        document.querySelectorAll('.mobile-nav-link').forEach(link => {
+          link.addEventListener('click', () => {
+            mobileNav.classList.remove('active');
+            mobileMenuToggle.classList.remove('active');
+          });
+        });
+        
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!mobileMenuToggle.contains(e.target) && !mobileNav.contains(e.target)) {
+            mobileNav.classList.remove('active');
+            mobileMenuToggle.classList.remove('active');
+          }
+        });
       } else {
-        openMobileMenuFunc();
+        console.error('Mobile menu elements not found');
+      }
+
+      // Desktop user menu toggle
+      const userGear = document.getElementById('userGear');
+      const userDropdown = document.getElementById('userDropdown');
+      
+      if (userGear && userDropdown) {
+        userGear.addEventListener('click', (e) => {
+          e.stopPropagation();
+          userDropdown.style.display = userDropdown.style.display === 'block' ? 'none' : 'block';
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('.user-menu')) {
+            userDropdown.style.display = 'none';
+          }
+        });
       }
     }
 
-    function openMobileMenuFunc() {
-      const mobileMenu = document.getElementById('mobileMenu');
-      const hamburgerBtn = document.getElementById('hamburgerBtn');
-      mobileMenu.classList.add('active');
-      hamburgerBtn.classList.add('active');
-      document.body.style.overflow = 'hidden'; // Prevent background scrolling
-    }
-
-    function closeMobileMenuFunc() {
-      const mobileMenu = document.getElementById('mobileMenu');
-      const hamburgerBtn = document.getElementById('hamburgerBtn');
-      mobileMenu.classList.remove('active');
-      hamburgerBtn.classList.remove('active');
-      document.body.style.overflow = ''; // Restore scrolling
-    }
-
-    // Mobile menu event listeners
-    document.getElementById('hamburgerBtn').addEventListener('click', toggleMobileMenu);
-    document.getElementById('closeMobileMenu').addEventListener('click', closeMobileMenuFunc);
-    
-    // Close mobile menu when clicking outside
-    document.getElementById('mobileMenu').addEventListener('click', (e) => {
-      if (e.target === document.getElementById('mobileMenu')) {
-        closeMobileMenuFunc();
+    // Setup header navigation and controls
+    function setupHeaderControls() {
+      // Desktop notification bell
+      const notificationBell = document.getElementById('notificationBell');
+      const notificationDropdown = document.getElementById('notificationDropdown');
+      if (notificationBell && notificationDropdown) {
+        notificationBell.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const userMenu = document.querySelector('.user-menu');
+          const isVisible = notificationDropdown.style.display !== 'none';
+          
+          // Toggle notification dropdown
+          notificationDropdown.style.display = isVisible ? 'none' : 'block';
+          // Hide user menu if open
+          if (userMenu) userMenu.style.display = 'none';
+          
+          // Load notifications when opening
+          if (!isVisible) {
+            loadDesktopNotifications();
+          }
+        });
       }
-    });
+      
+      // Profile gear button
+      const userGear = document.getElementById('userGear');
+      if (userGear) {
+        userGear.addEventListener('click', () => {
+          window.location.href = '/profile.html';
+        });
+      }
+      
+      // Mark all read button
+      const markAllReadBtn = document.getElementById('markAllRead');
+      if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
+      }
+      
+      // Close dropdowns when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.user-controls')) {
+          if (notificationDropdown) notificationDropdown.style.display = 'none';
+          const userMenu = document.querySelector('.user-menu');
+          if (userMenu) userMenu.style.display = 'none';
+        }
+      });
+    }
 
-    // Mobile navigation buttons
-    document.getElementById('mobileHomeBtn').addEventListener('click', () => {
-      window.location.href = '/';
-    });
+    // Desktop notification functions
+    async function loadDesktopNotifications() {
+      const notificationList = document.getElementById('notificationList');
+      if (!notificationList) return;
+
+      notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+      try {
+        const res = await fetch('/notifications');
+        if (!res.ok) {
+          notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+          return;
+        }
+
+        const data = await res.json();
+        const notifications = data.notifications || [];
+
+        if (notifications.length === 0) {
+          notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+          return;
+        }
+
+        notificationList.innerHTML = notifications.map(notification => {
+          const timeAgo = formatTimeAgo(new Date(notification.created_at));
+          let msgHtml = notification.message;
+          
+          // Enhance versus_vote messages with links
+          if (notification.type === 'versus_vote' && notification.related_team_id) {
+            msgHtml = msgHtml.replace('your team', `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color:#58a6ff;text-decoration:none;">your team</a>`);
+            
+            if (notification.opponent_team_id) {
+              const againstIndex = msgHtml.lastIndexOf('against ');
+              if (againstIndex !== -1) {
+                const beforeAgainst = msgHtml.substring(0, againstIndex + 8);
+                const opponentName = msgHtml.substring(againstIndex + 8);
+                if (opponentName.trim()) {
+                  msgHtml = beforeAgainst + `<span class="desktop-opponent-link" data-team-id="${notification.opponent_team_id}" style="color:#58a6ff;cursor:pointer;text-decoration:none;">${opponentName}</span>`;
+                }
+              }
+            }
+          }
+          
+          return `
+            <div class="notification-item ${notification.is_read ? 'read' : 'unread'}" data-notification-id="${notification.id}">
+              <div class="notification-message">${msgHtml}</div>
+              <div class="notification-time">${timeAgo}</div>
+            </div>
+          `;
+        }).join('');
+
+        // Attach opponent link handlers
+        document.querySelectorAll('.desktop-opponent-link').forEach(link => {
+          link.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const teamId = link.getAttribute('data-team-id');
+            if (!teamId) return;
+            try {
+              const res = await fetch(`/team-meta/${teamId}`);
+              const meta = await res.json();
+              if (meta && meta.username) {
+                window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+              } else {
+                window.location.href = `voting-history.html?teamId=${teamId}`;
+              }
+            } catch (err) {
+              window.location.href = `voting-history.html?teamId=${teamId}`;
+            }
+          });
+        });
+
+        // Mark notifications as read when clicked
+        document.querySelectorAll('.notification-item.unread').forEach(item => {
+          item.addEventListener('click', async () => {
+            const notificationId = item.dataset.notificationId;
+            if (notificationId) {
+              try {
+                await fetch('/notifications/read', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notificationIds: [parseInt(notificationId)] })
+                });
+                item.classList.remove('unread');
+                item.classList.add('read');
+                await updateNotificationCount();
+              } catch (e) {
+                console.error('Failed to mark notification as read:', e);
+              }
+            }
+          });
+        });
+
+      } catch (e) {
+        console.error('Failed to load desktop notifications:', e);
+        notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+      }
+    }
+
+    async function markAllNotificationsAsRead() {
+      try {
+        const res = await fetch('/notifications/read-all', {
+          method: 'POST'
+        });
+        if (res.ok) {
+          // Update badge immediately for visual feedback
+          updateNotificationBadge(0);
+          // Reload notifications list
+          await loadDesktopNotifications();
+          // Refresh count after delay
+          setTimeout(async () => {
+            await updateNotificationCount();
+          }, 500);
+        }
+      } catch (e) {
+        console.error('Failed to mark all notifications as read:', e);
+      }
+    }
 
     // Check auth status first, then load voting history
     fetch('/me')
-      .then(res => res.json())
+      .then(res => {
+        console.log('Auth response status:', res.status);
+        if (!res.ok) {
+          throw new Error(`Auth request failed with status ${res.status}`);
+        }
+        return res.json();
+      })
       .then(data => {
+        console.log('Auth response data:', data);
         const loggedIn = !!data.user;
+        console.log('User logged in:', loggedIn);
+        
+        // Setup header navigation regardless of auth status (mobile menu should always work)
+        setupHeaderNavigation();
+        
         if (loggedIn) {
           currentUserId = data.user.id;
-          // Update mobile menu - show user info, hide login prompt
-          document.getElementById('mobileUserInfo').style.display = 'block';
-          document.getElementById('mobileLoginPrompt').style.display = 'none';
+          const displayName = data.user.display_name || data.user.email || 'User';
+          console.log('Setting up authenticated user interface for:', displayName);
+          
+          // Update desktop user controls
+          document.getElementById('userLabel').textContent = displayName;
+          document.getElementById('userGear').style.display = 'inline-block';
+          
+          // Show notification bell
+          const notificationBell = document.getElementById('notificationBell');
+          if (notificationBell) {
+            notificationBell.style.display = 'inline-block';
+          }
+          
+          // Update mobile user controls
+          const mobileUserInfo = document.getElementById('mobileUserInfo');
+          const mobileLoginPrompt = document.getElementById('mobileLoginPrompt');
+          if (mobileUserInfo) {
+            mobileUserInfo.style.display = 'block';
+          }
+          if (mobileLoginPrompt) {
+            mobileLoginPrompt.style.display = 'none';
+          }
+          
+          // Show mobile notification button
+          const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+          if (mobileNotificationBtn) {
+            mobileNotificationBtn.style.display = 'block';
+          }
+          
           // Show main content
           document.body.classList.add('content-visible');
+          console.log('Content should now be visible');
+          
+          // Setup authenticated header controls
+          setupHeaderControls();
+          
           // Setup mobile notifications
           setupMobileNotifications();
+          
+          // Start notification polling
+          updateNotificationCount();
+          startNotificationPolling();
+          
           // After auth check, load voting history
           loadVotingHistory();
         } else {
+          console.log('User not logged in, showing login required');
+          // Still show content-visible for the login message to appear
+          document.body.classList.add('content-visible');
           showLoginRequired();
         }
       })
       .catch(err => {
-        console.log('Auth check failed:', err);
+        console.error('Auth check failed with error:', err);
         showLoginRequired();
       });
 
+    // Debug: Check if mobile menu elements exist on page load
+    console.log('=== Mobile Menu Debug Info ===');
+    console.log('Mobile menu toggle element:', document.getElementById('mobileMenuToggle'));
+    console.log('Mobile nav element:', document.getElementById('mobileNav'));
+    console.log('Screen width:', window.innerWidth);
+    console.log('User agent:', navigator.userAgent);
+    
+
+
     function showLoginRequired() {
+      // Show content first by adding the content-visible class
+      document.body.classList.add('content-visible');
+      
       // Hide main content and header text
       document.querySelector('.voting-history-container').style.display = 'none';
       document.getElementById('teamTitle').style.display = 'none';
+      
       // Show login required message
       const msgDiv = document.getElementById('loginRequiredMessage');
       msgDiv.style.display = 'block';
+      
       // Attach click handler once
       const btn = document.getElementById('goLoginBtn');
       if (btn && !btn.dataset.bound) {
         btn.dataset.bound = '1';
         btn.addEventListener('click', () => {
-          window.location.href = '/';
+          window.location.href = '/upload';
         });
       }
     }
 
-    // Mobile logout functionality
-    document.getElementById('mobileLogoutBtn').addEventListener('click', async () => {
-      await fetch('/logout', { method: 'POST' });
-      window.location.href = '/';
-    });
+    // Logout functionality
+    function setupLogoutHandlers() {
+      // Desktop logout
+      const logoutBtn = document.getElementById('logoutBtn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+          await fetch('/logout', { method: 'POST' });
+          window.location.href = '/';
+        });
+      }
+      
+      // Mobile logout
+      const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+      if (mobileLogoutBtn) {
+        mobileLogoutBtn.addEventListener('click', async () => {
+          await fetch('/logout', { method: 'POST' });
+          window.location.href = '/';
+        });
+      }
+    }
+    
+    // Call logout setup after page loads
+    setupLogoutHandlers();
 
     // Helper to determine rating tier and return appropriate CSS class
     function getRatingTierClass(rating) {
@@ -772,10 +1103,11 @@
       // Update notification count and badge
       updateNotificationCount();
       
+
+      
       // Setup mobile notification button click handler
       const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
       if (mobileNotificationBtn) {
-        mobileNotificationBtn.style.display = 'block';
         mobileNotificationBtn.addEventListener('click', () => {
           showMobileNotifications();
         });
@@ -783,52 +1115,6 @@
       
       // Start notification polling
       startNotificationPolling();
-    }
-
-    async function updateNotificationCount() {
-      try {
-        const res = await fetch('/notifications/count');
-        if (res.ok) {
-          const data = await res.json();
-          const count = data.count || 0;
-          lastNotificationCount = count;
-          updateNotificationBadge(count);
-        } else {
-          console.error('Failed to fetch notification count:', res.status, res.statusText);
-        }
-      } catch (e) {
-        console.error('Failed to fetch notification count:', e);
-      }
-    }
-
-    function updateNotificationBadge(count) {
-      // Update mobile badge
-      const mobileBadge = document.getElementById('mobileNotificationBadge');
-      if (mobileBadge) {
-        if (count > 0) {
-          mobileBadge.textContent = `${count > 99 ? '99+' : count}`;
-          mobileBadge.style.display = 'inline';
-        } else {
-          mobileBadge.style.display = 'none';
-        }
-      }
-
-      // Update hamburger button notification dot
-      const hamburgerBtn = document.getElementById('hamburgerBtn');
-      if (hamburgerBtn) {
-        let notificationDot = hamburgerBtn.querySelector('.hamburger-notification-dot');
-        if (count > 0) {
-          if (!notificationDot) {
-            notificationDot = document.createElement('div');
-            notificationDot.className = 'hamburger-notification-dot';
-            hamburgerBtn.appendChild(notificationDot);
-          }
-        } else {
-          if (notificationDot) {
-            notificationDot.remove();
-          }
-        }
-      }
     }
 
     function showMobileNotifications() {
@@ -1093,5 +1379,27 @@
     }
   </script>
   <script src="analytics.js"></script>
+</main>
+
+  <footer class="legal-footer">
+    <div class="footer-content">
+      <div class="social-links">
+        <a href="https://x.com/DraftrPass" target="_blank" rel="noopener noreferrer" title="Follow us on X">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+        <a href="https://discord.gg/Y7hyQsfDQx" target="_blank" rel="noopener noreferrer" title="Join our Discord">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.246.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
+          </svg>
+        </a>
+      </div>
+      <div class="legal-links">
+        <a href="privacy.html" target="_blank">Privacy Policy</a>
+        <a href="terms.html" target="_blank">Terms of Service</a>
+      </div>
+    </div>
+  </footer>
 </body>
 </html> 

@@ -95,6 +95,7 @@
       background: #161b22;
       border-radius: 12px;
       padding: 30px;
+      margin-bottom: 50px;
       box-shadow: 0 0 20px rgba(0,0,0,0.5);
       max-width: 800px;
       width: 100%;
@@ -838,6 +839,34 @@
       transition: opacity 0.2s ease;
     }
 
+    /* Ensure proper flex layout for footer positioning */
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Make sure login required message takes up available space */
+    .login-required {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Ensure main content area also takes up available space */
+    .main-content-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Footer should be at bottom */
+    .legal-footer {
+      margin-top: auto;
+    }
+
     /* Rating boxes with tier-based colors */
     .rating-box {
       display: inline-block;
@@ -919,36 +948,85 @@
   </style>
 </head>
 <body>
-  <div class="header" style="justify-content:center;">
-    <div class="burger-menu">
-      <div class="burger-icon">
-        <span></span>
-        <span></span>
-        <span></span>
+  <!-- Main Header Navigation -->
+  <header class="main-header">
+    <div class="header-content">
+      <div class="logo">
+        <a href="/" class="logo-link">Draft or Pass</a>
       </div>
-      <div class="menu-items">
-        <a href="/" class="menu-item">Home</a>
-        <div class="menu-divider"></div>
-        <div class="auth-required">
+      
+      <!-- Desktop Navigation -->
+      <nav class="desktop-nav">
+        <a href="/upload" class="nav-link">Upload</a>
+        <a href="/draftorpass" class="nav-link">Draft or Pass</a>
+        <a href="/leaderboard" class="nav-link">Leaderboard</a>
+      </nav>
+      
+      <!-- User Controls -->
+      <div class="user-controls">
+        <!-- Notification bell -->
+        <button id="notificationBell" class="notification-btn" style="display:none;">
+          🔔
+          <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
+        </button>
+        <button id="userGear" class="gear-btn" style="display:none;">Profile</button>
+        <div id="userMenu" class="user-menu" style="display:none;">
+          <p id="userLabel"></p>
+          <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
+          <button id="logoutBtn" class="logout-small">Logout</button>
+        </div>
+        <!-- Notification dropdown -->
+        <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
+          </div>
+          <div id="notificationList" class="notification-list">
+            <div class="loading">Loading notifications...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Mobile Menu Toggle -->
+      <button class="mobile-menu-toggle" id="mobileMenuToggle">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    
+    <!-- Mobile Navigation Menu -->
+    <div class="mobile-nav" id="mobileNav">
+      <a href="/upload" class="mobile-nav-link">Upload</a>
+      <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
+      <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
+      <div class="mobile-user-section" id="mobileUserSection">
+        <div id="mobileUserInfo" style="display:none;">
           <!-- Mobile notifications -->
           <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
             🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
           </button>
-          <a href="/profile.html" class="menu-item">Profile</a>
-          <button class="menu-item logout-btn" onclick="logout()">Logout</button>
+          <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
+        </div>
+        <div id="mobileLoginPrompt">
+          <p>Sign in to upload teams</p>
         </div>
       </div>
     </div>
-    <h1>Profile</h1>
-  </div>
+  </header>
 
-  <!-- Insert login required message for unauthenticated users -->
-  <div id="loginRequiredMessage" class="login-required" style="display:none; text-align:center; padding:40px;">
-    <h2>You need to be logged in to view this page</h2>
-    <button id="goLoginBtn" class="start-voting-btn">Login →</button>
-  </div>
+  <div class="main-content-wrapper">
+    <div class="header" style="justify-content:center; margin-top: 20px;">
+      <h1>Profile</h1>
+    </div>
 
-  <div class="layout" style="flex-direction:column; align-items:center;">
+    <!-- Insert login required message for unauthenticated users -->
+    <div id="loginRequiredMessage" class="login-required" style="display:none;">
+      <h2>You need to be logged in to view this page</h2>
+      <button id="goLoginBtn" class="start-voting-btn">Login →</button>
+    </div>
+
+    <div class="layout" style="flex-direction:column; align-items:center;">
     <div class="profile-header">
       <div id="profileInfo"></div>
     </div>
@@ -1012,10 +1090,10 @@
       </div>
       <div id="uploadsSummary" class="tab-content"></div>
       <div id="voteResultsContent" class="tab-content" style="display:none;"></div>
-      <button id="logoutBtn" class="logout-btn">Logout</button>
+      <button id="mainLogoutBtn" class="logout-btn">Logout</button>
     </div>
 
-
+  </div>
   </div>
 
   <script>
@@ -1044,6 +1122,9 @@
       
       // Helper to show login required message and hide the main content
       function showLoginRequired() {
+        // Add content-visible class to show elements
+        document.body.classList.add('content-visible');
+        
         // Hide main content containers
         const layoutEl = document.querySelector('.layout');
         if (layoutEl) layoutEl.style.display = 'none';
@@ -1059,7 +1140,7 @@
         if (btn && !btn.dataset.bound) {
           btn.dataset.bound = '1';
           btn.addEventListener('click', () => {
-            window.location.href = '/';
+            window.location.href = '/upload';
           });
         }
       }
@@ -1079,7 +1160,6 @@
           }
         })
         .catch(err => {
-          console.log('Auth check failed:', err);
           showLoginRequired();
         });
 
@@ -1306,13 +1386,13 @@
             const tabResultsBtn = document.getElementById('tabResults');
             const uploadsContent = document.getElementById('uploadsSummary');
             const resultsContent = document.getElementById('voteResultsContent');
-            const logoutBtn = document.getElementById('logoutBtn');
+            const mainLogoutBtn = document.getElementById('mainLogoutBtn');
 
             if (isOwnProfile) {
               // Own profile: show both tabs, default to uploads
               tabUploadsBtn.style.display = '';
               tabResultsBtn.style.display = '';
-              logoutBtn.style.display = '';
+              if (mainLogoutBtn) mainLogoutBtn.style.display = '';
               setActive('uploads');
             } else {
               // Other profile: hide uploads tab, show only vote results, hide logout
@@ -1320,7 +1400,7 @@
               tabResultsBtn.style.display = 'none'; // Hide tab header entirely
               uploadsContent.style.display = 'none';
               resultsContent.style.display = '';
-              logoutBtn.style.display = 'none';
+              if (mainLogoutBtn) mainLogoutBtn.style.display = 'none';
               // Update tab header to just show "Vote Results" as title
               document.querySelector('.tab-header').innerHTML = '<h3 style="margin:0;">Vote Results</h3>';
             }
@@ -1372,11 +1452,7 @@
         filteredFoes.forEach(f => foesTbody.appendChild(createRow(f)));
       }
 
-      // Logout button
-      document.getElementById('logoutBtn').addEventListener('click', async () => {
-        await fetch('/logout', { method: 'POST' });
-        window.location = '/';
-      });
+      // Logout functionality handled below in header navigation setup
 
       // === Tab switching logic ===
       const tabUploadsBtn = document.getElementById('tabUploads');
@@ -1557,58 +1633,152 @@
       });
     }
 
-    // Burger menu functionality
+    // Header navigation functionality
     document.addEventListener('DOMContentLoaded', () => {
-      const burgerIcon = document.querySelector('.burger-icon');
-      const menuItems = document.querySelector('.menu-items');
+      const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+      const mobileNav = document.getElementById('mobileNav');
+      const userGear = document.getElementById('userGear');
+      const notificationBell = document.getElementById('notificationBell');
+      const notificationDropdown = document.getElementById('notificationDropdown');
       
-      burgerIcon.addEventListener('click', () => {
-        burgerIcon.classList.toggle('active');
-        menuItems.classList.toggle('active');
-      });
+      // Mobile menu toggle
+      if (mobileMenuToggle && mobileNav) {
+        mobileMenuToggle.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const isCurrentlyActive = mobileNav.classList.contains('active');
+          
+          if (isCurrentlyActive) {
+            mobileNav.classList.remove('active');
+            mobileMenuToggle.classList.remove('active');
+          } else {
+            mobileNav.classList.add('active');
+            mobileMenuToggle.classList.add('active');
+          }
+        });
 
-      // Close menu when clicking outside
+        // Close mobile menu when clicking on a link
+        document.querySelectorAll('.mobile-nav-link').forEach(link => {
+          link.addEventListener('click', () => {
+            mobileNav.classList.remove('active');
+            mobileMenuToggle.classList.remove('active');
+          });
+        });
+        
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!mobileMenuToggle.contains(e.target) && !mobileNav.contains(e.target)) {
+            mobileNav.classList.remove('active');
+            mobileMenuToggle.classList.remove('active');
+          }
+        });
+      }
+
+      // User gear button - navigate to own profile
+      if (userGear) {
+        userGear.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Navigate to current user's profile (own profile)
+          window.location.href = '/profile.html';
+        });
+      }
+
+      // Notification dropdown toggle (load notifications on open)
+      if (notificationBell && notificationDropdown) {
+        notificationBell.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isVisible = notificationDropdown.style.display !== 'none';
+          notificationDropdown.style.display = isVisible ? 'none' : 'block';
+          if (!isVisible) {
+            if (typeof loadDesktopNotifications === 'function') {
+              loadDesktopNotifications();
+            }
+          }
+        });
+      }
+
+      // Close dropdowns when clicking outside
       document.addEventListener('click', (e) => {
-        if (!e.target.closest('.burger-menu')) {
-          burgerIcon.classList.remove('active');
-          menuItems.classList.remove('active');
+        if (!e.target.closest('.user-controls')) {
+          if (notificationDropdown) notificationDropdown.style.display = 'none';
         }
       });
 
-      // Check auth status and update menu visibility
+      // Check auth status and update header UI
       fetch('/me')
         .then(res => res.json())
         .then(data => {
           const isAuthed = !!data.user;
-          const username = isAuthed ? (data.user.display_name || data.user.email || 'User') : null;
+          const displayName = isAuthed ? (data.user.display_name || data.user.email || 'User') : null;
 
-          document.querySelectorAll('.auth-required').forEach(el => {
-            el.style.display = isAuthed ? '' : 'none';
-          });
-          document.querySelectorAll('.no-auth').forEach(el => {
-            el.style.display = isAuthed ? 'none' : '';
-          });
-
-          if (isAuthed && username) {
-            const usernameLabel = document.querySelector('.menu-item.username');
-            if (usernameLabel) usernameLabel.textContent = username;
+          if (isAuthed && displayName) {
+            // Update desktop user controls
+            const userLabel = document.getElementById('userLabel');
+            const mobileUserLabel = document.getElementById('mobileUserLabel');
+            
+            if (userLabel) userLabel.textContent = displayName;
+            if (mobileUserLabel) mobileUserLabel.textContent = displayName;
+            if (userGear) userGear.style.display = 'inline-block';
+            
+            // Show notification bell
+            if (notificationBell) notificationBell.style.display = 'inline-block';
+            
+            // Update mobile user controls
+            const mobileUserInfo = document.getElementById('mobileUserInfo');
+            const mobileLoginPrompt = document.getElementById('mobileLoginPrompt');
+            
+            if (mobileUserInfo) mobileUserInfo.style.display = 'block';
+            if (mobileLoginPrompt) mobileLoginPrompt.style.display = 'none';
+            
+            // Show mobile notification button
+            const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+            if (mobileNotificationBtn) mobileNotificationBtn.style.display = 'block';
             
             // Setup mobile notifications for authenticated users
             setupMobileNotifications();
+          } else {
+            // Show login prompt in mobile
+            const mobileUserInfo = document.getElementById('mobileUserInfo');
+            const mobileLoginPrompt = document.getElementById('mobileLoginPrompt');
+            
+            if (mobileUserInfo) mobileUserInfo.style.display = 'none';
+            if (mobileLoginPrompt) mobileLoginPrompt.style.display = 'block';
           }
         })
         .catch(err => {
           console.error('Auth status check failed:', err);
-          // Hide auth-only items on error
-          document.querySelectorAll('.auth-required').forEach(el => el.style.display='none');
         });
-    });
 
-    // Logout function for the menu
-    function logout() {
-      fetch('/logout', { method: 'POST' })
-        .then(() => window.location.href = '/');
-    }
+      // Logout functionality
+      const logoutBtn = document.getElementById('logoutBtn'); // Header dropdown logout
+      const mainLogoutBtn = document.getElementById('mainLogoutBtn'); // Main profile logout
+      const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+      
+      // Logout function to avoid repetition
+      const handleLogout = async () => {
+        try {
+          await fetch('/logout', { method: 'POST' });
+          window.location.href = '/';
+        } catch (error) {
+          console.error('Logout failed:', error);
+          // Still redirect even if logout request fails
+          window.location.href = '/';
+        }
+      };
+      
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', handleLogout);
+      }
+      
+      if (mainLogoutBtn) {
+        mainLogoutBtn.addEventListener('click', handleLogout);
+      }
+      
+      if (mobileLogoutBtn) {
+        mobileLogoutBtn.addEventListener('click', handleLogout);
+      }
+    });
 
     // ---- Mobile Notification Functions ----
     
@@ -1649,31 +1819,40 @@
     }
 
     function updateNotificationBadge(count) {
-      // Update mobile badge
+      // Desktop badge
+      const desktopBadge = document.getElementById('notificationBadge');
+      if (desktopBadge) {
+        if (count > 0) {
+          desktopBadge.textContent = count > 99 ? '99+' : count;
+          desktopBadge.style.display = 'inline';
+        } else {
+          desktopBadge.style.display = 'none';
+        }
+      }
+
+      // Mobile badge
       const mobileBadge = document.getElementById('mobileNotificationBadge');
       if (mobileBadge) {
         if (count > 0) {
-          mobileBadge.textContent = `${count > 99 ? '99+' : count}`;
+          mobileBadge.textContent = count > 99 ? '99+' : count;
           mobileBadge.style.display = 'inline';
         } else {
           mobileBadge.style.display = 'none';
         }
       }
 
-      // Update hamburger button notification dot
+      // Hamburger dot
       const burgerIcon = document.querySelector('.burger-icon');
       if (burgerIcon) {
-        let notificationDot = burgerIcon.querySelector('.hamburger-notification-dot');
+        let dot = burgerIcon.querySelector('.hamburger-notification-dot');
         if (count > 0) {
-          if (!notificationDot) {
-            notificationDot = document.createElement('div');
-            notificationDot.className = 'hamburger-notification-dot';
-            burgerIcon.appendChild(notificationDot);
+          if (!dot) {
+            dot = document.createElement('div');
+            dot.className = 'hamburger-notification-dot';
+            burgerIcon.appendChild(dot);
           }
-        } else {
-          if (notificationDot) {
-            notificationDot.remove();
-          }
+        } else if (dot) {
+          dot.remove();
         }
       }
     }
@@ -1935,6 +2114,120 @@
       }
     }
 
+    // ---- Desktop Notifications (dropdown) ----
+
+    async function loadDesktopNotifications() {
+      const notificationList = document.getElementById('notificationList');
+      if (!notificationList) return;
+
+      notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+      try {
+        const res = await fetch('/notifications');
+        if (!res.ok) {
+          notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+          return;
+        }
+
+        const data = await res.json();
+        const notifications = data.notifications || [];
+
+        if (notifications.length === 0) {
+          notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+          return;
+        }
+
+        notificationList.innerHTML = notifications.map(notification => {
+          const timeAgo = formatTimeAgo(new Date(notification.created_at));
+          let msgHtml = notification.message;
+          
+          // Enhance versus_vote messages with links
+          if (notification.type === 'versus_vote' && notification.related_team_id) {
+            msgHtml = msgHtml.replace('your team', `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color:#58a6ff;text-decoration:none;">your team</a>`);
+            
+            if (notification.opponent_team_id) {
+              const againstIndex = msgHtml.lastIndexOf('against ');
+              if (againstIndex !== -1) {
+                const beforeAgainst = msgHtml.substring(0, againstIndex + 8);
+                const opponentName = msgHtml.substring(againstIndex + 8);
+                if (opponentName.trim()) {
+                  msgHtml = beforeAgainst + `<span class="desktop-opponent-link" data-team-id="${notification.opponent_team_id}" style="color:#58a6ff;cursor:pointer;text-decoration:none;">${opponentName}</span>`;
+                }
+              }
+            }
+          }
+          
+          return `
+            <div class="notification-item ${notification.is_read ? 'read' : 'unread'}" data-notification-id="${notification.id}">
+              <div class="notification-message">${msgHtml}</div>
+              <div class="notification-time">${timeAgo}</div>
+            </div>
+          `;
+        }).join('');
+
+        // Attach opponent link handlers
+        document.querySelectorAll('.desktop-opponent-link').forEach(link => {
+          link.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const teamId = link.getAttribute('data-team-id');
+            if (!teamId) return;
+            try {
+              const res = await fetch(`/team-meta/${teamId}`);
+              const meta = await res.json();
+              if (meta && meta.username) {
+                window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+              } else {
+                window.location.href = `voting-history.html?teamId=${teamId}`;
+              }
+            } catch (err) {
+              window.location.href = `voting-history.html?teamId=${teamId}`;
+            }
+          });
+        });
+
+        // Mark notifications as read when clicked
+        document.querySelectorAll('.notification-item.unread').forEach(item => {
+          item.addEventListener('click', async () => {
+            const notificationId = item.dataset.notificationId;
+            if (notificationId) {
+              try {
+                await fetch('/notifications/read', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notificationIds: [parseInt(notificationId)] })
+                });
+                item.classList.remove('unread');
+                item.classList.add('read');
+                await updateNotificationCount();
+              } catch (e) {
+                console.error('Failed to mark notification as read:', e);
+              }
+            }
+          });
+        });
+
+      } catch (e) {
+        console.error('Failed to load desktop notifications:', e);
+        notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+      }
+    }
+
+    async function markAllNotificationsAsRead() {
+      try {
+        const res = await fetch('/notifications/read-all', { method: 'POST' });
+        if (res.ok) {
+          updateNotificationBadge(0);
+          await loadDesktopNotifications();
+          setTimeout(updateNotificationCount, 500);
+        }
+      } catch(err){ console.error('mark all read failed', err); }
+    }
+
+    const markAllReadBtnDesk = document.getElementById('markAllRead');
+    if (markAllReadBtnDesk) {
+      markAllReadBtnDesk.addEventListener('click', markAllNotificationsAsRead);
+    }
+
   </script>
 
   <!-- Modals for viewing team details and votes -->
@@ -1953,6 +2246,26 @@
     </div>
   </div>
 
+  <footer class="legal-footer">
+    <div class="footer-content">
+      <div class="social-links">
+        <a href="https://x.com/DraftrPass" target="_blank" rel="noopener noreferrer" title="Follow us on X">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+        <a href="https://discord.gg/Y7hyQsfDQx" target="_blank" rel="noopener noreferrer" title="Join our Discord">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.246.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
+          </svg>
+        </a>
+      </div>
+      <div class="legal-links">
+        <a href="privacy.html" target="_blank">Privacy Policy</a>
+        <a href="terms.html" target="_blank">Terms of Service</a>
+      </div>
+    </div>
+  </footer>
   <script src="analytics.js"></script>
 </body>
 </html> 

@@ -112,9 +112,6 @@ const csrfProtection = csrf({ sessionKey: 'session' });
 // Cloudflare Turnstile configuration
 const CF_SECRET = process.env.CF_TURNSTILE_SECRET || "1x0000000000000000000000000000000AA"; // demo key
 const CF_SITE_KEY = process.env.CF_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"; // demo key
-
-console.log(CF_SECRET, CF_SITE_KEY);
-
 // ✨ Static asset version (cache-buster)
 // Priority:
 // 1. Manual override via ASSET_VERSION env var
@@ -145,8 +142,6 @@ const ASSET_VERSION = (() => {
     ? `${date}.${time}.${gitHash}` 
     : `${date}.${time}`;
 })();
-
-console.log(`🏷️ Asset version: ${ASSET_VERSION}`);
 
 // Middleware to verify Turnstile captcha token
 async function verifyCaptcha(req, res, next) {
@@ -237,7 +232,39 @@ app.get('/', (req, res) => {
   res.send(html);
 });
 
-// Serve other static assets after the root HTML route so token injection wins
+// Serve upload page
+app.get('/upload', (req, res) => {
+  const htmlPath = path.join(__dirname, 'upload.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  // Inject cache-busting query string
+  html = html.replace('upload.js"', `upload.js?v=${ASSET_VERSION}"`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Serve draft or pass page
+app.get('/draftorpass', (req, res) => {
+  const htmlPath = path.join(__dirname, 'draftorpass.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  const tokenScript = `\n<script>\n    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';\n  </script>\n`;
+  html = html.replace('</head>', tokenScript + '</head>');
+  // Inject cache-busting query string
+  html = html.replace('draftorpass.js"', `draftorpass.js?v=${ASSET_VERSION}"`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Serve leaderboard page  
+app.get('/leaderboard', (req, res) => {
+  const htmlPath = path.join(__dirname, 'leaderboard.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  // Inject cache-busting query string
+  html = html.replace('leaderboard.js"', `leaderboard.js?v=${ASSET_VERSION}"`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Serve other static assets after the HTML routes so token injection wins
 app.use(express.static(__dirname));
 
 // Handle CSV Upload
@@ -277,7 +304,6 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
         
         if (existingUser) {
           // Username is taken
-          console.log(`Upload rejected: Username "${uploaderUsername}" already taken for user ${req.user.id}`);
           fs.unlinkSync(csvPath); // Clean up uploaded file
           return res.status(400).json({ error: "Username already taken" });
         }
@@ -292,7 +318,6 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
               fs.unlinkSync(csvPath); // Clean up uploaded file
               return res.status(500).json({ error: "Error updating username" });
             }
-            console.log(`Updated display_name for user ${req.user.id} to ${uploaderUsername}`);
             // Update the user object in the session
             req.user.display_name = uploaderUsername;
             
@@ -315,7 +340,7 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
       const rows = result.data;
       
       // ⚠️ Validate positions – only allow NFL skill positions
-      const allowedPositions = new Set(['QB', 'RB', 'WR', 'TE']);
+      const allowedPositions = new Set(['QB', 'RB', 'WR', 'TE', 'W/T']);
       const invalidTeamIds = new Set();
 
       // First pass to identify any teams that include a disallowed position
@@ -564,7 +589,6 @@ async function buildTeamsCache() {
         etag: crypto.createHash('md5').update(jsonStr).digest('hex'),
         stamp: Date.now()
       };
-      console.log(`✓ /teams cache rebuilt (${gz.length} bytes)`);
       resolve();
     });
   });
@@ -874,7 +898,6 @@ function buildTeamLeaderboardCache(tournament) {
         stamp: Date.now(),
         filePath
       });
-      console.log(`✓ /leaderboard cache rebuilt (${key}) for tournament: ${tournament || 'ALL'} (${gz.length} bytes)`);
       resolve();
     });
   });
@@ -936,7 +959,6 @@ function buildUserLeaderboardCache(tournament) {
         if (arr.length) {
           const mid = Math.floor(arr.length / 2);
           median = arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
-          median = Math.round(median);
         }
         const win_pct = (u.wins + u.losses) ? ((u.wins / (u.wins + u.losses)) * 100).toFixed(1) : 0;
         return {
@@ -956,13 +978,12 @@ function buildUserLeaderboardCache(tournament) {
         stamp: Date.now(),
         filePath
       });
-      console.log(`✓ /leaderboard/users cache rebuilt (${key}) for tournament: ${tournament || 'ALL'} (${gz.length} bytes)`);
       resolve();
     });
   });
 }
 
-app.get('/leaderboard', async (req, res) => {
+app.get('/api/leaderboard', async (req, res) => {
   const tournament = req.query.tournament || null;
   const key = sanitizeKey(tournament);
   let meta = teamLeaderboardCacheMeta.get(key);
@@ -990,7 +1011,6 @@ app.get('/leaderboard', async (req, res) => {
   const stream = fs.createReadStream(meta.filePath);
   stream.on('error', async (err) => {
     if (err.code === 'ENOENT') {
-      console.log(`Cache file missing for leaderboard (${key}), rebuilding...`);
       try {
         // Clear stale meta and rebuild cache
         teamLeaderboardCacheMeta.delete(key);
@@ -1019,7 +1039,7 @@ app.get('/leaderboard', async (req, res) => {
   stream.pipe(res);
 });
 
-app.get('/leaderboard/users', async (req, res) => {
+app.get('/api/leaderboard/users', async (req, res) => {
   const tournament = req.query.tournament || null;
   const key = sanitizeKey(tournament);
   let meta = userLeaderboardCacheMeta.get(key);
@@ -1047,7 +1067,6 @@ app.get('/leaderboard/users', async (req, res) => {
   const stream = fs.createReadStream(meta.filePath);
   stream.on('error', async (err) => {
     if (err.code === 'ENOENT') {
-      console.log(`Cache file missing for user leaderboard (${key}), rebuilding...`);
       try {
         // Clear stale meta and rebuild cache
         userLeaderboardCacheMeta.delete(key);
@@ -1100,7 +1119,6 @@ app.post('/admin/clear-cache', requireAdmin, (req, res) => {
     teamLeaderboardCacheMeta.clear();
     userLeaderboardCacheMeta.clear();
     
-    console.log(`Cleared ${teamCacheSize} team cache entries and ${userCacheSize} user cache entries`);
     res.json({ 
       status: 'cleared', 
       teamCacheCleared: teamCacheSize, 
@@ -1132,7 +1150,6 @@ app.post('/internal/clear-cache', (req, res) => {
     teamLeaderboardCacheMeta.clear();
     userLeaderboardCacheMeta.clear();
     
-    console.log(`Internal: Cleared ${teamCacheSize} team cache entries and ${userCacheSize} user cache entries`);
     res.json({ 
       status: 'cleared', 
       teamCacheCleared: teamCacheSize, 
@@ -1970,8 +1987,6 @@ app.post('/my/update-display-name', requireAuth, express.json(), (req, res) => {
                 db.run('ROLLBACK');
                 return res.status(500).json({ error: 'Failed to update teams username' });
               }
-
-              console.log(`Updated display_name to "${displayNameUpper}" for user ${userId} and updated username in ${this.changes} teams`);
               
               db.run('COMMIT');
               res.json({ 
@@ -1984,7 +1999,6 @@ app.post('/my/update-display-name', requireAuth, express.json(), (req, res) => {
           );
         } else {
           // Name was cleared – commit users update only
-          console.log(`Cleared display_name for user ${userId}`);
           db.run('COMMIT');
           res.json({ 
             message: 'Username cleared',
@@ -2284,3 +2298,157 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
+// === NEW: Top 10 Drafters Widget Endpoint ===
+app.get('/api/widgets/top-drafters', (req, res) => {
+  const sql = `
+    SELECT 
+      t.username,
+      COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
+    FROM teams t
+    WHERE t.username IS NOT NULL 
+      AND t.username != '' 
+      AND (SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id OR vm.loser_id = t.id) >= 1
+      AND (? IS NULL OR t.tournament = ?)
+    ORDER BY t.username
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching top drafters:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Group by username and calculate median for each user
+    const userGroups = {};
+    rows.forEach(row => {
+      if (!userGroups[row.username]) {
+        userGroups[row.username] = {
+          username: row.username,
+          maddens: []
+        };
+      }
+      userGroups[row.username].maddens.push(row.madden);
+    });
+    
+    // Calculate median for each user and sort by median
+    const result = Object.values(userGroups).map(user => {
+      const sortedMaddens = user.maddens.sort((a, b) => a - b);
+      const mid = Math.floor(sortedMaddens.length / 2);
+      const median = sortedMaddens.length % 2 === 0 
+        ? (sortedMaddens[mid - 1] + sortedMaddens[mid]) / 2 
+        : sortedMaddens[mid];
+      
+      return {
+        username: user.username,
+        total_teams: user.maddens.length,
+        rated_teams: user.maddens.length,
+        median_rating: median
+      };
+    }).sort((a, b) => b.median_rating - a.median_rating)
+    .slice(0, 10);
+    
+    res.json(result);
+  });
+});
+
+// === NEW: Top 10 Teams Widget Endpoint ===
+app.get('/api/widgets/top-teams', (req, res) => {
+  const sql = `
+    WITH team_stats AS (
+      SELECT
+        t.id,
+        t.username,
+        t.tournament,
+        COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
+        COALESCE((
+          SELECT COUNT(*) FROM versus_matches vm 
+          WHERE vm.winner_id = t.id
+        ), 0) AS wins,
+        COALESCE((
+          SELECT COUNT(*) FROM versus_matches vm 
+          WHERE vm.loser_id = t.id
+        ), 0) AS losses
+      FROM teams t
+    )
+    SELECT 
+      id,
+      username,
+      tournament,
+      madden,
+      wins,
+      losses,
+      wins + losses as total_votes
+    FROM team_stats
+    WHERE total_votes > 0
+    ORDER BY madden DESC
+    LIMIT 10
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching top teams:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json(rows);
+  });
+});
+
+// === NEW: Recent Votes Widget Endpoint ===
+app.get('/api/widgets/recent-votes', (req, res) => {
+  const sql = `
+    SELECT 
+      vm.id,
+      vm.winner_id,
+      vm.loser_id,
+      vm.created_at,
+      tw.username as winner_username,
+      tw.tournament as winner_tournament,
+      tl.username as loser_username,
+      tl.tournament as loser_tournament,
+      CASE 
+        WHEN vm.voter_id IS NULL THEN 'Anonymous'
+        ELSE COALESCE(
+          NULLIF(TRIM(u.display_name), ''),
+          (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+          'Anonymous'
+        )
+      END as voter_name
+    FROM versus_matches vm
+    LEFT JOIN teams tw ON vm.winner_id = tw.id
+    LEFT JOIN teams tl ON vm.loser_id = tl.id
+    LEFT JOIN users u ON vm.voter_id = u.id
+    ORDER BY vm.created_at DESC
+    LIMIT 10
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching recent votes:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Format the timestamps for display
+    const formattedRows = rows.map(row => ({
+      ...row,
+      time_ago: getTimeAgo(new Date(row.created_at + ' UTC'))
+    }));
+    
+    res.json(formattedRows);
+  });
+});
+
+// Helper function to calculate time ago
+function getTimeAgo(date) {
+  const now = new Date();
+  const diffMs = now - date;
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return `${diffSecs}s ago`;
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}

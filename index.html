@@ -29,174 +29,861 @@
 
   <!-- Cloudflare Turnstile for bot protection -->
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+  <script>
+    window.TURNSTILE_SITE_KEY='1x00000000000000000000AA'; // demo key
+  </script>
 </head>
 <body>
-  <!-- Hidden Turnstile container -->
-  <div id="cf-container" style="display:none;"></div>
-
-  <div class="header">
-    <h1 class="app-title">Draft or Pass</h1>
-    
-    <!-- Hamburger menu for mobile -->
-    <button id="hamburgerBtn" class="hamburger-btn">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
-  </div>
-
-  <!-- Mobile menu overlay -->
-  <div id="mobileMenu" class="mobile-menu">
-    <div class="mobile-menu-content">
-      <button id="closeMobileMenu" class="close-menu-btn">✖</button>
-      
-      <!-- Navigation items in mobile menu -->
-      <div class="mobile-nav">
-        <button id="mobileUploadBtn" class="mobile-nav-btn active">Upload</button>
-        <button id="mobileVersusBtn" class="mobile-nav-btn">Draft or Pass</button>
-        <button id="mobileLeaderboardBtn" class="mobile-nav-btn">Leaderboard</button>
+  <!-- Main Header Navigation -->
+  <header class="main-header">
+    <div class="header-content">
+      <div class="logo">
+        <a href="/" class="logo-link">Draft or Pass</a>
       </div>
       
-      <!-- User controls in mobile menu -->
-      <div id="mobileUserSection" class="mobile-user-section">
+      <!-- Desktop Navigation -->
+      <nav class="desktop-nav">
+        <a href="/upload" class="nav-link">Upload</a>
+        <a href="/draftorpass" class="nav-link">Draft or Pass</a>
+        <a href="/leaderboard" class="nav-link">Leaderboard</a>
+      </nav>
+      
+      <!-- User Controls -->
+      <div class="user-controls">
+        <!-- Notification bell -->
+        <button id="notificationBell" class="notification-btn" style="display:none;">
+          🔔
+          <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
+        </button>
+        <button id="userGear" class="gear-btn" style="display:none;">Profile</button>
+        <div id="userMenu" class="user-menu" style="display:none;">
+          <p id="userLabel"></p>
+          <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
+          <button id="logoutBtn" class="logout-small">Logout</button>
+        </div>
+        <!-- Notification dropdown -->
+        <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
+          </div>
+          <div id="notificationList" class="notification-list">
+            <div class="loading">Loading notifications...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Mobile Menu Toggle -->
+      <button class="mobile-menu-toggle" id="mobileMenuToggle">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    
+    <!-- Mobile Navigation Menu -->
+    <div class="mobile-nav" id="mobileNav">
+      <a href="/upload" class="mobile-nav-link">Upload</a>
+      <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
+      <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
+      <div class="mobile-user-section" id="mobileUserSection">
         <div id="mobileUserInfo" style="display:none;">
-          <p id="mobileUserLabel"></p>
           <!-- Mobile notifications -->
           <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
             🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
           </button>
           <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
-          <button id="mobileLogoutBtn" class="mobile-logout-btn">Logout</button>
-        </div>
-        <div id="mobileLoginPrompt">
-          <p>Sign in to upload teams</p>
         </div>
       </div>
     </div>
-  </div>
+  </header>
 
-  <!-- Desktop user gear (hidden on mobile) -->
-  <div class="user-controls">
-    <!-- Notification bell -->
-    <button id="notificationBell" class="notification-btn" style="display:none;">
-      🔔
-      <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
-    </button>
-    <button id="userGear" class="gear-btn" style="display:none;">👤</button>
-    <div id="userMenu" class="user-menu" style="display:none;">
-      <p id="userLabel"></p>
-      <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
-      <button id="logoutBtn" class="logout-small">Logout</button>
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-content">
+      <h1 class="hero-title">The Ultimate Fantasy Football Draft Judge</h1>
+      <p class="hero-subtitle">Think you're a good drafter? Upload your teams and see if the community agrees!</p>
+      <button id="startVotingBtn" class="hero-cta-btn">Start Voting Now</button>
     </div>
-    <!-- Notification dropdown -->
-    <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
-      <div class="notification-header">
-        <h3>Notifications</h3>
-        <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
-      </div>
-      <div id="notificationList" class="notification-list">
-        <div class="loading">Loading notifications...</div>
+  </section>
+
+  <!-- Widgets Grid -->
+  <section class="widgets-grid">
+    <!-- Top 10 Drafters Widget -->
+    <div class="widget top-drafters">
+      <h2>🏆 Top 10 Overall Drafters</h2>
+      <div class="widget-content" id="topDraftersContent">
+        <div class="loading">Loading top drafters...</div>
       </div>
     </div>
-  </div>
 
-  <!-- Desktop mode selection (hidden on mobile) -->
-  <div class="mode-select">
-    <button id="modeUploadBtn" class="active">Upload</button>
-    <button id="modeVersusBtn">Draft or Pass</button>
-    <button id="modeLeaderboardBtn">Leaderboard</button>
-  </div>
-
-  <div class="layout">
-    <!-- Hidden by default; script shows it when needed to avoid initial layout shift -->
-    <div id="teamsContainer" style="display:none;"></div>
-
-    <div class="upload-panel">
-      <!-- Upload section (shown when logged in) -->
-      <div id="uploadSection">
-        <h2>Upload Your Teams</h2>
-        <p>Add your drafts to the community vote pool</p>
-        <input type="text" id="usernameInput" placeholder="Username (leave blank to use your account name)" />
-        <div class="file-input-container">
-          <input type="file" id="csvUpload" accept=".csv" />
-          <button id="uploadButton" class="upload-button" disabled>Upload Teams</button>
-        </div>
-        <div id="uploadMessage" class="upload-message"></div>
-      </div>
-
-      <!-- Login section (shown when not logged in) -->
-      <div id="loginPanel" style="display:none;">
-        <h2>Sign In to Upload Teams</h2>
-        
-        <!-- Tab headers -->
-        <div class="auth-tabs">
-          <button id="loginTab" class="auth-tab active">Sign In</button>
-          <button id="signupTab" class="auth-tab">Create Account</button>
-        </div>
-        
-        <!-- Login form -->
-        <div id="loginForm" class="auth-form">
-          <button id="loginTwitterBtn" class="x-btn">Log in with X</button>
-          <div class="login-divider">or</div>
-          <form id="loginEmailForm">
-            <input type="text" id="loginEmail" placeholder="Email or Username" required>
-            <input type="password" id="loginPassword" placeholder="Password" required>
-            <div class="login-actions">
-              <button type="submit">Log in</button>
-            </div>
-            <a href="#" id="forgotPasswordLink">Forgot password?</a>
-          </form>
-        </div>
-        
-        <!-- Signup form -->
-        <div id="signupForm" class="auth-form" style="display:none;">
-          <button id="signupTwitterBtn" class="x-btn">Sign up with X</button>
-          <div class="login-divider">or</div>
-          <form id="signupEmailForm">
-            <input type="text" id="signupUsername" placeholder="Username" required maxlength="30">
-            <input type="email" id="signupEmail" placeholder="Email" required>
-            <input type="email" id="signupEmailConfirm" placeholder="Confirm Email" required>
-            <input type="password" id="signupPassword" placeholder="Password" required>
-            <input type="password" id="signupPasswordConfirm" placeholder="Confirm Password" required>
-            <div class="login-actions">
-              <button type="submit">Create Account</button>
-            </div>
-          </form>
-        </div>
-        
-        <div id="loginMessage" class="upload-message" style="display:none;"></div>
+    <!-- Top 10 Teams Widget -->
+    <div class="widget top-teams">
+      <h2>🌟 Top 10 Overall Teams</h2>
+      <div class="widget-content" id="topTeamsContent">
+        <div class="loading">Loading top teams...</div>
       </div>
     </div>
-  </div>
+
+    <!-- Recent Votes Widget -->
+    <div class="widget recent-votes">
+      <h2>📊 Recent Votes</h2>
+      <div class="widget-content" id="recentVotesContent">
+        <div class="loading">Loading recent votes...</div>
+      </div>
+    </div>
+
+    <!-- Upload Promotion Widget -->
+    <div class="widget upload-promo">
+      <div class="upload-promo-content">
+        <h2>Ready to Play?</h2>
+        <p>Send your teams into the gauntlet and see how they stack up.</p>
+        <a href="/upload" class="upload-promo-btn">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 12.5l-3.5-3.5h2.5v-4h2v4h2.5L8 12.5z M3 14v-2h10v2H3z"/>
+          </svg>
+          Upload Teams
+        </a>
+      </div>
+    </div>
+
+    <!-- Draft or Pass Widget -->
+    <div class="widget draft-or-pass">
+      <h2>Vote Now - Which Team is Better?</h2>
+      <div class="widget-content" id="draftOrPassContent">
+        <div id="teamsContainer" class="teams-container">
+          <div class="loading">Loading teams...</div>
+        </div>
+        <a href="/draftorpass" class="skip-matchup">Skip This Matchup</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hidden Turnstile container -->
+  <div id="cf-container" style="display:none;"></div>
 
   <script src="analytics.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="script.js"></script>
+  <script>
+    // Load Top 10 Drafters widget
+    async function loadTopDrafters() {
+      const container = document.getElementById('topDraftersContent');
+      try {
+        const res = await fetch('/api/widgets/top-drafters');
+        if (!res.ok) throw new Error('Failed to fetch top drafters');
+        const data = await res.json();
+        
+        if (!data || !data.length) {
+          container.innerHTML = '<div class="error-message">No data available</div>';
+          return;
+        }
 
-  <!-- Modal for viewing team details -->
-  <div id="modalOverlay" class="modal-overlay" style="display:none;">
-    <div class="modal-content" id="modalContent">
-      <div class="modal-close"><button id="modalCloseBtn">✖</button></div>
-      <div id="modalBody"></div>
-    </div>
-  </div>
+        // Helper to determine rating tier and return appropriate CSS class
+        function getRatingTierClass(rating) {
+          if (!rating || rating === 0) return 'tier-none';
+          if (rating < 60) return 'tier-low';      // 0-59: Red
+          if (rating < 70) return 'tier-below';    // 60-69: Orange  
+          if (rating < 80) return 'tier-average';  // 70-79: Yellow
+          if (rating < 90) return 'tier-good';     // 80-89: Green
+          return 'tier-elite';                     // 90-99: Blue
+        }
 
-  <footer class="legal-footer" style="text-align:center; margin-top:40px;">
-    <div class="social-links">
-      <a href="https://x.com/DraftrPass" target="_blank" rel="noopener noreferrer" title="Follow us on X">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-        </svg>
-      </a>
-      <a href="https://discord.gg/Y7hyQsfDQx" target="_blank" rel="noopener noreferrer" title="Join our Discord">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.246.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
-        </svg>
-      </a>
-    </div>
-    <div class="legal-links">
-      <a href="privacy.html" target="_blank">Privacy Policy</a>
-      <a href="terms.html" target="_blank">Terms of Service</a>
+        // Helper to format rating in a colored box
+        function formatRatingBox(rating) {
+          if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
+          const tierClass = getRatingTierClass(rating);
+          return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+        }
+
+        const html = data.map((drafter, i) => `
+          <div class="drafter-row">
+            <div class="drafter-rank">${i + 1}</div>
+            <div class="drafter-name"><a href="profile.html?user=${encodeURIComponent(drafter.username)}" style="color:inherit; text-decoration:none;">${drafter.username}</a></div>
+            ${formatRatingBox(drafter.median_rating)}
+          </div>
+        `).join('') + `
+        <a href="/leaderboard" class="see-full-link">View Full Leaderboard</a>
+        `;
+
+        container.innerHTML = html;
+      } catch (e) {
+        console.error('Error loading top drafters:', e);
+        container.innerHTML = '<div class="error-message">Failed to load data</div>';
+      }
+    }
+
+    // Load Top 10 Teams widget
+    async function loadTopTeams() {
+      const container = document.getElementById('topTeamsContent');
+      try {
+        const res = await fetch('/api/widgets/top-teams');
+        if (!res.ok) throw new Error('Failed to fetch top teams');
+        const data = await res.json();
+        
+        if (!data || !data.length) {
+          container.innerHTML = '<div class="error-message">No data available</div>';
+          return;
+        }
+
+        // Helper to determine rating tier and return appropriate CSS class
+        function getRatingTierClass(rating) {
+          if (!rating || rating === 0) return 'tier-none';
+          if (rating < 60) return 'tier-low';      // 0-59: Red
+          if (rating < 70) return 'tier-below';    // 60-69: Orange  
+          if (rating < 80) return 'tier-average';  // 70-79: Yellow
+          if (rating < 90) return 'tier-good';     // 80-89: Green
+          return 'tier-elite';                     // 90-99: Blue
+        }
+
+        // Helper to format rating in a colored box
+        function formatRatingBox(rating) {
+          if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
+          const tierClass = getRatingTierClass(rating);
+          return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+        }
+
+        const html = data.map((team, i) => `
+          <div class="team-row">
+            <div class="team-rank">${i + 1}</div>
+            <div class="team-info">
+              <a href="voting-history.html?teamId=${team.id}" style="color:inherit; text-decoration:none;">
+                <div class="team-name">${team.username || 'Anonymous'}</div>
+                <div class="team-tournament">${team.tournament}</div>
+              </a>
+            </div>
+            ${formatRatingBox(team.madden)}
+          </div>
+        `).join('') + `
+        <a href="/leaderboard" class="see-full-link">View Full Leaderboard</a>
+        `;
+
+        container.innerHTML = html;
+      } catch (e) {
+        console.error('Error loading top teams:', e);
+        container.innerHTML = '<div class="error-message">Failed to load data</div>';
+      }
+    }
+
+    // Load Recent Votes widget
+    async function loadRecentVotes() {
+      const container = document.getElementById('recentVotesContent');
+      try {
+        const res = await fetch('/api/widgets/recent-votes');
+        if (!res.ok) throw new Error('Failed to fetch recent votes');
+        const data = await res.json();
+        
+        if (!data || !data.length) {
+          container.innerHTML = '<div class="no-votes-message">No votes yet</div>';
+          return;
+        }
+
+        const html = data.map((vote) => `
+          <div class="vote-row">
+            <div class="vote-result">
+              <span class="winner">${vote.winner_username || 'Anonymous'}</span>
+              <span class="vs-text">defeated</span>
+              <span class="loser">${vote.loser_username || 'Anonymous'}</span>
+            </div>
+            <div class="tournament-text">
+              <span class="vs-text">${vote.winner_tournament}</span>
+            </div>
+            <div class="vote-meta">
+              <span class="voter">by ${vote.voter_name}</span>
+              <span class="time">${vote.time_ago}</span>
+            </div>
+          </div>
+        `).join('');
+
+        container.innerHTML = html;
+      } catch (e) {
+        console.error('Error loading recent votes:', e);
+        container.innerHTML = '<div class="error-message">Failed to load data</div>';
+      }
+    }
+
+    // Auto-update recent votes every 10 seconds
+    let recentVotesInterval;
+    function startRecentVotesPolling() {
+      // Initial load
+      loadRecentVotes();
+      
+      // Set up polling every 10 seconds
+      recentVotesInterval = setInterval(() => {
+        loadRecentVotes();
+      }, 10000);
+    }
+
+    function stopRecentVotesPolling() {
+      if (recentVotesInterval) {
+        clearInterval(recentVotesInterval);
+        recentVotesInterval = null;
+      }
+    }
+
+    // Expose loadRecentVotes globally so other scripts can trigger updates
+    window.refreshRecentVotes = loadRecentVotes;
+
+    // Initialize Draft or Pass widget
+    function initDraftOrPass() {
+      // Set mode to versus for the voting functionality
+      if (typeof currentMode !== 'undefined') {
+        currentMode = 'versus';
+      }
+      // Trigger initial teams fetch
+      if (typeof fetchTeams === 'function') {
+        fetchTeams(true);
+      }
+    }
+
+    // Simple notification loading function for index page
+    async function loadNotificationsForIndex() {
+      const notificationList = document.getElementById('notificationList');
+      if (!notificationList) return;
+
+      notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+      try {
+        const res = await fetch('/notifications');
+        if (!res.ok) {
+          notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+          return;
+        }
+
+        const data = await res.json();
+        const notifications = data.notifications || [];
+
+        if (notifications.length === 0) {
+          notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+          return;
+        }
+
+        notificationList.innerHTML = notifications.map(notification => {
+          const timeAgo = formatTimeAgo(new Date(notification.created_at));
+          let msgHtml = notification.message;
+          if (notification.type === 'versus_vote' && notification.related_team_id) {
+            msgHtml = msgHtml.replace('your team', `<a href=\"voting-history.html?teamId=${notification.related_team_id}\" style=\"color:#58a6ff;text-decoration:none;\">your team</a>`);
+            if (notification.opponent_team_id) {
+              const idx = msgHtml.lastIndexOf('against ');
+              if (idx !== -1) {
+                const before = msgHtml.substring(0, idx + 8);
+                const oppName = msgHtml.substring(idx + 8);
+                const oppLink = `<span class=\"desktop-opponent-link\" data-team-id=\"${notification.opponent_team_id}\" style=\"color:#58a6ff;cursor:pointer;text-decoration:none;\">${oppName}</span>`;
+                msgHtml = before + oppLink;
+              }
+            }
+          }
+          return `
+            <div class=\"notification-item ${notification.is_read ? '' : 'unread'}\" data-notification-id=\"${notification.id}\">\n              <div class=\"notification-message\">${msgHtml}</div>\n              <div class=\"notification-time\">${timeAgo}</div>\n            </div>`;
+        }).join('');
+
+        // Attach opponent link click
+        document.querySelectorAll('.desktop-opponent-link').forEach(link=>{
+          link.addEventListener('click', async (e)=>{
+            e.stopPropagation();
+            const teamId = link.getAttribute('data-team-id');
+            if(!teamId) return;
+            try {
+              const r = await fetch(`/team-meta/${teamId}`);
+              const meta = await r.json();
+              if(meta && meta.username){
+                window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+              } else {
+                window.location.href = `voting-history.html?teamId=${teamId}`;
+              }
+            }catch(err){
+              window.location.href = `voting-history.html?teamId=${teamId}`;
+            }
+          });
+        });
+
+        // Mark notifications as read when clicked
+        document.querySelectorAll('.notification-item').forEach(item => {
+          item.addEventListener('click', async () => {
+            const notificationId = item.dataset.notificationId;
+            if (notificationId && !item.classList.contains('read')) {
+              try {
+                await fetch('/notifications/read', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notificationIds: [parseInt(notificationId)] })
+                });
+                item.classList.remove('unread');
+                item.classList.add('read');
+                
+                // Update notification count if function exists
+                if (typeof updateNotificationCount === 'function') {
+                  updateNotificationCount();
+                }
+              } catch (e) {
+                console.error('Failed to mark notification as read:', e);
+              }
+            }
+          });
+        });
+
+      } catch (e) {
+        console.error('Failed to load notifications:', e);
+        notificationList.innerHTML = '<div class="no-notifications">Failed to load notifications</div>';
+      }
+    }
+
+    // ---- Notification helpers (badge + polling) ----
+
+    function updateNotificationBadge(count) {
+      const desktopBadge = document.getElementById('notificationBadge');
+      if (desktopBadge) {
+        if (count > 0) {
+          desktopBadge.textContent = count > 99 ? '99+' : count;
+          desktopBadge.style.display = 'inline';
+        } else {
+          desktopBadge.style.display = 'none';
+        }
+      }
+
+      const mobileBadge = document.getElementById('mobileNotificationBadge');
+      if (mobileBadge) {
+        if (count > 0) {
+          mobileBadge.textContent = count > 99 ? '99+' : count;
+          mobileBadge.style.display = 'inline';
+        } else {
+          mobileBadge.style.display = 'none';
+        }
+      }
+    }
+
+    async function updateNotificationCount() {
+      try {
+        const res = await fetch('/notifications/count');
+        if (res.ok) {
+          const data = await res.json();
+          updateNotificationBadge(data.count || 0);
+        }
+      } catch(err) { console.error('Notif count fetch error', err); }
+    }
+
+    let notifPoll = null;
+
+    function startNotificationPolling() {
+      updateNotificationCount();
+      if (notifPoll) clearInterval(notifPoll);
+      notifPoll = setInterval(updateNotificationCount, 30000);
+    }
+
+    function stopNotificationPolling() {
+      if (notifPoll) { clearInterval(notifPoll); notifPoll = null; }
+    }
+
+    // Simple time ago formatting function
+    function formatTimeAgo(date) {
+      const now = new Date();
+      const diffMs = now - date;
+      const diffSecs = Math.floor(diffMs / 1000);
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffSecs < 60) return `${diffSecs}s ago`;
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      return `${diffDays}d ago`;
+    }
+
+    // ---- Mobile Notification Functions ----
+
+    function showMobileNotifications() {
+      // Create mobile notification overlay if it doesn't exist
+      let overlay = document.getElementById('mobileNotificationOverlay');
+      if (!overlay) {
+        overlay = createMobileNotificationOverlay();
+        document.body.appendChild(overlay);
+      }
+      
+      // Show the overlay
+      overlay.style.display = 'flex';
+      document.body.style.overflow = 'hidden'; // Prevent background scrolling
+      
+      // Load notifications
+      loadMobileNotifications();
+    }
+
+    function hideMobileNotifications() {
+      const overlay = document.getElementById('mobileNotificationOverlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+        document.body.style.overflow = ''; // Restore scrolling
+      }
+    }
+
+    function createMobileNotificationOverlay() {
+      const overlay = document.createElement('div');
+      overlay.id = 'mobileNotificationOverlay';
+      overlay.className = 'mobile-notification-overlay';
+      
+      overlay.innerHTML = `
+        <div class="mobile-notification-content">
+          <div class="mobile-notification-header">
+            <h3>Notifications</h3>
+            <div class="mobile-notification-actions">
+              <button id="mobileMarkAllRead" class="mobile-mark-all-read-btn">Mark all read</button>
+              <button id="closeMobileNotifications" class="mobile-close-notifications-btn">✖</button>
+            </div>
+          </div>
+          <div id="mobileNotificationList" class="mobile-notification-list">
+            <div class="loading">Loading notifications...</div>
+          </div>
+        </div>
+      `;
+
+      // Add event listeners
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          hideMobileNotifications();
+        }
+      });
+
+      overlay.querySelector('#closeMobileNotifications').addEventListener('click', hideMobileNotifications);
+      overlay.querySelector('#mobileMarkAllRead').addEventListener('click', markAllNotificationsAsReadMobile);
+      
+      return overlay;
+    }
+
+    async function loadMobileNotifications() {
+      const notificationList = document.getElementById('mobileNotificationList');
+      if (!notificationList) return;
+
+      notificationList.innerHTML = '<div class="loading">Loading notifications...</div>';
+
+      try {
+        const res = await fetch('/notifications');
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            notificationList.innerHTML = '<div class="no-notifications">Please log in to view notifications</div>';
+          } else {
+            notificationList.innerHTML = `<div class="no-notifications">Failed to load notifications (${res.status})</div>`;
+          }
+          return;
+        }
+
+        const data = await res.json();
+        const notifications = data.notifications || [];
+        
+        if (notifications.length === 0) {
+          notificationList.innerHTML = '<div class="no-notifications">No notifications yet</div>';
+          return;
+        }
+
+        notificationList.innerHTML = '';
+        notifications.forEach((notification, index) => {
+          try {
+            const item = createMobileNotificationItem(notification);
+            notificationList.appendChild(item);
+          } catch (itemError) {
+            console.error(`Error creating mobile notification item ${index}:`, itemError);
+          }
+        });
+      } catch (e) {
+        console.error('Failed to load mobile notifications:', e);
+        notificationList.innerHTML = `<div class="no-notifications">Network error: ${e.message}</div>`;
+      }
+    }
+
+    function createMobileNotificationItem(notification) {
+      const item = document.createElement('div');
+      item.className = `mobile-notification-item ${notification.is_read ? '' : 'unread'}`;
+      item.dataset.notificationId = notification.id;
+
+      const timeAgo = formatTimeAgo(new Date(notification.created_at));
+      
+      // Create enhanced notification message with links for versus votes
+      let messageHTML = notification.message;
+      
+      if (notification.type === 'versus_vote' && notification.related_team_id) {
+        // First, create the team link
+        const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
+        messageHTML = messageHTML.replace('your team', teamLink);
+        
+        // If we have opponent info, find and replace just the opponent name at the very end
+        if (notification.opponent_team_id) {
+          const againstIndex = messageHTML.lastIndexOf('against ');
+          if (againstIndex !== -1) {
+            const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
+            const opponentName = messageHTML.substring(againstIndex + 8);
+            
+            if (opponentName.trim()) {
+              const opponentLink = `<span class="mobile-opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+              messageHTML = beforeAgainst + opponentLink;
+            }
+          }
+        }
+      }
+      
+      item.innerHTML = `
+        <div class="mobile-notification-message">${messageHTML}</div>
+        <div class="mobile-notification-time">${timeAgo}</div>
+      `;
+
+      // Add click handlers for opponent links
+      const opponentLinks = item.querySelectorAll('.mobile-opponent-link');
+      opponentLinks.forEach(link => {
+        link.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const teamId = link.getAttribute('data-team-id');
+          if (teamId) {
+            try {
+              const res = await fetch(`/team-meta/${teamId}`);
+              const meta = await res.json();
+              if (meta.username) {
+                window.location.href = `profile.html?user=${encodeURIComponent(meta.username)}`;
+              } else {
+                window.location.href = `voting-history.html?teamId=${teamId}`;
+              }
+            } catch (error) {
+              console.error('Failed to fetch opponent info:', error);
+              window.location.href = `voting-history.html?teamId=${teamId}`;
+            }
+          }
+        });
+      });
+
+      // Mark as read when clicked (but not when clicking links)
+      item.addEventListener('click', async (e) => {
+        if (e.target.tagName === 'A' || e.target.classList.contains('mobile-opponent-link')) {
+          return;
+        }
+        
+        if (!notification.is_read) {
+          try {
+            await fetch('/notifications/read', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ notificationIds: [parseInt(notification.id)] })
+            });
+            item.classList.remove('unread');
+            item.classList.add('read');
+            updateNotificationCount();
+          } catch (error) {
+            console.error('Failed to mark notification as read:', error);
+          }
+        }
+      });
+
+      return item;
+    }
+
+    async function markAllNotificationsAsReadMobile() {
+      try {
+        const res = await fetch('/notifications/read-all', {
+          method: 'POST'
+        });
+        if (res.ok) {
+          // Immediately update the badge to 0 for instant feedback
+          updateNotificationBadge(0);
+          
+          // Reload the notification list
+          await loadMobileNotifications();
+          
+          // Wait a moment for database to update, then refresh count
+          setTimeout(async () => {
+            await updateNotificationCount();
+          }, 500);
+        } else {
+          console.error('Failed to mark all mobile notifications as read:', res.status, res.statusText);
+        }
+      } catch (e) {
+        console.error('Failed to mark all mobile notifications as read:', e);
+      }
+    }
+
+    // Load all widgets when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      loadTopDrafters();
+      loadTopTeams();
+      startRecentVotesPolling();
+      initDraftOrPass();
+      
+      // Pause polling when page is not visible to save resources
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          stopRecentVotesPolling();
+          stopNotificationPolling();
+        } else {
+          startRecentVotesPolling();
+          startNotificationPolling();
+        }
+      });
+
+      // Mobile menu toggle
+      const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+      const mobileNav = document.getElementById('mobileNav');
+      
+      mobileMenuToggle.addEventListener('click', () => {
+        mobileNav.classList.toggle('active');
+        mobileMenuToggle.classList.toggle('active');
+      });
+      
+      // Close mobile menu when clicking on a link
+      document.querySelectorAll('.mobile-nav-link').forEach(link => {
+        link.addEventListener('click', () => {
+          mobileNav.classList.remove('active');
+          mobileMenuToggle.classList.remove('active');
+        });
+      });
+      
+      // Start voting button
+      const startVotingBtn = document.getElementById('startVotingBtn');
+      if (startVotingBtn) {
+        startVotingBtn.addEventListener('click', () => {
+          window.location.href = '/draftorpass';
+        });
+      }
+      
+      // Check auth status and update UI
+      fetch('/me')
+        .then(res => res.json())
+        .then(data => {
+          const loggedIn = !!data.user;
+          if (loggedIn) {
+            const displayName = data.user.display_name || data.user.email || 'User';
+            
+            // Update desktop user controls
+            document.getElementById('userLabel').textContent = displayName;
+            document.getElementById('userGear').style.display = 'inline-block';
+            
+            // Show notification bell
+            const notificationBell = document.getElementById('notificationBell');
+            if (notificationBell) {
+              notificationBell.style.display = 'inline-block';
+              
+              // Set up notification bell click handler
+              notificationBell.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const notificationDropdown = document.getElementById('notificationDropdown');
+                const userMenu = document.getElementById('userMenu');
+                
+                if (notificationDropdown) {
+                  const isVisible = notificationDropdown.style.display !== 'none';
+                  
+                  if (isVisible) {
+                    notificationDropdown.style.display = 'none';
+                  } else {
+                    // Hide user menu if open
+                    if (userMenu) userMenu.style.display = 'none';
+                    notificationDropdown.style.display = 'block';
+                    
+                    // Load notifications
+                    loadNotificationsForIndex();
+                  }
+                }
+              });
+            }
+            
+            // Update mobile user controls
+            document.getElementById('mobileUserInfo').style.display = 'block';
+            
+            // Show mobile notification button
+            const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+            if (mobileNotificationBtn) {
+              mobileNotificationBtn.style.display = 'block';
+              
+              // Add click handler for mobile notifications
+              mobileNotificationBtn.addEventListener('click', () => {
+                showMobileNotifications();
+              });
+            }
+            
+            // Start badge polling
+            startNotificationPolling();
+          } else {
+            // Hide mobile user controls when not logged in
+            document.getElementById('mobileUserInfo').style.display = 'none';
+          }
+          
+          // Show content after auth check
+          document.body.classList.add('content-visible');
+        })
+        .catch(err => {
+          console.error('Auth check failed:', err);
+          document.body.classList.add('content-visible');
+        });
+      
+      // Logout functionality
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await fetch('/logout', { method: 'POST' });
+        window.location.reload();
+      });
+      
+
+      
+      // Profile button - go directly to profile page
+      const userGear = document.getElementById('userGear');
+      
+      userGear.addEventListener('click', (e) => {
+        if (userGear.style.display !== 'none') {
+          window.location.href = '/profile.html';
+        }
+      });
+      
+      // Mark all notifications as read button
+      const markAllReadBtn = document.getElementById('markAllRead');
+      if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/notifications/read-all', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (res.ok) {
+              // Mark all notification items as read visually
+              document.querySelectorAll('.notification-item.unread').forEach(item => {
+                item.classList.remove('unread');
+                item.classList.add('read');
+              });
+              
+              // Update notification count badge
+              if (typeof updateNotificationCount === 'function') {
+                updateNotificationCount();
+              }
+              
+            } else {
+              console.error('Failed to mark all notifications as read');
+            }
+          } catch (e) {
+            console.error('Error marking all notifications as read:', e);
+          }
+        });
+      }
+      
+      // Close dropdowns when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.user-controls')) {
+          document.getElementById('userMenu').style.display = 'none';
+          document.getElementById('notificationDropdown').style.display = 'none';
+        }
+      });
+    });
+  </script>
+
+  <footer class="legal-footer">
+    <div class="footer-content">
+      <div class="social-links">
+        <a href="https://x.com/DraftrPass" target="_blank" rel="noopener noreferrer" title="Follow us on X">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+        <a href="https://discord.gg/Y7hyQsfDQx" target="_blank" rel="noopener noreferrer" title="Join our Discord">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.246.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
+          </svg>
+        </a>
+      </div>
+      <div class="legal-links">
+        <a href="privacy.html" target="_blank">Privacy Policy</a>
+        <a href="terms.html" target="_blank">Terms of Service</a>
+      </div>
     </div>
   </footer>
 </body>

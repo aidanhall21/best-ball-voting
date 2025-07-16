@@ -1,10 +1,527 @@
 body {
     margin: 0;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Söhne', 'Inter', sans-serif;
     background: #0d1117;
     color: #f0f6fc;
-    padding: 10px;
+    padding: 0;
     text-align: center;
+    /* Sticky footer layout – flex column so main content grows and footer can push to the bottom */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+  /* Ensure all buttons use Söhne font */
+  button {
+    font-family: inherit;
+  }
+
+  /* Initially hide main content until auth check completes */
+  body:not(.content-visible) {
+    opacity: 0;
+  }
+
+  body.content-visible {
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+
+  /* Main content should grow to push footer down */
+  .main-content {
+    /* Reset flexbox so content scrolls with the document */
+    display: block;
+    min-height: auto;
+    /* Let this section take up remaining space before the footer */
+    flex: 1 0 auto;
+  }
+
+  /* === MAIN HEADER NAVIGATION === */
+  .main-header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+
+  .header-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 20px;
+    height: 60px;
+    position: relative;
+  }
+
+  .logo a.logo-link {
+    font-size: 24px;
+    font-weight: 700;
+    color: #f0f6fc;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .logo a.logo-link:hover {
+    color: #58a6ff;
+  }
+
+  .desktop-nav {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto; /* push nav to the right side of header */
+  }
+
+  .desktop-nav .nav-link {
+    background: #ffffff;
+    color: #0d1117;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .desktop-nav .nav-link:hover {
+    background: #f0f6fc;
+  }
+
+  .nav-link.active,
+  .nav-link.active:hover {
+    background: #238636;
+    color: #ffffff;
+  }
+
+  .mobile-menu-toggle {
+    display: none; /* hidden by default, shown on mobile */
+    order: -1; /* move toggle to leftmost position */
+    margin-left: 0;
+    margin-right: 8px;
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    flex-direction: column;
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .mobile-menu-toggle span {
+    display: block;
+    width: 24px;
+    height: 3px;
+    background: #ffffff;
+    margin: 4px 0;
+    transition: 0.3s;
+    border-radius: 2px;
+  }
+
+  .mobile-menu-toggle.active span:nth-child(1) {
+    transform: rotate(-45deg) translate(-5px, 6px);
+  }
+
+  .mobile-menu-toggle.active span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .mobile-menu-toggle.active span:nth-child(3) {
+    transform: rotate(45deg) translate(-5px, -6px);
+  }
+
+  .mobile-nav {
+    /* hide menu by default; will be shown via script */
+    display: none;
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: #0d1117;
+    border-top: 1px solid #30363d;
+    padding: 20px 15px;
+    flex-direction: column;
+    gap: 15px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    z-index: 1100;
+    box-sizing: border-box;
+  }
+
+  .mobile-nav.active {
+    display: flex !important;
+  }
+
+  .mobile-nav-link {
+    background: #ffffff;
+    color: #0d1117;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-align: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .mobile-nav-link:hover {
+    background: #f0f6fc;
+    color: #0d1117;
+  }
+
+  .mobile-user-section {
+    border-top: 1px solid #30363d;
+    padding-top: 15px;
+    margin-top: 15px;
+  }
+
+  /* === HERO SECTION === */
+  .hero-section {
+    position: relative;
+    padding: 60px 20px;
+    text-align: center;
+    overflow: visible;
+    background: #0d1117;
+    z-index: 2;
+  }
+
+  /* Hero background with halo effect */
+  .hero-section::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(
+      circle at center,
+      rgba(56, 189, 248, 0.15) 0%,
+      rgba(56, 189, 248, 0.1) 25%,
+      rgba(56, 189, 248, 0.05) 50%,
+      transparent 70%
+    );
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .hero-content {
+    position: relative;
+    max-width: 800px;
+    margin: 0 auto;
+    z-index: 1;
+  }
+
+  .hero-title {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    line-height: 1.2;
+  }
+
+  .hero-subtitle {
+    font-size: 20px;
+    color: #8b949e;
+    margin-bottom: 40px;
+    line-height: 1.5;
+  }
+
+  .hero-cta-btn {
+    background: #238636;
+    color: white;
+    border: none;
+    padding: 16px 32px;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: inherit;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .hero-cta-btn:hover {
+    background: #2ea043;
+    transform: translateY(-2px);
+  }
+
+  /* === USER CONTROLS === */
+  .user-controls {
+    position: relative; /* allow header to control positioning */
+    z-index: 1100;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* Profile button (same style as nav links) */
+  .gear-btn {
+    background: #ffffff;
+    color: #0d1117;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+    width: auto;
+    height: auto;
+  }
+
+  .gear-btn:hover {
+    background: #f0f6fc;
+  }
+
+  /* Align the bell icon button with nav buttons */
+  .notification-btn {
+    background: #30363d;
+    border: none;
+    color: #f0f6fc;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 16px;
+    height: 36px; /* match nav height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: background 0.2s;
+    position: relative;
+    margin-left: 8px; /* Add 8px spacing before the bell button */
+  }
+
+  .notification-btn:hover {
+    background: #484f58;
+  }
+
+  /* Notification badge (desktop) */
+  .notification-badge {
+    position: absolute;
+    top: -6px;   /* place just outside the button */
+    right: -6px; /* place just outside the button */
+    background: #f85149;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 600;
+    height: 16px;
+    min-width: 16px;
+    line-height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10; /* ensure it floats above */
+    padding: 0 4px;
+  }
+
+  .user-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 150px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 1001;
+  }
+
+  .user-menu p {
+    margin: 0 0 10px 0;
+    color: #8b949e;
+    font-size: 14px;
+  }
+
+  .profile-link {
+    display: block;
+    color: #58a6ff;
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 5px;
+    transition: background 0.2s;
+  }
+
+  .profile-link:hover {
+    background: #21262d;
+  }
+
+  .logout-small {
+    background: #da3633;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    width: 100%;
+  }
+
+  .logout-small:hover {
+    background: #b91c1c;
+  }
+
+  .notification-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0;
+    min-width: 300px;
+    max-width: 400px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 1001;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .notification-header {
+    padding: 15px;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .notification-header h3 {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .mark-all-read-btn {
+    background: #21262d;
+    color: #58a6ff;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .mark-all-read-btn:hover {
+    background: #30363d;
+  }
+
+  .notification-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .mobile-notification-btn {
+    background: transparent;
+    border: 1px solid #30363d;
+    color: #f0f6fc;
+    padding: 12px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    text-align: center;
+    margin: 8px 0;
+    transition: all 0.2s;
+    display: block;
+    position: relative;
+  }
+
+  .mobile-notification-btn:hover {
+    background: #21262d;
+    border-color: #58a6ff;
+  }
+
+  .mobile-notification-count {
+    background: #f85149;
+    color: white;
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+
+  .mobile-profile-btn {
+    display: block;
+    color: #58a6ff;
+    text-decoration: none;
+    padding: 12px 16px;
+    background: #21262d;
+    border-radius: 8px;
+    text-align: center;
+    margin: 8px 0;
+    transition: background 0.2s;
+  }
+
+  .mobile-profile-btn:hover {
+    background: #30363d;
+  }
+
+  .mobile-logout-btn {
+    background: #da3633;
+    color: white;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    margin: 8px 0;
+  }
+
+  .mobile-logout-btn:hover {
+    background: #b91c1c;
+  }
+
+  /* === MOBILE RESPONSIVE === */
+  @media (max-width: 768px) {
+    .desktop-nav {
+      display: none;
+    }
+
+    .mobile-menu-toggle {
+      display: flex;
+    }
+  }
+
+  @media (min-width: 769px) {
+    .mobile-menu-toggle {
+      display: none;
+    }
+
+    .hero-title {
+      font-size: 36px;
+    }
+
+    .hero-subtitle {
+      font-size: 18px;
+    }
+
+    .hero-section {
+      padding: 60px 20px;
+    }
+
+    .header-content {
+      padding: 0 15px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .hero-title {
+      font-size: 28px;
+    }
+
+    .hero-subtitle {
+      font-size: 16px;
+    }
+
+    .hero-cta-btn {
+      padding: 14px 28px;
+      font-size: 16px;
+    }
   }
   
   .layout {
@@ -405,6 +922,7 @@ body {
     align-items: center;
     gap: 4px;
     margin-top: 15px;
+    font-family: inherit;
   }
   
   .choose-button:hover {
@@ -473,6 +991,7 @@ body {
     display: flex;
     justify-content: center;
     gap: 10px;
+    width: 100%;
   }
   
   .leaderboard-table {
@@ -554,8 +1073,8 @@ body {
     padding: 20px;
     border-radius: 8px;
     position: relative;
-    width: 90%;
-    max-width: 600px;
+    width: 70%;
+    max-width: 360px;
     max-height: 90vh;
     overflow-y: auto;
   }
@@ -692,10 +1211,7 @@ body {
   
   /* User controls and notifications */
   .user-controls {
-    position: relative;
-    position: fixed;
-    top: 20px;
-    right: 20px;
+    position: relative; /* allow header to control positioning */
     z-index: 1100;
     display: flex;
     gap: 8px;
@@ -703,64 +1219,63 @@ body {
   }
   
   .gear-btn {
-    background: transparent;
+    background: #ffffff;
+    color: #0d1117;
     border: none;
-    color: #f0f6fc;
-    font-size: 24px;
+    padding: 8px 16px;
+    border-radius: 8px;
     cursor: pointer;
-    padding: 8px;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: background-color 0.2s;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+    width: auto;
+    height: auto;
   }
   
   .gear-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: #f0f6fc;
   }
 
   /* Notification bell button */
   .notification-btn {
-    background: transparent;
+    background: #30363d;
     border: none;
     color: #f0f6fc;
-    font-size: 24px;
+    font-size: 16px;
     cursor: pointer;
-    padding: 8px;
-    width: 40px;
-    height: 40px;
+    padding: 0 16px;
+    height: 36px; /* match nav height */
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    transition: background-color 0.2s;
+    border-radius: 8px;
+    transition: background 0.2s;
     position: relative;
+    margin-left: 8px; /* Add 8px spacing before the bell button */
   }
   
   .notification-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: #484f58;
   }
 
-  /* Notification badge */
+  /* Notification badge (desktop) */
   .notification-badge {
     position: absolute;
-    top: 5px;
-    right: 5px;
+    top: -6px;   /* place just outside the button */
+    right: -6px; /* place just outside the button */
     background: #f85149;
-    color: white;
+    color: #fff;
     border-radius: 50%;
-    min-width: 18px;
-    height: 18px;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
+    height: 16px;
+    min-width: 16px;
+    line-height: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 2px;
-    box-shadow: 0 0 0 2px #0d1117;
+    z-index: 10; /* ensure it floats above */
+    padding: 0 4px;
   }
 
   /* Notification dropdown */
@@ -1099,42 +1614,23 @@ body {
 
   /* Mobile notification button styling */
   .mobile-notification-btn {
-    background: transparent;
-    border: 1px solid #30363d;
-    color: #f0f6fc;
-    padding: 12px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 16px;
+    display: block;
     width: 100%;
-    text-align: left;
     margin: 8px 0;
+    padding: 12px 16px;
+    background: #30363d;
+    color: #f0f6fc;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
     transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    text-align: left;
+    position: relative;
   }
 
-  /* Only apply hover effect on devices that support true hovering (not touch) */
-  @media (hover: hover) {
-    .mobile-notification-btn:hover {
-      background: #21262d;
-      border-color: #58a6ff;
-    }
-  }
-
-  /* Active state for touch devices */
-  .mobile-notification-btn:active {
-    background: #21262d;
-    border-color: #58a6ff;
-    transform: scale(0.98);
-  }
-
-  /* Ensure focus state doesn't stick */
-  .mobile-notification-btn:focus {
-    outline: none;
-    background: transparent;
-    border-color: #30363d;
+  .mobile-notification-btn:hover {
+    background: #484f58;
   }
 
   .mobile-notification-count {
@@ -1353,7 +1849,7 @@ body {
     margin-bottom: 10px;
   }
   
-  /* Hamburger menu button (hidden on desktop) */
+  /* Hamburger menu button (hidden by default) */
   .hamburger-btn {
     display: none;
     position: absolute;
@@ -1402,10 +1898,21 @@ body {
     backdrop-filter: blur(10px);
   }
   
-  .mobile-menu.active {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  /* Only show mobile menu when both .active class is present AND screen is mobile */
+  @media (max-width: 768px) {
+    .mobile-menu.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+  
+  /* Ensure mobile menu is always hidden on desktop */
+  @media (min-width: 769px) {
+    .mobile-menu,
+    .mobile-menu.active {
+      display: none !important;
+    }
   }
   
   .mobile-menu-content {
@@ -1431,7 +1938,7 @@ body {
   }
   
   .mobile-nav {
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 15px;
     margin-bottom: 30px;
@@ -1514,6 +2021,50 @@ body {
       overflow-x: hidden;    /* prevent horizontal scrolling */
     }
     
+    /* Ensure main containers are fully responsive */
+    .main-content {
+      width: 100%;
+      max-width: 100vw;
+      padding: 20px 0;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    
+    #teamsContainer {
+      width: 100%;
+      max-width: 100vw;
+      padding: 0;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    
+    /* Ensure leaderboard elements are centered */
+    .leaderboard-switch,
+    .filters-wrapper {
+      width: 100%;
+      max-width: 100vw;
+      padding: 0 15px;
+      box-sizing: border-box;
+      display: flex;
+      justify-content: center;
+    }
+    
+    /* Make leaderboard table container responsive with horizontal scroll */
+    .leaderboard-table-container {
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 -15px; /* extend to screen edges */
+      padding: 0 15px;
+      box-sizing: border-box;
+    }
+    
+    .leaderboard-table {
+      width: 100%;
+      min-width: 600px; /* ensure table doesn't get too cramped */
+    }
+    
     /* Show hamburger menu on mobile */
     .hamburger-btn {
       display: flex;
@@ -1562,6 +2113,15 @@ body {
       display: flex;        /* use flex layout */
       flex-direction: column;
       height: auto;         /* let it grow based on content */
+    }
+
+    /* Wider team cards specifically for draft-or-pass page on mobile */
+    .draft-or-pass .team-card {
+      padding: 20px;
+      margin: 10px 0;
+      width: calc(100vw - 20px); /* Use almost full viewport width minus small margins */
+      max-width: none;
+      border-radius: 12px;
     }
     
     .player-columns {
@@ -1880,6 +2440,80 @@ body {
     .filters-wrapper {
       flex-direction: column;
       align-items: center;
+      gap: 10px;
+      margin: 10px auto;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    /* Mobile-friendly leaderboard switch buttons */
+    .leaderboard-switch {
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center;
+      gap: 6px;
+      margin: 10px auto;
+      width: 100% !important;
+      max-width: 300px !important;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    .leaderboard-switch button {
+      padding: 8px 12px;
+      font-size: 14px;
+      min-width: 80px;
+    }
+
+    /* Mobile table container with horizontal scroll */
+    .leaderboard-table-container {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 -15px; /* extend to screen edges */
+      padding: 0 15px;
+    }
+
+    /* Compact mobile table styling */
+    .leaderboard-table {
+      min-width: 600px; /* ensures table doesn't get too cramped */
+      font-size: 14px;
+    }
+
+    .leaderboard-table th,
+    .leaderboard-table td {
+      padding: 8px 6px;
+      white-space: nowrap;
+    }
+
+    /* Mobile column widths - more compact */
+    .leaderboard-table.team-view th:nth-child(1) { width: 50px; } /* Team */
+    .leaderboard-table.team-view th:nth-child(2) { width: 70px; } /* Rating */
+    .leaderboard-table.team-view th:nth-child(3) { width: 80px; } /* User */
+    .leaderboard-table.team-view th:nth-child(4) { width: 120px; } /* Contest */
+    .leaderboard-table.team-view th:nth-child(5) { width: 35px; } /* W */
+    .leaderboard-table.team-view th:nth-child(6) { width: 35px; } /* L */
+    .leaderboard-table.team-view th:nth-child(7) { width: 60px; } /* Win % */
+
+    .leaderboard-table.user-view th:nth-child(1) { width: 70px; } /* Rating */
+    .leaderboard-table.user-view th:nth-child(2) { width: 100px; } /* User */
+    .leaderboard-table.user-view th:nth-child(3) { width: 35px; } /* W */
+    .leaderboard-table.user-view th:nth-child(4) { width: 35px; } /* L */
+    .leaderboard-table.user-view th:nth-child(5) { width: 60px; } /* Win % */
+
+    /* Smaller filter dropdowns on mobile */
+    .filters-wrapper select {
+      padding: 4px 6px;
+      font-size: 12px;
+      width: 100%;
+      max-width: 250px;
+      text-align: center;
+    }
+
+    /* Truncate long contest names on mobile */
+    .leaderboard-table.team-view td:nth-child(4) {
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
   
@@ -2125,7 +2759,7 @@ body {
   padding: 12px 16px;
   background: transparent;
   border: none;
-  color: #8b949e;
+  color: #238636;
   cursor: pointer;
   font-size: 16px;
   border-bottom: 2px solid transparent;
@@ -2137,8 +2771,8 @@ body {
 }
 
 .auth-tab.active {
-  color: #58a6ff;
-  border-bottom-color: #58a6ff;
+  color: #238636;
+  border-bottom-color: #238636;
 }
 
 .auth-form {
@@ -2248,4 +2882,1687 @@ body {
     }
   }
   
+  /* --- Landing page styles --- */
+.landing-section {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.landing-section h2 {
+  font-size: 40px;
+  margin-bottom: 20px;
+}
+
+.landing-section .subtitle {
+  font-size: 20px;
+  color: #8b949e;
+  margin-bottom: 30px;
+}
+
+.cta-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+}
+
+.primary-btn,
+.secondary-btn {
+  padding: 14px 26px;
+  font-size: 18px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.primary-btn {
+  background: #238636;
+  color: #fff;
+}
+
+.secondary-btn {
+  background: #30363d;
+  color: #fff;
+}
+
+.primary-btn:hover:not(:disabled),
+.secondary-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+  
+  /* === UPLOAD PAGE STYLES === */
+  .main-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 0px;
+    flex: 1 0 auto; /* same grow behaviour for upload page */
+  }
+
+  .upload-container {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .upload-panel, .login-panel {
+    background: #161b22;
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  }
+
+  .upload-panel h2, .login-panel h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+  }
+
+  .upload-panel input[type="text"] {
+    display: block;
+    margin: 20px auto;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #f0f6fc;
+    width: 80%;
+    max-width: 300px;
+  }
+
+  .file-input-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+    position: relative;
+  }
+
+  .upload-button {
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .upload-button:hover:not(:disabled) {
+    background: #2ea043;
+  }
+
+  .upload-button:disabled {
+    background: #238636;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .upload-message {
+    margin-top: 20px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .upload-message.error {
+    background: #da3633;
+    color: white;
+  }
+
+  .upload-message.success {
+    background: #238636;
+    color: white;
+  }
+
+  .upload-message.info {
+    background: #1f6feb;
+    color: white;
+  }
+
+  /* === AUTH FORMS === */
+  .auth-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+  }
+
+  .auth-tab {
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+
+  .auth-tab:hover {
+    background: #30363d;
+  }
+
+  .auth-tab.active {
+    background: #238636;
+    color: #fff;
+    border-color: #238636;
+  }
+
+  .auth-form {
+    max-width: 300px;
+    margin: 0 auto;
+  }
+
+  .x-btn {
+    background: #000;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    margin-bottom: 20px;
+    transition: background 0.2s;
+  }
+
+  .x-btn:hover {
+    background: #000;
+  }
+
+  .login-divider {
+    color: #8b949e;
+    margin: 20px 0;
+    display: flex;
+    align-items: center;
+    text-transform: uppercase;
+    font-size: 12px;
+  }
+
+  .login-divider::before,
+  .login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #30363d;
+    margin: 0 10px;
+  }
+
+  .auth-form form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .auth-form input {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #f0f6fc;
+    font-size: 14px;
+  }
+
+  .auth-form input:focus {
+    border-color: #58a6ff;
+    outline: none;
+  }
+
+  .login-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .login-actions button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #f0f6fc;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .login-actions button[type="submit"] {
+    background: #238636;
+    border-color: #238636;
+  }
+
+  .login-actions button:hover {
+    background: #30363d;
+  }
+
+  .login-actions button[type="submit"]:hover {
+    background: #2ea043;
+  }
+
+  #forgotPasswordLink {
+    color: #58a6ff;
+    text-decoration: none;
+    font-size: 14px;
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  #forgotPasswordLink:hover {
+    text-decoration: underline;
+  }
+
+  .start-voting-btn {
+    background: #238636;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.2s;
+  }
+
+  .start-voting-btn:hover {
+    background: #2ea043;
+  }
+
+  /* === ACTIVE NAV LINK === */
+  .nav-link.active,
+  .mobile-nav-link.active {
+    background: #238636;
+    color: white;
+  }
+
+  .nav-link.active:hover,
+  .mobile-nav-link.active:hover {
+    background: #2ea043;
+  }
+  
+  /* === VERSUS VOTING STYLES === */
+  .teams-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .layout {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 40px;
+    width: 100%;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+
+  h1, h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+  }
+
+  .team-card {
+    background: #161b22;
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    margin-top: 0;
+  }
+
+  .player-columns {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 20px;
+    gap: 10px;
+  }
+
+  .position-column {
+    flex: 1;
+    background: #0d1117;
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .position-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+  }
+
+  .player-bubble {
+    width: 45%;
+    margin: 0;
+    position: relative;
+    text-align: center;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    background: #0d1117;
+    color: #f0f6fc;
+    border: 2px solid #888;
+    white-space: normal;
+    overflow: visible;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stack-star {
+    display: inline-block;
+    font-size: 12px;
+  }
+
+  .player-bubble .stack-star {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
+  }
+
+  .stack-star.primary {
+    color: #ffd700;
+  }
+
+  .stack-star.secondary {
+    color: #c0c0c0;
+  }
+
+  .team-label {
+    display: block;
+    font-size: 12px;
+    color: #8b949e;
+    margin-top: 2px;
+  }
+
+  .stack-label {
+    display: block;
+    font-size: 11px;
+    margin-top: 2px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    text-transform: capitalize;
+  }
+
+  .stack-label.primary {
+    background: #238636;
+    color: white;
+  }
+
+  .stack-label.secondary {
+    background: #1f6feb;
+    color: white;
+  }
+
+  .player-bubble[style*="#a855f7"] { border-color: #a855f7; }
+  .player-bubble[style*="#22c55e"] { border-color: #22c55e; }
+  .player-bubble[style*="#facc15"] { border-color: #facc15; }
+  .player-bubble[style*="#3b82f6"] { border-color: #3b82f6; }
+
+  .vote-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .vote-buttons button {
+    font-size: 16px;
+    padding: 10px 20px;
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .vote-buttons button:nth-child(2) {
+    background: #da3633;
+  }
+
+  .vote-buttons button:hover:not(:disabled):not(.disabled) {
+    filter: brightness(1.1);
+  }
+
+  .vote-buttons button.selected {
+    box-shadow: 0 0 0 3px #58a6ff;
+    transform: scale(1.05);
+  }
+
+  .vote-buttons button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+
+  .vote-results {
+    font-size: 14px;
+    margin-top: 10px;
+  }
+
+  .nav-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+    width: 100%;
+  }
+
+  .nav-buttons button {
+    font-size: 20px;
+    background: #30363d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .versus-outer-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .versus-container {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    justify-content: center;
+    width: 100%;
+    padding: 0 2px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  .versus-center {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 40px;
+  }
+
+  .versus-text {
+    font-size: 24px;
+    font-weight: bold;
+    color: #8b949e;
+  }
+
+  .versus-buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .versus-stats {
+    margin: 15px 0;
+    padding: 8px;
+    background: #0d1117;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #8b949e;
+  }
+
+  .player-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .position-summary {
+    margin-top: 10px;
+    font-weight: 600;
+    color: #8b949e;
+    font-size: 14px;
+  }
+
+  .choose-button {
+    font-size: 15px;
+    padding: 6px 18px;
+    background: #0969da;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 15px;
+    font-family: inherit;
+  }
+
+  .choose-button:hover {
+    filter: brightness(1.1);
+  }
+
+  .choose-button.selected {
+    box-shadow: 0 0 0 3px #58a6ff;
+    transform: scale(1.05);
+  }
+
+  .choose-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+
+  .versus-container .owner-info {
+    margin-top: 15px;
+    padding: 8px;
+    background: #0d1117;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #f0f6fc;
+    width: 85%;
+  }
+
+  .versus-container .owner-stats {
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .versus-container .next-button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #0969da;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-left: auto;
+    margin-right: 7.5%;
+  }
+
+  .versus-container .next-button:hover {
+    filter: brightness(1.1);
+  }
+
+  .roster-construction {
+    text-align: center;
+    margin-bottom: 15px;
+  }
+
+  .roster-counts {
+    font-weight: 600;
+    color: #8b949e;
+    font-size: 14px;
+  }
+
+  .loading-indicator {
+    text-align: center;
+    color: #8b949e;
+    font-size: 18px;
+    padding: 40px;
+  }
+
+  /* Modal Styles */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    background: #161b22;
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    z-index: 1001;
+  }
+
+  .modal-close button {
+    background: #da3633;
+    color: white;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-close button:hover {
+    background: #b91c1c;
+  }
+  
+  /* Ensure mobile nav is always hidden on desktop */
+  @media (min-width: 769px) {
+    .mobile-nav,
+    .mobile-nav.active {
+      display: none !important;
+    }
+  }
+  
+  /* === WIDGETS GRID === */
+  .widgets-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  grid-template-areas:
+    "top-drafters recent-votes top-teams"
+    "draft-or-pass draft-or-pass upload-promo";
+  background: #0d1117;
+  position: relative;
+  z-index: 1;
+}
+
+.top-drafters { grid-area: top-drafters; }
+.top-teams { grid-area: top-teams; }
+.draft-or-pass { grid-area: draft-or-pass; }
+.recent-votes { grid-area: recent-votes; }
+.upload-promo { grid-area: upload-promo; }
+
+/* Widget layout */
+.top-drafters {
+  background: #161b22;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.draft-or-pass {
+  background: #161b22;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.top-teams {
+  background: #161b22;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.recent-votes {
+  background: #161b22;
+  border-radius: 12px;
+  padding: 24px;
+  min-height: 200px;
+}
+
+.upload-promo {
+  background: #161b22;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+  /* Make upload promo more compact */
+  .upload-promo-content {
+    padding: 24px;
+    gap: 12px;
+  }
+
+  .upload-promo h2 {
+    font-size: 24px;
+  }
+
+  .upload-promo p {
+    font-size: 16px;
+  }
+
+  /* Recent Votes Widget positioning is now handled by grid-template-areas */
+
+  /* Recent Votes Widget Styles */
+  .recent-votes {
+    flex: 1;
+  }
+
+  .vote-row {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    background: #0d1117;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: background 0.2s;
+    border-left: 3px solid #4ADE80;
+  }
+
+  .vote-row:hover {
+    background: #161b22;
+  }
+
+  .vote-result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .vote-result .winner {
+    font-weight: 600;
+    color: #4ADE80;
+  }
+
+  .vote-result .vs-text {
+    font-size: 12px;
+    color: #8b949e;
+    font-style: italic;
+  }
+
+  .vote-result .loser {
+    color: #8b949e;
+  }
+
+  .tournament-text {
+    margin: 4px 0;
+    text-align: left;
+    font-size: 12px;
+    color: #8b949e;
+  }
+
+  .vote-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #6e7681;
+  }
+
+  .vote-meta .voter {
+    color: #58a6ff;
+  }
+
+  .vote-meta .time {
+    color: #8b949e;
+  }
+
+  .no-votes-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #8b949e;
+    font-style: italic;
+  }
+
+  @media (max-width: 768px) {
+    .vote-row {
+      padding: 10px 12px;
+    }
+
+    .vote-result {
+      font-size: 14px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      line-height: 1.3;
+    }
+
+    .vote-meta {
+      font-size: 11px;
+    }
+  }
+
+  @media (max-width: 1200px) {
+    .widgets-grid {
+      grid-template-columns: repeat(2, 1fr);
+      padding: 20px;
+      grid-template-areas:
+        "top-drafters top-teams"
+        "recent-votes recent-votes"
+        "draft-or-pass draft-or-pass"
+        "upload-promo upload-promo";
+    }
+  }
+
+  @media (max-width: 768px) {
+    .widgets-grid {
+      grid-template-columns: 1fr;
+      padding: 15px;
+      margin: 0;
+      max-width: 100vw;
+      width: 100%;
+      box-sizing: border-box;
+      grid-template-areas:
+        "top-drafters"
+        "top-teams"
+        "recent-votes"
+        "draft-or-pass"
+        "upload-promo";
+    }
+    
+    /* Make widgets and widget rows fully responsive on mobile */
+    .top-drafters,
+    .top-teams,
+    .recent-votes,
+    .draft-or-pass,
+    .upload-promo {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    
+    .drafter-row,
+    .team-row {
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+  /* Make the voting widget more compact on mobile */
+  .draft-or-pass h2 {
+    font-size: 20px;
+  }
+
+  .draft-or-pass .teams-container {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .draft-or-pass .team-card {
+    margin-bottom: 0;
+  }
+}
+
+/* Ensure consistent widget heights */
+.widget {
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+  font-family: 'Söhne', 'Inter', sans-serif;
+}
+
+    .widget {
+      margin-bottom: 24px;
+    }
+  
+  .widget {
+    background: #161b22;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Top Drafters Widget - Reserve space to prevent layout shift */
+  .top-drafters {
+    min-height: 50px; /* Reserve space for 10 drafter rows + title */
+  }
+
+  /* Loading and error states */
+  .loading, .error-message {
+    text-align: center;
+    padding: 20px;
+    color: #8b949e;
+    font-style: italic;
+  }
+
+  .error-message {
+    color: #f85149;
+  }
+  
+  .widget h2 {
+    font-size: 20px;
+    margin: 0 0 20px;
+    color: #f0f6fc;
+  }
+  
+  /* Top Drafters Widget */
+  .top-drafters .widget-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .drafter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    background: #0d1117;
+    transition: background 0.2s;
+    min-width: 250px;
+    font-family: 'Söhne', 'Inter', sans-serif;
+  }
+  
+  .drafter-row:hover {
+    background: #21262d;
+  }
+  
+  .drafter-rank {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0d1117;
+    min-width: 24px;
+    height: 24px;
+    background: #f0f6fc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .drafter-name {
+    flex: 1;
+    font-weight: 500;
+    color: #f0f6fc;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    padding-right: 4px;
+  }
+  
+  /* Rating boxes with tier-based colors */
+  .rating-box {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 24px;
+    text-align: center;
+    border: 1px solid;
+    font-family: 'Söhne', 'Inter', sans-serif;
+  }
+
+  /* Tier colors based on Madden rating ranges */
+  .rating-box.tier-none {
+    background-color: #374151;
+    color: #9ca3af;
+    border-color: #4b5563;
+  }
+
+  .rating-box.tier-low {
+    background-color: #dc2626;
+    color: #ffffff;
+    border-color: #b91c1c;
+  }
+
+  .rating-box.tier-below {
+    background-color: #ea580c;
+    color: #ffffff;
+    border-color: #c2410c;
+  }
+
+  .rating-box.tier-average {
+    background-color: #ca8a04;
+    color: #ffffff;
+    border-color: #a16207;
+  }
+
+  .rating-box.tier-good {
+    background-color: #16a34a;
+    color: #ffffff;
+    border-color: #15803d;
+  }
+
+  .rating-box.tier-elite {
+    background-color: #2563eb;
+    color: #ffffff;
+    border-color: #1d4ed8;
+  }
+
+  @media (max-width: 768px) {
+    .rating-box {
+      font-size: 10px;
+      padding: 3px 6px;
+      min-width: 22px;
+    }
+  }
+  
+  .see-full-link {
+    display: block;
+    color: #16A34A;
+    text-decoration: none;
+    font-weight: 500;
+    margin-top: 16px;
+    text-align: center;
+    padding: 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+    font-family: 'Söhne', 'Inter', sans-serif;
+  }
+  
+  .see-full-link:hover {
+    background: rgba(35, 134, 54, 0.1);
+  }
+  
+  /* Mobile adjustments */
+  @media (max-width: 768px) {
+    .widgets-grid {
+      grid-template-columns: 1fr;
+      padding: 0 12px;
+      margin: 20px auto;
+    }
+    
+    .widget {
+      padding: 16px;
+    }
+    
+    .drafter-teams {
+      display: none; /* Hide team count on mobile to save space */
+    }
+  }
+  
+  /* Ensure minimum page height for sticky footer */
+  html, body {
+    height: auto;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+
+  /* Footer styles */
+  .legal-footer {
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    padding: 0;
+    height: 60px; /* Match header height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Remove fixed margin so footer can sit flush and sticky */
+    margin-top: 0;
+  }
+
+  .legal-footer .footer-content {
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .social-links {
+    display: flex;
+    gap: 16px;
+  }
+
+  .social-links a {
+    color: #8b949e;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+  }
+
+  .social-links a:hover {
+    color: #f0f6fc;
+  }
+
+  .legal-links {
+    display: flex;
+    gap: 20px;
+  }
+
+  .legal-footer a {
+    color: #8b949e;
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+  }
+
+  .legal-footer a:hover {
+    color: #f0f6fc;
+  }
+
+  /* Mobile adjustments */
+  @media (max-width: 768px) {
+    .legal-footer {
+      height: auto;
+      padding: 16px 0;
+      margin-top: auto;
+    }
+
+    .legal-footer .footer-content {
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+    }
+
+    .social-links {
+      justify-content: center;
+    }
+
+    .legal-links {
+      justify-content: center;
+    }
+  }
+  
+  /* Top Drafters Widget - Reserve space to prevent layout shift */
+  .top-drafters {
+    min-height: 450px; /* Reserve space for 10 drafter rows + title + link */
+  }
+  
+  .widget h2 {
+    font-size: 20px;
+    margin: 0 0 20px;
+    color: #f0f6fc;
+  }
+  
+  /* Loading and error states */
+  .loading, .error-message {
+    text-align: center;
+    padding: 20px;
+    color: #8b949e;
+    font-style: italic;
+  }
+  
+  .error-message {
+    color: #f85149;
+  }
+  
+  .top-drafters {
+    flex: 1;
+  }
+
+  .widget h2 {
+    font-size: 24px;
+    font-weight: 500;
+    margin-bottom: 20px;
+    color: #f0f6fc;
+  }
+
+  .loading, .error-message {
+    color: #8b949e;
+    padding: 20px;
+    text-align: center;
+    font-size: 16px;
+  }
+
+  .error-message {
+    color: #f85149;
+  }
+
+  /* Top Teams Widget Styles */
+  .top-teams {
+    flex: 1;
+  }
+
+  .team-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 6px;
+    background: #0d1117;
+    transition: background 0.2s;
+    min-width: 250px;
+    font-family: 'Söhne', 'Inter', sans-serif;
+  }
+
+  .team-row:hover {
+    background: #21262d;
+  }
+
+  .team-rank {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0d1117;
+    min-width: 24px;
+    height: 24px;
+    background: #f0f6fc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .team-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+    padding-right: 4px;
+  }
+
+  .team-name {
+    font-weight: 500;
+    color: #f0f6fc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .team-tournament {
+    color: #8b949e;
+    font-size: 14px;
+  }
+
+  @media (max-width: 768px) {
+    .widgets-grid {
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .widget {
+      margin-bottom: 30px;
+    }
+
+    .team-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    /* Keep top-teams widget team rows horizontal on mobile */
+    .top-teams .team-row {
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+    }
+
+    .top-teams .team-rank {
+      min-width: 20px;
+      height: 20px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .top-teams .team-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .top-teams .team-name {
+      font-size: 14px;
+    }
+
+    .top-teams .team-tournament {
+      font-size: 12px;
+    }
+
+    .team-stats {
+      width: 100%;
+      justify-content: space-between;
+    }
+  }
+
+  /* Upload Promotion Widget Styles */
+  .upload-promo {
+    flex: 1;
+    background: #1b2e20;
+    border: 1px solid #2ea043;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .upload-promo-content {
+    padding: 40px 24px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .upload-promo h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  .upload-promo p {
+    font-size: 16px;
+    color: #8b949e;
+    margin: 0;
+  }
+
+  .upload-promo-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #238636;
+    color: white;
+    text-decoration: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+
+  .upload-promo-btn:hover {
+    background: #2ea043;
+    transform: translateY(-2px);
+  }
+
+  .upload-promo-btn svg {
+    margin-right: 4px;
+  }
+
+  @media (max-width: 768px) {
+    .upload-promo-content {
+      padding: 30px 20px;
+    }
+
+    .upload-promo h2 {
+      font-size: 28px;
+    }
+
+    .upload-promo p {
+      font-size: 18px;
+    }
+  }
+
+  /* Draft or Pass Widget Styles */
+  .draft-or-pass {
+    background: #161b22;
+    border-radius: 12px;
+    overflow: hidden;
+    padding: 24px;
+    font-family: 'Söhne', 'Inter', sans-serif;
+  }
+
+  .draft-or-pass h2 {
+    text-align: center;
+    margin: 0 0 24px 0;
+    font-size: 20px;
+    font-weight: 500;
+    color: #f0f6fc;
+  }
+
+  .draft-or-pass .teams-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .draft-or-pass .team-card {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+  }
+
+  .draft-or-pass .player-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .draft-or-pass .player-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    background: #0d1117;
+    border-radius: 4px;
+  }
+
+  .draft-or-pass .player-position {
+    font-weight: 500;
+    color: #f0f6fc;
+    width: 32px;
+    font-size: 14px;
+  }
+
+  .draft-or-pass .player-name {
+    flex: 1;
+    color: #f0f6fc;
+    font-weight: 500;
+    font-size: 14px;
+    margin-right: 4px;
+  }
+
+  .draft-or-pass .player-team {
+    color: #8b949e;
+    font-size: 14px;
+  }
+
+  .draft-or-pass .choose-button {
+    padding: 10px 20px;
+    margin-top: 12px;
+    background: #0969DA;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .draft-or-pass .choose-button:hover:not(:disabled):not(.disabled) {
+    filter: brightness(1.1);
+  }
+
+  .draft-or-pass .choose-button.selected {
+    box-shadow: 0 0 0 3px #58a6ff;
+    transform: scale(1.05);
+  }
+
+  .draft-or-pass .choose-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+
+  .draft-or-pass .skip-matchup {
+    display: block;
+    color: #16A34A;
+    text-decoration: none;
+    font-weight: 500;
+    margin-top: 16px;
+    text-align: center;
+    padding: 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+    font-family: 'Söhne', 'Inter', sans-serif;
+  }
+
+  .draft-or-pass .skip-matchup:hover {
+    background: rgba(35, 134, 54, 0.1);
+  }
+
+  @media (max-width: 768px) {
+    .draft-or-pass {
+      grid-column: 1;
+      grid-row: 4;
+    }
+
+    .draft-or-pass .teams-container {
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .draft-or-pass h2 {
+      font-size: 24px;
+      margin: 16px 0;
+    }
+  }
+    
+  /* Compact view team button so it doesn't stretch full width */
+.view-team-btn {
+  width: fit-content;    /* only as wide as its label */
+  padding: 6px 12px;
+  font-size: 14px;
+  background: #21262d;
+  color: #58a6ff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  display: inline-block;
+  margin: 0 4px 0 0;     /* small gap to the next button */
+}
+
+  .view-team-btn:hover {
+    background: #30363d;
+  }
+    
+  /* Center the single View Team button used on Voting-History page */
+  #viewTeamBtn {
+    display: block;
+    margin: 10px auto;
+  }
+    
+  /* Extra-small mobile tweaks */
+  @media (max-width: 480px) {
+    /* Center the switch and shrink buttons further */
+    .leaderboard-switch {
+      gap: 6px;
+    }
+         .leaderboard-switch button {
+       padding: 6px 10px;
+       font-size: 12px;
+       min-width: 70px;
+     }
+
+    /* Even more compact table */
+    .leaderboard-table {
+      min-width: 500px;
+      font-size: 12px;
+    }
+    .leaderboard-table th,
+    .leaderboard-table td {
+      padding: 6px 4px;
+    }
+  }
+    
+  /* === FINAL OVERRIDE: Center mobile notification button text === */
+.mobile-notification-btn {
+  display: block !important;
+  text-align: center !important;
+}
+
+.mobile-notification-count {
+  position: absolute !important;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0 !important;
+}
+
+/* === ENSURE BURGER MENU LINES ARE WHITE === */
+.mobile-menu-toggle span {
+  background: #ffffff !important;
+}
+
+
+  
+  /* === Burger bars – final override === */
+  .mobile-menu-toggle span {
+    display: block !important;     /* ensure it's a block, so height applies    */
+    height: 3px !important;        /* bar thickness                             */
+    width: 24px !important;        /* bar length                                */
+    background: #f0f6fc !important;/* light/white bar colour                    */
+    margin: 4px 0 !important;      /* space between bars                        */
+    border-radius: 2px;            /* keep the rounded ends                     */
+  }
+    
+  /* === NUCLEAR OPTION: Target by ID === */
+#mobileMenuToggle span {
+  display: block !important;
+  height: 3px !important;
+  width: 24px !important;
+  background: #f0f6fc !important;
+  margin: 4px 0 !important;
+  border-radius: 2px !important;
+  transform: none !important;  /* in case transforms are squashing it */
+  opacity: 1 !important;       /* in case opacity is hiding it */
+  visibility: visible !important;
+  position: static !important;  /* in case positioning moves it offscreen */
+}
+    
+  /* === CLEAN PSEUDO-ELEMENT HAMBURGER === */
+#mobileMenuToggle {
+  position: relative !important;
+  background: none !important; /* clear any existing background */
+}
+
+/* Hide the original spans since they won't work */
+#mobileMenuToggle span {
+  display: none !important;
+}
+
+/* Create 3 lines with pseudo-elements */
+#mobileMenuToggle::before,
+#mobileMenuToggle::after {
+  content: '' !important;
+  position: absolute !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 24px !important;
+  height: 3px !important;
+  background: #f0f6fc !important;
+  border-radius: 2px !important;
+  transition: all 0.3s ease !important;
+}
+
+#mobileMenuToggle::before {
+  top: 10px !important;  /* top line */
+}
+
+#mobileMenuToggle::after {
+  bottom: 10px !important;  /* bottom line */
+}
+
+/* Middle line using a pseudo-element on the button itself */
+#mobileMenuToggle {
+  background: 
+    linear-gradient(to right, transparent 8px, #f0f6fc 8px, #f0f6fc 32px, transparent 32px),
+    linear-gradient(to bottom, transparent 18px, transparent 18px, transparent 21px, transparent 21px) !important;
+  background-size: 40px 3px, 40px 40px !important;
+  background-position: center center, center center !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Simplified middle line approach */
+#mobileMenuToggle {
+  background: 
+    /* middle horizontal line */
+    linear-gradient(to right, transparent 8px, #f0f6fc 8px, #f0f6fc 32px, transparent 32px) center/40px 3px no-repeat !important;
+}
+    
     

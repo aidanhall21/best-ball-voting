@@ -110,7 +110,6 @@ function checkRateLimitRecovery() {
     // If we're now below the limit, re-enable buttons
     if (chooseClickHistory.length < MAX_CHOOSE_CLICKS) {
       chooseButtonsDisabled = false;
-      console.log('✅ Choose button rate limit lifted, buttons re-enabled');
       updateChooseButtonStates();
     }
   }
@@ -181,7 +180,6 @@ function getCaptchaToken() {
     if (widgetId) {
       try {
         turnstile.reset(widgetId);
-        console.log('Widget reset successfully');
       } catch (e) {
         console.warn('Failed to reset widget, removing and recreating:', e);
         try { 
@@ -255,7 +253,6 @@ function getCaptchaToken() {
               return reject(new Error('Invalid token format'));
             }
             
-            console.log('Turnstile token received successfully');
             resolve(token);
           },
           'error-callback': (error) => {
@@ -275,19 +272,14 @@ function getCaptchaToken() {
 
 // Helper to process any queued clicks after a vote finishes
 function processClickQueue() {
-  console.log(`🔍 processClickQueue called - lock: ${voteProcessingLock}, queue: ${clickQueue.length}, function: ${!!currentVoteFunction}`);
   
   if (voteProcessingLock) {
-    console.log(`⏸️ Click queue processing skipped - vote lock active`);
     return; // Wait until current vote fully released
   }
   if (clickQueue.length === 0) {
-    console.log(`⏸️ Click queue processing skipped - no clicks queued`);
     return;
   }
   if (!currentVoteFunction) {
-    console.log(`⏸️ Click queue processing skipped - no vote function available`);
-    console.log(`🗑️ Clearing ${clickQueue.length} orphaned clicks`);
     clickQueue.length = 0; // Clear orphaned clicks
     return; // No active voting function available
   }
@@ -296,10 +288,8 @@ function processClickQueue() {
   const clicksToProcess = [...clickQueue]; // Copy the queue
   clickQueue.length = 0; // Clear the original queue
   
-  console.log(`▶️ Processing ${clicksToProcess.length} queued clicks`);
   
       clicksToProcess.forEach((click, index) => {
-      console.log(`▶️ Processing queued click ${index + 1}/${clicksToProcess.length}: ${click.winnerId} vs ${click.loserId}`);
       // Minimal stagger for faster processing while avoiding Turnstile overwhelm
       setTimeout(() => {
         const fn = click.voteFunc || currentVoteFunction;
@@ -378,8 +368,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const mobileMenu = document.getElementById('mobileMenu');
   const closeMobileMenu = document.getElementById('closeMobileMenu');
   const mobileUserInfo = document.getElementById('mobileUserInfo');
-  const mobileUserLabel = document.getElementById('mobileUserLabel');
-  const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
   const mobileLoginPrompt = document.getElementById('mobileLoginPrompt');
 
   // === NEW: overlay to catch clicks on disabled file input ===
@@ -468,13 +456,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Mobile logout functionality
-  mobileLogoutBtn.addEventListener('click', async () => {
-    await fetch('/logout', { method: 'POST' });
-    await refreshAuth();
-    showLoginMessage('', '');
-    closeMobileMenuFunc(); // Close menu after logout
-  });
+
 
   // ---- Notification Event Handlers ----
   
@@ -560,21 +542,60 @@ document.addEventListener("DOMContentLoaded", () => {
       const hasDisplayName = !!(data.user.display_name && data.user.display_name.trim());
       const displayName = data.user.display_name || data.user.email || 'User';
       
-      // Update desktop user controls
-      userLabel.textContent = displayName;
-      gearBtn.style.display = 'inline-block';
-      userMenu.style.display = 'none'; // Hide menu by default when logged in
+      // Update desktop user controls (get fresh references in case script was loaded dynamically)
+      const userLabel = document.getElementById('userLabel');
+      const gearBtn = document.getElementById('userGear');
+      const userMenu = document.getElementById('userMenu');
+      
+      if (userLabel) userLabel.textContent = displayName;
+      if (gearBtn) gearBtn.style.display = 'inline-block';
+      if (userMenu) userMenu.style.display = 'none'; // Hide menu by default when logged in
       
       // Show notification bell on desktop
       const notificationBell = document.getElementById('notificationBell');
       if (notificationBell) {
         notificationBell.style.display = 'inline-block';
+        
+        // Set up notification bell click handler (remove any existing handlers first)
+        const newNotificationBell = notificationBell.cloneNode(true);
+        notificationBell.parentNode.replaceChild(newNotificationBell, notificationBell);
+        
+        newNotificationBell.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const notificationDropdown = document.getElementById('notificationDropdown');
+          const userMenu = document.getElementById('userMenu');
+          
+          if (notificationDropdown) {
+            const isVisible = notificationDropdown.style.display !== 'none';
+            notificationDropdown.style.display = isVisible ? 'none' : 'block';
+            
+            // Hide user menu if it's open
+            if (userMenu) userMenu.style.display = 'none';
+            
+            // Load notifications when opening dropdown
+            if (!isVisible && typeof loadNotifications === 'function') {
+              loadNotifications();
+            }
+          }
+        });
       }
       
-      // Update mobile user controls
-      mobileUserLabel.textContent = displayName;
-      mobileUserInfo.style.display = 'block';
-      mobileLoginPrompt.style.display = 'none';
+      // Set up profile button click handler
+      if (gearBtn) {
+        // Remove any existing handlers first
+        const newGearBtn = gearBtn.cloneNode(true);
+        gearBtn.parentNode.replaceChild(newGearBtn, gearBtn);
+        
+        newGearBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.location.href = '/profile.html';
+        });
+      }
+      
+      // Update mobile user controls (get fresh references)
+      const mobileUserInfo = document.getElementById('mobileUserInfo');
+      
+      if (mobileUserInfo) mobileUserInfo.style.display = 'block';
       
       // Show mobile notification button
       const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
@@ -582,40 +603,54 @@ document.addEventListener("DOMContentLoaded", () => {
         mobileNotificationBtn.style.display = 'block';
       }
       
-      // Show upload section, hide login panel
-      document.getElementById('uploadSection').style.display = 'block';
-      loginPanel.style.display = 'none';
+      // Show upload section, hide login panel (only if these elements exist)
+      const uploadSection = document.getElementById('uploadSection');
+      const loginPanel = document.getElementById('loginPanel');
+      const usernameInput = document.getElementById('usernameInput');
+      const csvUpload = document.getElementById('csvUpload');
+      const uploadButton = document.getElementById('uploadButton');
       
-      // Show/hide username input based on whether user has display_name
-      if (hasDisplayName) {
+      if (uploadSection) uploadSection.style.display = 'block';
+      if (loginPanel) loginPanel.style.display = 'none';
+      
+      // Show/hide username input based on whether user has display_name (only if elements exist)
+      if (usernameInput && hasDisplayName) {
         usernameInput.style.display = 'none';
-        usernameInput.previousElementSibling.textContent = 'Add your drafts to the community vote pool';
+        if (usernameInput.previousElementSibling) {
+          usernameInput.previousElementSibling.textContent = 'Add your drafts to the community vote pool';
+        }
         // Enable file input since user has display_name
-        csvUpload.disabled = false;
-        uploadButton.disabled = !csvUpload.files.length;
-      } else {
+        if (csvUpload) csvUpload.disabled = false;
+        if (uploadButton) uploadButton.disabled = !csvUpload.files.length;
+      } else if (usernameInput) {
         usernameInput.style.display = 'block';
         usernameInput.placeholder = 'You must create a username to upload teams';
-        usernameInput.previousElementSibling.textContent = 'Add your drafts to the community vote pool';
+        if (usernameInput.previousElementSibling) {
+          usernameInput.previousElementSibling.textContent = 'Add your drafts to the community vote pool';
+        }
         // Disable file input until username is entered
         const hasUsername = !!usernameInput.value.trim();
-        csvUpload.disabled = !hasUsername;
-        uploadButton.disabled = !csvUpload.files.length || !hasUsername;
+        if (csvUpload) csvUpload.disabled = !hasUsername;
+        if (uploadButton) uploadButton.disabled = !csvUpload.files.length || !hasUsername;
       }
       
-      // Enable upload controls
-      usernameInput.disabled = false;
-      csvUpload.disabled = false; // Always enabled for logged-in users
-      uploadButton.disabled = !csvUpload.files.length; // Only depends on file selection
-      document.getElementById('uploadSection').style.opacity = '1';
+      // Enable upload controls (only if elements exist)
+      if (usernameInput) usernameInput.disabled = false;
+      if (csvUpload) csvUpload.disabled = false; // Always enabled for logged-in users
+      if (uploadButton && csvUpload) uploadButton.disabled = !csvUpload.files.length; // Only depends on file selection
+      if (uploadSection) uploadSection.style.opacity = '1';
     } else {
-      // Update desktop user controls
-      gearBtn.style.display = 'none';
-      userMenu.style.display = 'none';
+      // Update desktop user controls (get fresh references and add null checks)
+      const gearBtn = document.getElementById('userGear');
+      const userMenu = document.getElementById('userMenu');
       
-      // Update mobile user controls
-      mobileUserInfo.style.display = 'none';
-      mobileLoginPrompt.style.display = 'block';
+      if (gearBtn) gearBtn.style.display = 'none';
+      if (userMenu) userMenu.style.display = 'none';
+      
+      // Update mobile user controls (get fresh references and add null checks)
+      const mobileUserInfo = document.getElementById('mobileUserInfo');
+      
+      if (mobileUserInfo) mobileUserInfo.style.display = 'none';
       
       // In upload mode, show login panel and hide upload section
       if (currentMode === 'upload') {
@@ -1045,7 +1080,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Show content now that auth check is complete
     document.body.classList.add('content-visible');
     // Ensure correct initial layout after auth status is known
-    setMode("upload");
+    setMode("landing");
 
     // Start periodic notification checking for logged-in users
     startNotificationPolling();
@@ -1142,7 +1177,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function setMode(mode) {
     currentMode = mode;
     
-    // Update desktop navigation buttons
+    const landingSection = document.getElementById('landingSection');
+
+    // Toggle landing visibility
+    if (landingSection) {
+      landingSection.style.display = (mode === 'landing') ? 'block' : 'none';
+    }
+    
+    // Update desktop navigation buttons (none active for landing)
     document.getElementById("modeUploadBtn").classList.toggle("active", mode === "upload");
     document.getElementById("modeVersusBtn").classList.toggle("active", mode === "versus");
     document.getElementById("modeLeaderboardBtn").classList.toggle("active", mode === "leaderboard");
@@ -1154,6 +1196,14 @@ document.addEventListener("DOMContentLoaded", () => {
     
     const container = document.getElementById("teamsContainer");
     const uploadPanel = document.querySelector('.upload-panel');
+    
+    // For landing mode, hide heavy app content and exit early
+    if (mode === 'landing') {
+      if (uploadPanel) uploadPanel.style.display = 'none';
+      if (container) container.style.display = 'none';
+      closeMobileMenuFunc();
+      return;
+    }
     
     // Close mobile menu when switching modes
     closeMobileMenuFunc();
@@ -1199,6 +1249,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Modal close button
   document.getElementById("modalCloseBtn").addEventListener("click", hideModal);
+
+  // Landing CTA buttons (hero section)
+  const ctaVoteBtn = document.getElementById('ctaVoteBtn');
+  if (ctaVoteBtn) {
+    ctaVoteBtn.addEventListener('click', () => setMode('versus'));
+  }
+
+  const ctaUploadBtn = document.getElementById('ctaUploadBtn');
+  if (ctaUploadBtn) {
+    ctaUploadBtn.addEventListener('click', () => setMode('upload'));
+  }
 });
 
 function showUploadMessage(message, type) {
@@ -1271,7 +1332,6 @@ function fetchTeams(force = false) {
         Object.entries(data.totals).forEach(([tid, t]) => {
           teamVoteTotals[tid] = (t.wins || 0) + (t.losses || 0);
         });
-        console.debug(`📊 Loaded vote totals for ${Object.keys(teamVoteTotals).length} teams from /teams payload`);
       }
       // Determine myTeamIds based on currentUserId
       if (currentUserId) {
@@ -1408,7 +1468,6 @@ async function renderVersus() {
   const includeMyTeam = Math.random() < includeMyTeamChance;
 
   // Debug: log include-my-team calculation
-  console.debug(`🧮 includeMyTeamChance=${(includeMyTeamChance*100).toFixed(1)}% → includeMyTeam=${includeMyTeam}`);
 
   // Create outer container for everything
   const outerContainer = document.createElement("div");
@@ -1491,12 +1550,10 @@ async function renderVersus() {
           teamVoteTotals[tid] = totalVotes; // cache for future
         }
         if (getBucket(totalVotes) === bucketName) {
-          console.debug(`✅ pickTeamInBucket: team ${tid} fits bucket ${bucketName} (totalVotes=${totalVotes})`);
           return tid;
         }
       } catch (_) { /* ignore and keep searching */ }
     }
-    console.debug(`⚠️ pickTeamInBucket: no team found in bucket ${bucketName}`);
     return null; // bucket empty
   };
 
@@ -1514,18 +1571,15 @@ async function renderVersus() {
           teamVoteTotals[tid] = totalVotes;
         }
         if (getBucket(totalVotes) === bucketName) {
-          console.debug(`✅ pickTeamInBucketFromList: team ${tid} fits bucket ${bucketName} (totalVotes=${totalVotes})`);
           return tid;
         }
       } catch (_) { /* skip */ }
     }
-    console.debug(`⚠️ pickTeamInBucketFromList: no team found in bucket ${bucketName} within provided list`);
     return null;
   };
 
   if (!teamId1) {
     const targetBucket = pickRandomBucket();
-    console.debug(`🎲 Random bucket selected: ${targetBucket}`);
     teamId1 = await pickTeamInBucket(targetBucket);
   }
 
@@ -1571,7 +1625,6 @@ async function renderVersus() {
   }
 
   // Final debug for the matchup that will be displayed
-  console.debug(`🏀 Matchup: teamId1=${teamId1} vs teamId2=${teamId2}`);
 
   // Retrieve players arrays
   const players1 = teams.find(([id]) => id === teamId1)[1];
@@ -1620,10 +1673,8 @@ async function renderVersus() {
 
     // If a vote/network request is already in-flight, queue this click instead of sending
     if (voteProcessingLock) {
-      console.log(`🔄 Vote currently processing – queuing click: ${winnerId} vs ${loserId}`);
       if (clickQueue.length < 5) {
         clickQueue.push({ winnerId, loserId, voteFunc: sendVersusVote, isQueuedClick: true });
-        console.log(`📋 Click added to queue (queue length: ${clickQueue.length})`);
       } else {
         console.warn('Click queue full, discarding click');
       }
@@ -1637,6 +1688,14 @@ async function renderVersus() {
     chooseBtn2.disabled = true;
 
     sendVersusVote.inProgress = true;
+
+    // Update skip matchup text if we're on the home page
+    if (window.location.pathname.endsWith('/')) {
+      const skipMatchupLink = document.querySelector('.skip-matchup');
+      if (skipMatchupLink) {
+        skipMatchupLink.textContent = 'Continue voting';
+      }
+    }
 
     // Create owner info sections if they don't exist
     let ownerInfo1 = card1.querySelector('.owner-info');
@@ -1743,7 +1802,7 @@ async function renderVersus() {
       }
 
       // Reveal the "Next Matchup" button now that a vote has been made
-      if (nextButton) {
+      if (nextButton && !window.location.pathname.endsWith('/')) {
         nextButton.style.display = 'block';
       }
 
@@ -1769,12 +1828,15 @@ async function renderVersus() {
           // Set global lock to prevent concurrent vote processing
           voteProcessingLock = true;
           
-          console.log(`🔐 Processing vote in background: ${winnerId} vs ${loserId}`);
           await submitVote(winnerId, loserId);
-          console.log('✅ Vote successfully recorded in database');
           
           // Invalidate cached team metadata so fresh stats are fetched
           invalidateTeamMetaCache(winnerId, loserId);
+          
+          // Refresh Recent Votes widget if available (for homepage)
+          if (typeof window.refreshRecentVotes === 'function') {
+            window.refreshRecentVotes();
+          }
           
         } catch (error) {
           console.error(`❌ Background vote processing failed:`, error);
@@ -1786,17 +1848,14 @@ async function renderVersus() {
             retries: 0,
             timestamp: Date.now()
           });
-          console.log(`📋 Vote added to queue for retry (queue length: ${voteQueue.length})`);
           
           // Start processing the queue with shorter delays for faster voting
           const delay = error.message.includes('Too many concurrent challenges') ? 1500 : 500;
           setTimeout(() => processVoteQueue(), delay);
         } finally {
           // Always release the global lock
-          console.log(`🔓 Releasing vote processing lock`);
           voteProcessingLock = false;
           // Process any queued clicks immediately when the lock is free
-          console.log(`🔄 Processing click queue immediately`);
           processClickQueue();
         }
       })();
@@ -1822,13 +1881,15 @@ async function renderVersus() {
   // Add versus wrapper to outer container
   outerContainer.appendChild(versusWrapper);
   
-  // Create "Next Matchup" button but keep it hidden until the user votes
-  nextButton = document.createElement("button");
-  nextButton.textContent = "Next Matchup →";
-  nextButton.className = "next-button";
-  nextButton.style.display = "none"; // initially hidden
-  nextButton.onclick = () => renderVersus();
-  outerContainer.appendChild(nextButton);
+  // Create "Next Matchup" button but only show it on the main draftorpass page
+  if (!window.location.pathname.endsWith('/')) {
+    nextButton = document.createElement("button");
+    nextButton.textContent = "Next Matchup →";
+    nextButton.className = "next-button";
+    nextButton.style.display = "none"; // initially hidden
+    nextButton.onclick = () => renderVersus();
+    outerContainer.appendChild(nextButton);
+  }
   
   // Add outer container to main container
   container.appendChild(outerContainer);
@@ -1852,10 +1913,10 @@ function fetchLeaderboard(force = false) {
 
   let endpoint;
   if (leaderboardType === "team") {
-    endpoint = "/leaderboard";
+    endpoint = "/api/leaderboard";
   } else {
     // leaderboardType === "user"
-    endpoint = "/leaderboard/users";
+    endpoint = "/api/leaderboard/users";
     if (currentTournament) {
       endpoint += `?tournament=${encodeURIComponent(currentTournament)}`;
     }
@@ -1918,7 +1979,12 @@ function sortAndRender() {
 // renderLeaderboard implementation
 function renderLeaderboard(data) {
   const container = document.getElementById("teamsContainer");
-  
+  // Remove any previous loading indicators or leftover content before initial render
+  if (!container.dataset.lbInitialized) {
+    container.innerHTML = "";
+    container.dataset.lbInitialized = "1";
+  }
+
   // === View switch (By Team / By User) ===
   let switchDiv = container.querySelector('.leaderboard-switch');
   if (!switchDiv) {
@@ -2518,7 +2584,6 @@ async function processVoteQueue() {
   if (processingQueue || voteQueue.length === 0 || voteProcessingLock) return;
   
   processingQueue = true;
-  console.log(`📋 Processing vote queue (${voteQueue.length} votes pending)`);
   
   while (voteQueue.length > 0) {
     // Wait for any existing vote processing to complete (shorter wait)
@@ -2529,16 +2594,18 @@ async function processVoteQueue() {
     const vote = voteQueue.shift();
     try {
       voteProcessingLock = true;
-      console.log(`🔄 Retrying queued vote: ${vote.winnerId} vs ${vote.loserId}`);
       await submitVote(vote.winnerId, vote.loserId);
-      console.log(`✅ Queued vote successfully processed`);
+      
+      // Refresh Recent Votes widget if available (for homepage)
+      if (typeof window.refreshRecentVotes === 'function') {
+        window.refreshRecentVotes();
+      }
     } catch (error) {
       console.error(`❌ Queued vote failed:`, error);
       // Put it back in queue for later retry (but limit retries)
       if (vote.retries < 5) {
         vote.retries = (vote.retries || 0) + 1;
         voteQueue.push(vote);
-        console.log(`🔄 Vote re-queued (retry ${vote.retries}/5)`);
       } else {
         console.error(`❌ Vote permanently failed after 5 retries`);
       }
@@ -2551,7 +2618,6 @@ async function processVoteQueue() {
   }
   
   processingQueue = false;
-  console.log(`✅ Vote queue processing complete`);
 }
 
 // Extracted vote submission function
@@ -2584,34 +2650,14 @@ async function submitVote(winnerId, loserId) {
   return voteResponse;
 }
 
-// Debug functions for monitoring vote system
-window.debugVoteSystem = () => {
-  console.log('🔍 Vote System Debug Info:');
-  console.log(`📋 Vote queue length: ${voteQueue.length}`);
-  console.log(`👆 Click queue length: ${clickQueue.length}`);
-  console.log(`🔄 Processing queue: ${processingQueue}`);
-  console.log(`🔒 Vote processing lock: ${voteProcessingLock}`);
-  console.log(`⚡ Pending challenges: ${pendingChallenges}`);
-  console.log(`🎯 Widget ID: ${widgetId}`);
-  console.log(`🎮 Current vote function: ${currentVoteFunction ? 'Available' : 'None'}`);
-  if (voteQueue.length > 0) {
-    console.log('📋 Queued votes:', voteQueue);
-  }
-  if (clickQueue.length > 0) {
-    console.log('👆 Queued clicks:', clickQueue);
-  }
-};
-
 // Periodically process the queue and reset stuck counters (safety net)
 setInterval(() => {
   if (voteQueue.length > 0) {
-    console.log(`🔔 Periodic queue check: ${voteQueue.length} votes pending`);
     processVoteQueue();
   }
   
   // Process click queue if there are pending clicks and no active processing
   if (clickQueue.length > 0 && !voteProcessingLock) {
-    console.log(`🔔 Periodic click queue check: ${clickQueue.length} clicks pending`);
     processClickQueue();
   }
   
@@ -2929,4 +2975,53 @@ async function markAllNotificationsAsReadMobile() {
   } catch (e) {
     console.error('Failed to mark all mobile notifications as read:', e);
   }
+}
+
+// ===============================================
+// Mobile Menu Functionality
+// ===============================================
+function initMobileMenu() {
+  const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+  const mobileNav = document.getElementById('mobileNav');
+
+
+  if (mobileMenuToggle && mobileNav) {
+    
+    // Remove any existing listeners to avoid duplicates
+    mobileMenuToggle.onclick = null;
+    
+    mobileMenuToggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Use class-based toggling instead of inline styles
+      const isCurrentlyActive = mobileNav.classList.contains('active');
+      
+      
+      if (isCurrentlyActive) {
+        mobileNav.classList.remove('active');
+        mobileMenuToggle.classList.remove('active');
+      } else {
+        mobileNav.classList.add('active');
+        mobileMenuToggle.classList.add('active');
+      }
+    });
+
+    // Close mobile nav when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!mobileMenuToggle.contains(e.target) && !mobileNav.contains(e.target)) {
+        mobileNav.classList.remove('active');
+        mobileMenuToggle.classList.remove('active');
+      }
+    });
+  } else {
+    console.error('Mobile menu elements not found:', { mobileMenuToggle, mobileNav });
+  }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initMobileMenu);
+} else {
+  initMobileMenu();
 }
