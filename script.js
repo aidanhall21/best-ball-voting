@@ -1355,7 +1355,12 @@ function shuffle(array) {
   return array;
 }
 
-function getBorderColor(position) {
+function getBorderColor(position, tournamentName = "") {
+  // Special case: In "Rookies and Sophomores" tournament, treat TE same as WR (yellow)
+  if (tournamentName === "Rookies and Sophomores" && position === "TE") {
+    return "#facc15"; // WR color (yellow)
+  }
+  
   switch (position) {
     case "QB": return "#a855f7";
     case "RB": return "#22c55e";
@@ -1382,6 +1387,7 @@ function getTournamentCategory(tourName = "") {
   if (tourName.endsWith("but Superflex")) return "Superflex";
   if (tourName === "The Eliminator") return "Eliminator";
   if (tourName === "Weekly Winners") return "Weekly Winners";
+  if (tourName === "Rookies and Sophomores") return "Rookies & Sophomores";
   if (preDraftNames.includes(tourName)) return "Pre Draft";
   return "Post Draft";
 }
@@ -1389,6 +1395,9 @@ function getTournamentCategory(tourName = "") {
 function buildTeamCard(teamId, players) {
   const card = document.createElement("div");
   card.className = "team-card";
+
+  // Get tournament name for this team to handle special position color rules
+  const tournamentName = teamTournaments[teamId] || "";
 
   // --- Roster construction counts at the top ---
   const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
@@ -1425,7 +1434,7 @@ function buildTeamCard(teamId, players) {
       const infoHTML = `<span class="player-info">${pl.name}${pl.team ? ` - ${pl.team}` : ''}</span>`;
       const starHTML = stackStar; // star after info for positioning via CSS
       bubble.innerHTML = `${pickHTML}${infoHTML}${starHTML}`;
-      bubble.style.border = `2px solid ${getBorderColor(pl.position)}`;
+      bubble.style.border = `2px solid ${getBorderColor(pl.position, tournamentName)}`;
 
       row.appendChild(bubble);
       list.appendChild(row);

@@ -151,9 +151,20 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script>
   async function initDashboard() {
+    console.log('🚀 Dashboard initialization started...');
+    
+    // Add visible status indicator
+    const summaryDiv = document.getElementById('summaryStats');
+    if (summaryDiv) {
+      summaryDiv.innerHTML = '<div style="color: blue; font-weight: bold;">⏳ Loading dashboard data...</div>';
+    }
+    
     try {
+      console.log('📊 Fetching summary data...');
       // ---- Summary ----
       const summary = await fetch('/api/reports/summary').then(r=>r.json());
+      console.log('✅ Summary data received:', summary);
+      
       document.getElementById('summaryStats').innerHTML = `
         <div><strong>Total Lineups:</strong> ${summary.total_teams}</div>
         <div><strong>Total Votes:</strong> ${summary.total_versus_votes}</div>
@@ -162,8 +173,11 @@
         <div><strong>Votes (Last Hour):</strong> ${summary.votes_last_hour}</div>
       `;
 
+      console.log('📈 Fetching analytics summary...');
       // ---- Analytics summary ----
       const aSummary = await fetch('/api/reports/analytics-summary').then(r=>r.json());
+      console.log('✅ Analytics data received:', aSummary);
+      
       document.getElementById('analyticsSummaryStats').innerHTML = `
         <div><strong>Total Page Views (24h):</strong> ${aSummary.total_page_views}</div>
         <div><strong>Logged-in Page Views (24h):</strong> ${aSummary.logged_in_page_views}</div>
@@ -173,8 +187,16 @@
         <div><strong>Avg Session Time (Logged-in):</strong> ${(aSummary.avg_session_ms_logged_in/60000).toFixed(1)}m</div>
       `;
 
+      console.log('📊 Checking if Chart.js is available...');
+      if (typeof Chart === 'undefined') {
+        throw new Error('Chart.js library not loaded');
+      }
+      console.log('✅ Chart.js is available');
+
+      console.log('📈 Fetching chart data...');
       // ---- Versus votes by hour bar chart ----
       const vRows = await fetch('/api/reports/versus-by-hour').then(r=>r.json());
+      console.log('✅ Hourly data received, rows:', vRows.length);
       const parseETDate = (dateStr) => {
         // Add ET timezone offset to make Date() parse it correctly
         return new Date(dateStr.replace(' ', 'T') + '-04:00');
@@ -343,12 +365,25 @@
         pageTbody.appendChild(tr);
       });
 
+      console.log('🎉 Dashboard initialization completed successfully!');
+      
     } catch(err) {
-      console.error(err);
-      alert('Failed to load dashboard data');
+      console.error('❌ Dashboard initialization failed:', err);
+      alert('Failed to load dashboard data: ' + err.message);
+      
+      // Show error in the summary div too
+      const summaryDiv = document.getElementById('summaryStats');
+      if (summaryDiv) {
+        summaryDiv.innerHTML = `<div style="color: red; font-weight: bold;">❌ Error: ${err.message}</div>`;
+      }
     }
   }
 
+  console.log('🔧 Starting dashboard initialization...');
+  
+  // Show content by adding the content-visible class (required by style.css)
+  document.body.classList.add('content-visible');
+  
   initDashboard();
   </script>
 </body>
