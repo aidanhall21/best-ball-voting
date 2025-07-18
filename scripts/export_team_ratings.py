@@ -41,7 +41,7 @@ SD_MULTIPLIER = 0       # unused
 # -------------------------------------------------------------
 # 0. Parse command-line arguments
 # -------------------------------------------------------------
-DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-11-1106.db")
+DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-18-0852.db")
 # OUTPUT_CSV = sys.argv[2] if len(sys.argv) > 2 else "team_ratings.csv"
 print(f"DB_PATH: {DB_PATH}")
 
@@ -257,6 +257,19 @@ ratings_df["percentile"] = ratings_df["ability"].rank(pct=True, method="average"
 
 # Apply mapping to obtain final integer rating
 ratings_df["madden"] = ratings_df["percentile"].apply(pct_to_madden)
+
+# === NEW: Bayesian shrinkage to temper ratings of teams with few votes ===
+#   adj = (V/(V+M)) * rating + (M/(V+M)) * C
+#   where V = wins + losses for the team, C = global average rating, M = 100
+M_CONF = 1
+ratings_df["total_votes"] = ratings_df["wins"] + ratings_df["losses"]
+C_global = ratings_df["madden"].mean()
+
+ratings_df["raw_madden"] = ratings_df["madden"]  # keep for reference
+ratings_df["madden"] = (
+    (ratings_df["total_votes"] / (ratings_df["total_votes"] + M_CONF)) * ratings_df["raw_madden"] +
+    (M_CONF / (ratings_df["total_votes"] + M_CONF)) * C_global
+).round(0)
 
 # Rename ability to rating for DB consistency (keep raw Bradley-Terry score)
 ratings_df = ratings_df.rename(columns={"ability": "rating"})

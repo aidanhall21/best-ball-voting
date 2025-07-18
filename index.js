@@ -938,6 +938,10 @@ function buildUserLeaderboardCache(tournament) {
     ], (err, rows) => {
       if (err) return reject(err);
 
+      // --- NEW: variables to compute global average Madden rating across all eligible teams ---
+      let globalSum = 0;
+      let globalCount = 0;
+
       const userStats = {};
       rows.forEach((r) => {
         const u = r.username || 'ANON';
@@ -946,29 +950,43 @@ function buildUserLeaderboardCache(tournament) {
         }
         userStats[u].wins += r.wins;
         userStats[u].losses += r.losses;
-        // Only include madden ratings for teams with more than 1 total vote
+        // Only include madden ratings for teams with at least 1 total vote
         if (r.madden && (r.wins + r.losses) >= 1) {
           userStats[u].maddens.push(r.madden);
+          // --- NEW: feed into global average ---
+          globalSum += r.madden;
+          globalCount += 1;
         }
       });
 
-      const result = Object.values(userStats).map((u) => {
-        // Compute median madden rating
-        const arr = u.maddens.sort((a,b)=>a-b);
-        let median = 0;
-        if (arr.length) {
-          const mid = Math.floor(arr.length / 2);
-          median = arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
-        }
-        const win_pct = (u.wins + u.losses) ? ((u.wins / (u.wins + u.losses)) * 100).toFixed(1) : 0;
-        return {
-          username: u.username,
-          wins: u.wins,
-          losses: u.losses,
-          win_pct,
-          median_madden: median
-        };
-      });
+      // --- NEW: Compute global average (C) and confidence constant (M) for Bayesian shrinkage ---
+      const C = globalCount ? (globalSum / globalCount) : 0;
+      const M = 20; // number of votes required before trusting the median fully
+
+      const result = Object.values(userStats)
+        .filter(u => (u.wins + u.losses) > 0) // ✂️ exclude users with no votes at all
+        .map((u) => {
+         // Compute median madden rating
+         const arr = u.maddens.sort((a,b)=>a-b);
+         let median = 0;
+         if (arr.length) {
+           const mid = Math.floor(arr.length / 2);
+           median = arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+         }
+         // Bayesian shrinkage: weight by total votes V vs. confidence constant M
+         const V = u.wins + u.losses;
+         const adj = (V + M) ? ((V / (V + M)) * median + (M / (V + M)) * C) : C;
+
+         const win_pct = (u.wins + u.losses) ? ((u.wins / (u.wins + u.losses)) * 100).toFixed(1) : 0;
+         return {
+           username: u.username,
+           wins: u.wins,
+           losses: u.losses,
+           win_pct,
+           median_madden: Math.round(adj), // adjusted rating used for sorting/display
+           raw_median: median               // keep raw median for reference (front-end ignores)
+         };
+       });
 
       const jsonStr = JSON.stringify(result);
       const gz = zlib.gzipSync(jsonStr);
@@ -1329,30 +1347,6 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Admin only' });
 }
 
-// --- 📊 Reports & Dashboards -------------------------------------------------
-// Votes by user (draft vs pass counts)
-app.get('/api/reports/votes-by-user', requireAdmin, (req, res) => {
-  const sql = `
-    SELECT
-      COALESCE(voter_id, 'ANON') AS voter,
-      SUM(CASE WHEN vote_type = 'yes' THEN 1 ELSE 0 END) AS yes_votes,
-      SUM(CASE WHEN vote_type = 'no' THEN 1 ELSE 0 END) AS no_votes
-    FROM votes
-    GROUP BY COALESCE(voter_id, 'ANON')
-    ORDER BY (yes_votes + no_votes) DESC
-  `;
-  db.all(sql, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: 'DB error' });
-    // add handy totals & percentages
-    const enriched = rows.map(r => {
-      const total = r.yes_votes + r.no_votes;
-      const yes_pct = total ? ((r.yes_votes / total) * 100).toFixed(1) : 0;
-      return { ...r, total, yes_pct };
-    });
-    res.json(enriched);
-  });
-});
-
 // Overall summary counts
 app.get('/api/reports/summary', requireAdmin, (req, res) => {
   const sql = `
@@ -1594,21 +1588,63 @@ app.get('/my/profile', requireAuth, (req, res) => {
                   return res.status(500).json({ error: 'DB error' });
                 }
 
-                // Split into friends (high win rate) and foes (low win rate)
-                statsRows.sort((a, b) => b.win_rate - a.win_rate);
-                
-                response.votingStats.friends = statsRows.slice(0, 5).map(r => ({
+                // --- Updated: Rank friends & foes using Wilson lower-bound score ---
+                const z = 1.96; // 95% confidence interval constant
+
+                statsRows.forEach(r => {
+                  const n = r.wins + r.losses;
+                  const p = n ? r.wins / n : 0;
+                  r.wilson = n ? (
+                    (
+                      p + (z * z) / (2 * n) -
+                      z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n)
+                    ) /
+                    (1 + (z * z) / n)
+                  ) : 0;
+                });
+
+                // Sort descending by Wilson score (higher = more supportive)
+                statsRows.sort((a, b) => b.wilson - a.wilson);
+
+                // Build friends (top 5) and foes (bottom 5 not in friends) lists, excluding myself
+                const filtered = statsRows.filter(r => r.voter_id !== userId);
+
+                const LIMIT = 10; // number of friends / foes to display
+
+                const friendCandidates = filtered.filter(r => r.win_rate > 0.5);
+                const foeCandidates    = filtered.filter(r => r.win_rate <= 0.5);
+
+                const takeRows = (arr, limit, descending=true) => {
+                  const sorted = arr.sort((a,b)=>descending ? b.wilson-a.wilson : a.wilson-b.wilson);
+                  const out=[];
+                  const seen=new Set();
+                  for(const row of sorted){
+                    if(out.length>=limit) break;
+                    if(!row.voter_name||!row.voter_name.trim()) continue;
+                    if(seen.has(row.voter_id)) continue;
+                    out.push(row);
+                    seen.add(row.voter_id);
+                  }
+                  return out;
+                };
+
+                const friendsRows = takeRows(friendCandidates, LIMIT, true);
+                const friendIds = new Set(friendsRows.map(r=>r.voter_id));
+
+                const foesRows = takeRows(foeCandidates.filter(r=>!friendIds.has(r.voter_id)), LIMIT, false);
+
+                response.votingStats.friends = friendsRows.map(r => ({
                   name: r.voter_name,
                   wins: r.wins,
                   losses: r.losses,
-                  winRate: (r.win_rate * 100).toFixed(1)
+                  winRate: ((r.wins / (r.wins + r.losses)) * 100).toFixed(1)
                 }));
 
-                response.votingStats.foes = statsRows.slice(-5).reverse().map(r => ({
+                response.votingStats.foes = foesRows.map(r => ({
                   name: r.voter_name,
                   wins: r.wins,
                   losses: r.losses,
-                  winRate: (r.win_rate * 100).toFixed(1)
+                  winRate: ((r.wins / (r.wins + r.losses)) * 100).toFixed(1)
                 }));
 
                 // === NEW: Fetch vote results for each of the user's teams ===
@@ -1617,8 +1653,6 @@ app.get('/my/profile', requireAuth, (req, res) => {
                     SELECT
                       t.id,
                       t.tournament,
-                      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
-                      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
                       COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
                       COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
                       COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
@@ -1647,24 +1681,31 @@ app.get('/my/profile', requireAuth, (req, res) => {
 
                   response.voteResults = enriched;
 
-                  // Compute median madden rating
-                  const maddens = teamRows
-                    .filter(r => (r.wins + r.losses) >= 1) // Only include teams with at least one vote
-                    .map(r => r.madden)
-                    .filter(m => m && m > 0)
-                    .sort((a, b) => a - b);
-                  
-                  let medianMadden = 0;
-                  if (maddens.length > 0) {
-                    const mid = Math.floor(maddens.length / 2);
-                    medianMadden = maddens.length % 2 ? 
-                      maddens[mid] : 
-                      (maddens[mid - 1] + maddens[mid]) / 2;
-                    medianMadden = Math.round(medianMadden);
+                  // === NEW: Pull median rating from cached user leaderboard ===
+                  const usernameKey = (response.user.display_name || response.usernames[0] || 'ANON').toUpperCase();
+                  const cacheKey = sanitizeKey(null); // ALL tournaments
+
+                  const sendWithRating = (rating) => {
+                    response.medianMadden = rating;
+                    res.json(response);
+                  };
+
+                  let meta = userLeaderboardCacheMeta.get(cacheKey);
+                  const maybeSend = () => {
+                    if (!meta) return sendWithRating(0);
+                    try {
+                      const data = JSON.parse(zlib.gunzipSync(fs.readFileSync(meta.filePath)).toString('utf8'));
+                      const row = data.find(r => (r.username || '').toUpperCase() === usernameKey);
+                      if (row) return sendWithRating(row.median_madden);
+                    } catch(e){ console.error('profile cache read error',e); }
+                    sendWithRating(0);
+                  };
+
+                  if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
+                    buildUserLeaderboardCache(null).then(()=>{ meta = userLeaderboardCacheMeta.get(cacheKey); maybeSend();}).catch(()=>maybeSend());
+                  } else {
+                    maybeSend();
                   }
-                  
-                  response.medianMadden = medianMadden;
-                  res.json(response);
                 });
               });
             }
@@ -1742,8 +1783,6 @@ app.get('/profile/:username', (req, res) => {
                   SELECT
                     t.id,
                     t.tournament,
-                    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'yes'), 0) AS yes_votes,
-                    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.team_id = t.id AND v.vote_type = 'no'), 0) AS no_votes,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
                     COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
@@ -1769,24 +1808,37 @@ app.get('/profile/:username', (req, res) => {
 
                 response.voteResults = enriched;
 
-                // Compute median madden rating
-                const maddens = teamRows
-                  .filter(r => (r.wins + r.losses) >= 1) // Only include teams with at least one vote
-                  .map(r => r.madden)
-                  .filter(m => m && m > 0)
-                  .sort((a, b) => a - b);
-                
-                let medianMadden = 0;
-                if (maddens.length > 0) {
-                  const mid = Math.floor(maddens.length / 2);
-                  medianMadden = maddens.length % 2 ? 
-                    maddens[mid] : 
-                    (maddens[mid - 1] + maddens[mid]) / 2;
-                  medianMadden = Math.round(medianMadden);
+                // === NEW: Pull median rating from cached user leaderboard ===
+                const usernameKeyPublic = (response.user.display_name || username).toUpperCase();
+                const cacheKeyPub = sanitizeKey(null); // global leaderboard cache
+
+                const deliver = (ratingVal) => {
+                  response.medianMadden = ratingVal;
+                  res.json(response);
+                };
+
+                let metaPub = userLeaderboardCacheMeta.get(cacheKeyPub);
+
+                const maybeSendPub = () => {
+                  if (!metaPub) return deliver(0);
+                  try {
+                    const raw = fs.readFileSync(metaPub.filePath);
+                    const data = JSON.parse(zlib.gunzipSync(raw).toString('utf8'));
+                    const rowPub = data.find(r => (r.username || '').toUpperCase() === usernameKeyPublic);
+                    if (rowPub) return deliver(rowPub.median_madden);
+                  } catch(e) {
+                    console.error('public profile cache read error', e);
+                  }
+                  deliver(0);
+                };
+
+                if (!metaPub || (Date.now() - metaPub.stamp > LEADER_CACHE_REFRESH_MS)) {
+                  buildUserLeaderboardCache(null)
+                    .then(() => { metaPub = userLeaderboardCacheMeta.get(cacheKeyPub); maybeSendPub(); })
+                    .catch(() => maybeSendPub());
+                } else {
+                  maybeSendPub();
                 }
-                
-                response.medianMadden = medianMadden;
-                res.json(response);
               });
             };
 
@@ -1840,20 +1892,60 @@ app.get('/profile/:username', (req, res) => {
                 return afterVotingStats();
               }
 
-              statsRows.sort((a, b) => b.win_rate - a.win_rate);
+              // --- Updated: Rank friends & foes using Wilson lower-bound score ---
+              const z = 1.96; // 95% confidence interval constant
 
-              response.votingStats.friends = statsRows.slice(0, 5).map(r => ({
+              statsRows.forEach(r => {
+                const n = r.wins + r.losses;
+                const p = n ? r.wins / n : 0;
+                r.wilson = n ? (
+                  (
+                    p + (z * z) / (2 * n) -
+                    z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n)
+                  ) /
+                  (1 + (z * z) / n)
+                ) : 0;
+              });
+
+              statsRows.sort((a, b) => b.wilson - a.wilson);
+
+              // Build friends (top 5) and foes (bottom 5 not in friends) lists, excluding profile user themselves
+              const filteredPub = statsRows.filter(r => r.voter_id !== targetUserId);
+
+              const LIMIT = 10;
+
+              const friendCandidatesPub = filteredPub.filter(r=>r.win_rate > 0.5);
+              const foeCandidatesPub    = filteredPub.filter(r=>r.win_rate <= 0.5);
+
+              const takeRowsPub = (arr, limit, descending=true)=>{
+                const sorted = arr.sort((a,b)=>descending? b.wilson - a.wilson : a.wilson - b.wilson);
+                const out=[]; const seen=new Set();
+                for(const row of sorted){
+                  if(out.length>=limit) break;
+                  if(!row.voter_name||!row.voter_name.trim()) continue;
+                  if(seen.has(row.voter_id)) continue;
+                  out.push(row); seen.add(row.voter_id);
+                }
+                return out;
+              };
+
+              const friendsRowsPub = takeRowsPub(friendCandidatesPub, LIMIT, true);
+              const friendIdsPub = new Set(friendsRowsPub.map(r=>r.voter_id));
+
+              const foesRowsPub = takeRowsPub(foeCandidatesPub.filter(r=>!friendIdsPub.has(r.voter_id)), LIMIT, false);
+
+              response.votingStats.friends = friendsRowsPub.map(r => ({
                 name: r.voter_name,
                 wins: r.wins,
                 losses: r.losses,
-                winRate: (r.win_rate * 100).toFixed(1)
+                winRate: ((r.wins / (r.wins + r.losses)) * 100).toFixed(1)
               }));
 
-              response.votingStats.foes = statsRows.slice(-5).reverse().map(r => ({
+              response.votingStats.foes = foesRowsPub.map(r => ({
                 name: r.voter_name,
                 wins: r.wins,
                 losses: r.losses,
-                winRate: (r.win_rate * 100).toFixed(1)
+                winRate: ((r.wins / (r.wins + r.losses)) * 100).toFixed(1)
               }));
 
               afterVotingStats();
@@ -2300,56 +2392,38 @@ app.listen(PORT, () => {
 });
 
 // === NEW: Top 10 Drafters Widget Endpoint ===
-app.get('/api/widgets/top-drafters', (req, res) => {
-  const sql = `
-    SELECT 
-      t.username,
-      COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
-    FROM teams t
-    WHERE t.username IS NOT NULL 
-      AND t.username != '' 
-      AND (SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id OR vm.loser_id = t.id) >= 1
-      AND (? IS NULL OR t.tournament = ?)
-    ORDER BY t.username
-  `;
+app.get('/api/widgets/top-drafters', async (req, res) => {
+  const tournament = req.query.tournament || null;
+  const key = sanitizeKey(tournament);
 
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching top drafters:', err);
-      return res.status(500).json({ error: 'Database error' });
+  try {
+    let meta = userLeaderboardCacheMeta.get(key);
+    if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
+      await buildUserLeaderboardCache(tournament);
+      meta = userLeaderboardCacheMeta.get(key);
     }
-    
-    // Group by username and calculate median for each user
-    const userGroups = {};
-    rows.forEach(row => {
-      if (!userGroups[row.username]) {
-        userGroups[row.username] = {
-          username: row.username,
-          maddens: []
-        };
-      }
-      userGroups[row.username].maddens.push(row.madden);
-    });
-    
-    // Calculate median for each user and sort by median
-    const result = Object.values(userGroups).map(user => {
-      const sortedMaddens = user.maddens.sort((a, b) => a - b);
-      const mid = Math.floor(sortedMaddens.length / 2);
-      const median = sortedMaddens.length % 2 === 0 
-        ? (sortedMaddens[mid - 1] + sortedMaddens[mid]) / 2 
-        : sortedMaddens[mid];
-      
-      return {
-        username: user.username,
-        total_teams: user.maddens.length,
-        rated_teams: user.maddens.length,
-        median_rating: median
-      };
-    }).sort((a, b) => b.median_rating - a.median_rating)
-    .slice(0, 10);
-    
-    res.json(result);
-  });
+
+    // Read and decompress cached leaderboard
+    const buf = fs.readFileSync(meta.filePath);
+    const jsonStr = zlib.gunzipSync(buf).toString('utf8');
+    const data = JSON.parse(jsonStr);
+
+    const top10 = data
+      .sort((a, b) => b.median_madden - a.median_madden)
+      .slice(0, 10)
+      .map(u => ({
+        username: u.username,
+        wins: u.wins,
+        losses: u.losses,
+        median_rating: u.median_madden,
+        win_pct: u.win_pct
+      }));
+
+    res.json(top10);
+  } catch (e) {
+    console.error('Error building top drafters widget:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // === NEW: Top 10 Teams Widget Endpoint ===

@@ -1076,7 +1076,7 @@
             </tbody>
           </table>
           <p id="no-foes" class="no-data-message" style="display: none;">
-            No voting data yet! Upload some teams and get people to vote on them.
+            No foes yet!
           </p>
         </div>
       </div>
@@ -1478,7 +1478,12 @@
       tabResultsBtn.addEventListener('click', () => setActive('results'));
 
       // ------------------- Modal helpers copied from main site -------------------
-      function getBorderColor(position) {
+      function getBorderColor(position, tournamentName = "") {
+        // Special case: In "Rookies and Sophomores" tournament, treat TE same as WR (yellow)
+        if (tournamentName === "Rookies and Sophomores" && position === "TE") {
+          return "#facc15"; // WR color (yellow)
+        }
+        
         switch (position) {
           case 'QB': return '#a855f7';
           case 'RB': return '#22c55e';
@@ -1488,7 +1493,7 @@
         }
       }
 
-      function buildTeamCard(teamId, players) {
+      function buildTeamCard(teamId, players, tournament = '') {
         const card = document.createElement('div');
         card.className = 'team-card';
 
@@ -1517,7 +1522,7 @@
             const pickHTML = (pl.pick||pl.pick===0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
             const infoHTML = `<span class="player-info">${pl.name}${pl.team?` - ${pl.team}`:''}</span>`;
             bubble.innerHTML = `${pickHTML}${infoHTML}${stackStar}`;
-            bubble.style.border=`2px solid ${getBorderColor(pl.position)}`;
+            bubble.style.border=`2px solid ${getBorderColor(pl.position, tournament)}`;
             row.appendChild(bubble);
             list.appendChild(row);
           });
@@ -1533,14 +1538,17 @@
 
       // Function to show team details in either primary or secondary modal
       function showTeamModal(teamId, isSecondary = false) {
-        fetch(`/team/${teamId}`)
-          .then(res=>res.json())
-          .then(players=>{
+        // Fetch both team players and team metadata for tournament info
+        Promise.all([
+          fetch(`/team/${teamId}`).then(res => res.json()),
+          fetch(`/team-meta/${teamId}`).then(res => res.json())
+        ])
+          .then(([players, teamMeta]) => {
             const modalId = isSecondary ? 'teamModalBody' : 'modalBody';
             const overlayId = isSecondary ? 'teamModalOverlay' : 'modalOverlay';
             const body = document.getElementById(modalId);
             body.innerHTML = '';
-            body.appendChild(buildTeamCard(teamId, players));
+            body.appendChild(buildTeamCard(teamId, players, teamMeta.tournament));
             document.getElementById(overlayId).style.display = 'flex';
           });
       }

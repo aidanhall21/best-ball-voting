@@ -949,12 +949,15 @@
       return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
     }
 
+    // Global team data for tournament information
+    let teamData = null;
+
     // Load voting history
     async function loadVotingHistory() {
       try {
         // First, get team information
         const teamResponse = await fetch(`/team-meta/${teamId}`);
-        const teamData = await teamResponse.json();
+        teamData = await teamResponse.json();
         
         document.getElementById('teamTitle').textContent = 
           `${teamData.username || 'Anonymous'} - ${teamData.tournament || 'Unknown Contest'}`;
@@ -1030,7 +1033,12 @@
     }
 
     // EXACT copy of team modal functions from profile.html
-    function getBorderColor(position) {
+    function getBorderColor(position, tournamentName = "") {
+      // Special case: In "Rookies and Sophomores" tournament, treat TE same as WR (yellow)
+      if (tournamentName === "Rookies and Sophomores" && position === "TE") {
+        return "#facc15"; // WR color (yellow)
+      }
+      
       switch (position) {
         case 'QB': return '#a855f7';
         case 'RB': return '#22c55e';
@@ -1069,7 +1077,7 @@
           const pickHTML = (pl.pick||pl.pick===0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
           const infoHTML = `<span class="player-info">${pl.name}${pl.team?` - ${pl.team}`:''}</span>`;
           bubble.innerHTML = `${pickHTML}${infoHTML}${stackStar}`;
-          bubble.style.border=`2px solid ${getBorderColor(pl.position)}`;
+          bubble.style.border=`2px solid ${getBorderColor(pl.position, teamData?.tournament)}`;
           row.appendChild(bubble);
           list.appendChild(row);
         });
