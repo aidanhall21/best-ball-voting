@@ -270,6 +270,8 @@ app.use(express.static(__dirname));
 // Handle CSV Upload
 app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
   const csvPath = req.file.path;
+  // Determine file base name (without extension) for metadata
+  const uploadFileBase = path.basename(req.file.originalname || '', path.extname(req.file.originalname || ''));
   const fileContent = fs.readFileSync(csvPath, "utf8");
 
   // Username supplied by the uploader (sent as a regular form field alongside the file)
@@ -340,7 +342,7 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
       const rows = result.data;
       
       // ⚠️ Validate positions – only allow NFL skill positions
-      const allowedPositions = new Set(['QB', 'RB', 'WR', 'TE', 'W/T']);
+      const allowedPositions = new Set(['QB', 'RB', 'WR', 'TE']);
       const invalidTeamIds = new Set();
 
       // First pass to identify any teams that include a disallowed position
@@ -355,6 +357,7 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
 
       // Check for required columns
       const requiredColumns = [
+        "Picked At",
         "Draft Entry",
         "Tournament Title",
         "First Name",
@@ -376,6 +379,30 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
       }
 
       const groupedTeams = {};
+      const teamMetaById = {}; // collect first-seen metadata for each team
+      const existingPlayerUpdates = []; // rows needing player-level updates
+
+      // Helper: extract optional team metadata from a CSV row (values may be blank)
+      const extractMeta = (row) => ({
+        draft_entry_fee: row["Draft Entry Fee"] || null,
+        draft_size: row["Draft Size"] || null,
+        draft_total_prizes: row["Draft Total Prizes"] || null,
+        tournament_id: row["Tournament"] || null,
+        tournament_entry_fee: row["Tournament Entry Fee"] || null,
+        tournament_total_prizes: row["Tournament Total Prizes"] || null,
+        tournament_size: row["Tournament Size"] || null,
+        draft_pool_title: row["Draft Pool Title"] || null,
+        draft_pool: row["Draft Pool"] || null,
+        draft_pool_entry_fee: row["Draft Pool Entry Fee"] || null,
+        draft_pool_total_prizes: row["Draft Pool Total Prizes"] || null,
+        draft_pool_size: row["Draft Pool Size"] || null,
+        weekly_winner_title: row["Weekly Winner Title"] || null,
+        weekly_winner: row["Weekly Winner"] || null,
+        weekly_winner_entry_fee: row["Weekly Winner Entry Fee"] || null,
+        weekly_winner_total_prizes: row["Weekly Winner Total Prizes"] || null,
+        weekly_winner_size: row["Weekly Winner Size"] || null,
+        file_name: uploadFileBase || null
+      });
 
       // First, collect all teamIds to check
       const teamIds = rows.map(row => row["Draft Entry"]).filter(Boolean);
@@ -398,16 +425,32 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
           // Now process only non-existing teams
           rows.forEach((row) => {
             const teamId = row["Draft Entry"];
+            if (!teamId) return;
+
+            // Capture team-level meta once per team (first occurrence)
+            if (!teamMetaById[teamId]) {
+              teamMetaById[teamId] = extractMeta(row);
+            }
+
             const tournament = row["Tournament Title"];
             const fullName = `${row["First Name"]} ${row["Last Name"]}`;
-            const position = row["Position"];
+            let position = row["Position"];
+            if ((tournament || '').trim().toLowerCase() === 'rookies and sophomores' && String(position).trim().toUpperCase() === 'TE') {
+              position = 'WR';
+            }
             const pick = parseInt(row["Pick Number"]);
             const draftId = row["Draft"];
             const team = row["Team"];
 
-            if (!teamId || !fullName || !position || isNaN(pick)) return;
-            if (existingTeamIds.has(teamId)) return; // Skip if team already exists
-            if (invalidTeamIds.has(teamId)) return;  // Skip if team contains invalid position
+            // Validate player info
+            if (!fullName || !position || isNaN(pick)) return;
+            if (invalidTeamIds.has(teamId)) return; // invalid team composition
+
+            // Only add new teams' players (avoid duplicates for existing teams)
+            if (existingTeamIds.has(teamId)) {
+              existingPlayerUpdates.push({ teamId, position, name: fullName, pick, team, pickedAt: row["Picked At"] || null, appearance: row["Appearance"] || null });
+              return; // skip adding to groupedTeams
+            }
 
             if (!groupedTeams[teamId]) {
               groupedTeams[teamId] = {
@@ -417,17 +460,57 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
               };
             }
 
-            groupedTeams[teamId].players.push({ position, name: fullName, pick, team });
+            const pickedAt = row["Picked At"] || null;
+            const appearance = row["Appearance"] || null;
+
+            groupedTeams[teamId].players.push({ position, name: fullName, pick, team, pickedAt, appearance });
           });
 
-          // Only proceed with insert if we have new teams
+          // Prepare counts & helper for metadata update
           const addedTeamsCount = Object.keys(groupedTeams).length;
           const skippedIdsSet = new Set([
             ...skippedExistingIds,
             ...invalidTeamIds
           ]);
 
+          const metaCols = [
+            'draft_entry_fee', 'draft_size', 'draft_total_prizes',
+            'tournament_id', 'tournament_entry_fee', 'tournament_total_prizes', 'tournament_size',
+            'draft_pool_title', 'draft_pool', 'draft_pool_entry_fee', 'draft_pool_total_prizes', 'draft_pool_size',
+            'weekly_winner_title', 'weekly_winner', 'weekly_winner_entry_fee', 'weekly_winner_total_prizes', 'weekly_winner_size',
+            'file_name'
+          ];
+
+          const updateAllTeamMeta = () => {
+            for (const [tId, meta] of Object.entries(teamMetaById)) {
+              const updateSql = `UPDATE teams SET ` + metaCols.map(c => `${c} = COALESCE(${c}, ? )`).join(', ') + ` WHERE id = ?`;
+              const params = metaCols.map(c => meta[c] || null).concat(tId);
+              db.run(updateSql, params);
+            }
+          };
+
+          // If no new teams, just update metadata and respond
           if (addedTeamsCount === 0) {
+            updateAllTeamMeta();
+            
+            // --- Apply player-level updates for existing teams ---
+            existingPlayerUpdates.forEach((pl) => {
+              db.run(
+                `UPDATE players SET picked_at = COALESCE(picked_at, ?), appearance = COALESCE(appearance, ?) WHERE team_id = ? AND position = ? AND name = ? AND pick = ?`,
+                [pl.pickedAt, pl.appearance, pl.teamId, pl.position, pl.name, pl.pick],
+                function(err) {
+                  if (err) { console.error('Player update err', err); return; }
+                  if (this.changes === 0) {
+                    db.run(
+                      `INSERT INTO players (team_id, position, name, pick, team, stack, picked_at, appearance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [pl.teamId, pl.position, pl.name, pl.pick, pl.team, null, pl.pickedAt, pl.appearance],
+                      (insErr) => { if (insErr) console.error('Player insert err', insErr); }
+                    );
+                  }
+                }
+              );
+            });
+
             return res.json({
               message: `0 new entries added, ${skippedIdsSet.size} skipped`,
               added: 0,
@@ -487,14 +570,44 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
                 }
               });
 
-              // Insert players with stack information
+              // Insert players with stack information (including picked_at & appearance)
               players.forEach((player) => {
                 db.run(
-                  `INSERT INTO players (team_id, position, name, pick, team, stack) VALUES (?, ?, ?, ?, ?, ?)`,
-                  [teamId, player.position, player.name, player.pick, player.team, player.stack || null]
+                  `INSERT INTO players (team_id, position, name, pick, team, stack, picked_at, appearance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    teamId,
+                    player.position,
+                    player.name,
+                    player.pick,
+                    player.team,
+                    player.stack || null,
+                    player.pickedAt || null,
+                    player.appearance || null
+                  ]
                 );
               });
             }
+
+            // === Update (or backfill) team-level metadata for all teams present in CSV ===
+            updateAllTeamMeta();
+            // --- Apply player-level updates for existing teams ---
+            existingPlayerUpdates.forEach((pl) => {
+              db.run(
+                `UPDATE players SET picked_at = COALESCE(picked_at, ?), appearance = COALESCE(appearance, ?) WHERE team_id = ? AND position = ? AND name = ? AND pick = ?`,
+                [pl.pickedAt, pl.appearance, pl.teamId, pl.position, pl.name, pl.pick],
+                function(err) {
+                  if (err) { console.error('Player update err', err); return; }
+                  if (this.changes === 0) {
+                    db.run(
+                      `INSERT INTO players (team_id, position, name, pick, team, stack, picked_at, appearance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [pl.teamId, pl.position, pl.name, pl.pick, pl.team, null, pl.pickedAt, pl.appearance],
+                      (insErr) => { if (insErr) console.error('Player insert err', insErr); }
+                    );
+                  }
+                }
+              );
+            });
+
             res.json({
               message: `${addedTeamsCount} new ${addedTeamsCount === 1 ? 'entry' : 'entries'} added, ${skippedIdsSet.size} skipped`,
               added: addedTeamsCount,

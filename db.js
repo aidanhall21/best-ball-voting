@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-18-0852.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-18-0852.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-23-1359.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-23-1359.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -146,6 +146,7 @@ db.all('PRAGMA table_info(teams)', (err, cols) => {
   const hasUsername = cols.some((c) => c.name === 'username');
   const hasDraftId = cols.some((c) => c.name === 'draft_id');
   const hasUserId = cols.some((c) => c.name === 'user_id');
+  const hasFileName = cols.some((c) => c.name === 'file_name');
   
   if (!hasUsername) {
     db.run('ALTER TABLE teams ADD COLUMN username TEXT');
@@ -156,6 +157,34 @@ db.all('PRAGMA table_info(teams)', (err, cols) => {
   if (!hasUserId) {
     db.run('ALTER TABLE teams ADD COLUMN user_id INTEGER');
   }
+  if (!hasFileName) {
+    db.run('ALTER TABLE teams ADD COLUMN file_name TEXT');
+  }
+  // Add any new optional metadata columns for teams (added July 2025)
+  const extraTeamCols = {
+    draft_entry_fee: 'TEXT',
+    draft_size: 'INTEGER',
+    draft_total_prizes: 'TEXT',
+    tournament_id: 'TEXT',
+    tournament_entry_fee: 'TEXT',
+    tournament_total_prizes: 'TEXT',
+    tournament_size: 'INTEGER',
+    draft_pool_title: 'TEXT',
+    draft_pool: 'TEXT',
+    draft_pool_entry_fee: 'TEXT',
+    draft_pool_total_prizes: 'TEXT',
+    draft_pool_size: 'INTEGER',
+    weekly_winner_title: 'TEXT',
+    weekly_winner: 'TEXT',
+    weekly_winner_entry_fee: 'TEXT',
+    weekly_winner_total_prizes: 'TEXT',
+    weekly_winner_size: 'INTEGER'
+  };
+  Object.entries(extraTeamCols).forEach(([col, type]) => {
+    if (!cols.some(c => c.name === col)) {
+      db.run(`ALTER TABLE teams ADD COLUMN ${col} ${type}`);
+    }
+  });
 });
 
 // Check if players table has team column and add it if missing
@@ -169,6 +198,16 @@ db.all('PRAGMA table_info(players)', (err, cols) => {
   if (!hasStack) {
     db.run('ALTER TABLE players ADD COLUMN stack TEXT');
   }
+  // Ensure new player-level metadata columns exist
+  const extraPlayerCols = {
+    picked_at: 'TEXT',
+    appearance: 'TEXT'
+  };
+  Object.entries(extraPlayerCols).forEach(([col, type]) => {
+    if (!cols.some(c => c.name === col)) {
+      db.run(`ALTER TABLE players ADD COLUMN ${col} ${type}`);
+    }
+  });
 });
 
 // ---- Ensure twitter_username column exists in users table ----
