@@ -11,7 +11,7 @@
 // After running the script your existing teams will have identical stack behaviour to
 // newly uploaded teams.
 
-const db = require('../db');
+const { db } = require('../db');
 
 // ---- New: wait up to 5s if the DB is temporarily locked ----
 db.run('PRAGMA busy_timeout = 5000');
