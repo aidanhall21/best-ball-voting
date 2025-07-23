@@ -102,6 +102,10 @@ document.addEventListener('DOMContentLoaded', () => {
         userLabel.textContent = displayName;
         gearBtn.style.display = 'inline-block';
         
+        // Hide login button when authenticated
+        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
+        if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
+        
         // Show notification bell
         const notificationBell = document.getElementById('notificationBell');
         if (notificationBell) {
@@ -130,6 +134,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Update mobile user controls
         mobileUserInfo.style.display = 'block';
+        
+        // Hide mobile login button when authenticated
+        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+        if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
         
         // Show mobile notification button
         const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
@@ -166,6 +174,14 @@ document.addEventListener('DOMContentLoaded', () => {
         gearBtn.style.display = 'none';
         userMenu.style.display = 'none';
         mobileUserInfo.style.display = 'none';
+        
+        // Show login button when not authenticated
+        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
+        if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
+        
+        // Show mobile login button when not authenticated
+        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+        if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
         
         uploadPanel.style.display = 'none';
         loginPanel.style.display = 'block';

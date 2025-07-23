@@ -23,6 +23,12 @@
   <meta name="twitter:description" content="Vote on best ball drafts!">
   <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
   <meta name="twitter:image:alt" content="Draft or Pass - Best Ball Voting app preview">
+  
+  <!-- Preload critical resources -->
+  <link rel="preload" href="/api/widgets/top-drafters" as="fetch" crossorigin>
+  <link rel="preload" href="style.css" as="style">
+  <link rel="preload" href="script.js" as="script">
+  
   <!-- Cloudflare Web Analytics -->
   <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
   <!-- End Cloudflare Web Analytics -->
@@ -46,6 +52,7 @@
         <a href="/upload" class="nav-link">Upload</a>
         <a href="/draftorpass" class="nav-link">Draft or Pass</a>
         <a href="/leaderboard" class="nav-link">Leaderboard</a>
+        <a href="/upload" id="desktopLoginBtn" class="nav-link" style="display:none;">Login</a>
       </nav>
       
       <!-- User Controls -->
@@ -94,6 +101,7 @@
           </button>
           <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
         </div>
+        <a href="/upload" id="mobileLoginBtn" class="mobile-nav-link" style="display:none;">Login</a>
       </div>
     </div>
   </header>
@@ -110,26 +118,42 @@
   <!-- Widgets Grid -->
   <section class="widgets-grid">
     <!-- Top 10 Drafters Widget -->
-    <div class="widget top-drafters">
+    <div class="widget top-drafters" data-widget="top-drafters">
       <h2>🏆 Top 10 Overall Drafters</h2>
       <div class="widget-content" id="topDraftersContent">
-        <div class="loading">Loading top drafters...</div>
+        <div class="skeleton-loader">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
       </div>
     </div>
 
     <!-- Top 10 Teams Widget -->
-    <div class="widget top-teams">
+    <div class="widget top-teams" data-widget="top-teams">
       <h2>🌟 Top 10 Overall Teams</h2>
       <div class="widget-content" id="topTeamsContent">
-        <div class="loading">Loading top teams...</div>
+        <div class="skeleton-loader">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
       </div>
     </div>
 
     <!-- Recent Votes Widget -->
-    <div class="widget recent-votes">
+    <div class="widget recent-votes" data-widget="recent-votes">
       <h2>📊 Recent Votes</h2>
       <div class="widget-content" id="recentVotesContent">
-        <div class="loading">Loading recent votes...</div>
+        <div class="skeleton-loader">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
       </div>
     </div>
 
@@ -148,11 +172,14 @@
     </div>
 
     <!-- Draft or Pass Widget -->
-    <div class="widget draft-or-pass">
+    <div class="widget draft-or-pass" data-widget="draft-or-pass">
       <h2>Vote Now - Which Team is Better?</h2>
       <div class="widget-content" id="draftOrPassContent">
         <div id="teamsContainer" class="teams-container">
-          <div class="loading">Loading teams...</div>
+          <div class="skeleton-loader">
+            <div class="skeleton-team-card"></div>
+            <div class="skeleton-team-card"></div>
+          </div>
         </div>
         <a href="/draftorpass" class="skip-matchup">Skip This Matchup</a>
       </div>
@@ -169,9 +196,22 @@
     // Load Top 10 Drafters widget
     async function loadTopDrafters() {
       const container = document.getElementById('topDraftersContent');
+      if (!container) return;
+      
       try {
-        const res = await fetch('/api/widgets/top-drafters');
-        if (!res.ok) throw new Error('Failed to fetch top drafters');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        
+        const res = await fetch('/api/widgets/top-drafters', {
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'max-age=300' // Cache for 5 minutes
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch top drafters`);
         const data = await res.json();
         
         if (!data || !data.length) {
@@ -196,20 +236,36 @@
           return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
         }
 
-        const html = data.map((drafter, i) => `
-          <div class="drafter-row">
+        // Use DocumentFragment for better performance
+        const fragment = document.createDocumentFragment();
+        
+        data.forEach((drafter, i) => {
+          const row = document.createElement('div');
+          row.className = 'drafter-row';
+          row.innerHTML = `
             <div class="drafter-rank">${i + 1}</div>
             <div class="drafter-name"><a href="profile.html?user=${encodeURIComponent(drafter.username)}" style="color:inherit; text-decoration:none;">${drafter.username}</a></div>
             ${formatRatingBox(drafter.median_rating)}
-          </div>
-        `).join('') + `
-        <a href="/leaderboard" class="see-full-link">View Full Leaderboard</a>
-        `;
-
-        container.innerHTML = html;
+          `;
+          fragment.appendChild(row);
+        });
+        
+        const link = document.createElement('a');
+        link.href = '/leaderboard';
+        link.className = 'see-full-link';
+        link.textContent = 'View Full Leaderboard';
+        fragment.appendChild(link);
+        
+        container.innerHTML = '';
+        container.appendChild(fragment);
+        
       } catch (e) {
         console.error('Error loading top drafters:', e);
-        container.innerHTML = '<div class="error-message">Failed to load data</div>';
+        if (e.name === 'AbortError') {
+          container.innerHTML = '<div class="error-message">Request timed out</div>';
+        } else {
+          container.innerHTML = '<div class="error-message">Failed to load data</div>';
+        }
       }
     }
 
@@ -268,9 +324,22 @@
     // Load Recent Votes widget
     async function loadRecentVotes() {
       const container = document.getElementById('recentVotesContent');
+      if (!container) return;
+      
       try {
-        const res = await fetch('/api/widgets/recent-votes');
-        if (!res.ok) throw new Error('Failed to fetch recent votes');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for recent votes
+        
+        const res = await fetch('/api/widgets/recent-votes', {
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'max-age=30' // Cache for 30 seconds
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch recent votes`);
         const data = await res.json();
         
         if (!data || !data.length) {
@@ -278,12 +347,17 @@
           return;
         }
 
-        const html = data.map((vote) => `
-          <div class="vote-row">
+        // Use DocumentFragment for better performance
+        const fragment = document.createDocumentFragment();
+        
+        data.forEach((vote) => {
+          const voteRow = document.createElement('div');
+          voteRow.className = 'vote-row';
+          voteRow.innerHTML = `
             <div class="vote-result">
-              <span class="winner">${vote.winner_username || 'Anonymous'}</span>
+              <span class="winner">${vote.winner_username}</span>
               <span class="vs-text">defeated</span>
-              <span class="loser">${vote.loser_username || 'Anonymous'}</span>
+              <span class="loser">${vote.loser_username}</span>
             </div>
             <div class="tournament-text">
               <span class="vs-text">${vote.winner_tournament}</span>
@@ -292,26 +366,116 @@
               <span class="voter">by ${vote.voter_name}</span>
               <span class="time">${vote.time_ago}</span>
             </div>
-          </div>
-        `).join('');
-
-        container.innerHTML = html;
+          `;
+          fragment.appendChild(voteRow);
+        });
+        
+        container.innerHTML = '';
+        container.appendChild(fragment);
+        
       } catch (e) {
         console.error('Error loading recent votes:', e);
-        container.innerHTML = '<div class="error-message">Failed to load data</div>';
+        if (e.name === 'AbortError') {
+          container.innerHTML = '<div class="error-message">Request timed out</div>';
+        } else {
+          container.innerHTML = '<div class="error-message">Failed to load data</div>';
+        }
       }
     }
 
-    // Auto-update recent votes every 10 seconds
+    // Auto-update recent votes with smart polling
     let recentVotesInterval;
+    let pollAttempts = 0;
+    const MAX_POLL_ATTEMPTS = 8; // Stop after 2 minutes of polling
+    let lastVoteCount = 0;
+    
     function startRecentVotesPolling() {
       // Initial load
       loadRecentVotes();
       
-      // Set up polling every 10 seconds
+      // Smart polling: start with 10s, then adjust based on activity
+      const initialInterval = 10000;
+      const fallbackInterval = 20000;
+      const slowInterval = 45000;
+      
       recentVotesInterval = setInterval(() => {
-        loadRecentVotes();
-      }, 10000);
+        pollAttempts++;
+        
+        // Stop polling after max attempts or if page is hidden
+        if (pollAttempts >= MAX_POLL_ATTEMPTS || document.hidden) {
+          stopRecentVotesPolling();
+          return;
+        }
+        
+        // Check if there are new votes before loading
+        checkForNewVotes().then(hasNewVotes => {
+          if (hasNewVotes) {
+            loadRecentVotes();
+            // Reset to faster polling if there's activity
+            if (pollAttempts > 3) {
+              clearInterval(recentVotesInterval);
+              recentVotesInterval = setInterval(() => {
+                pollAttempts++;
+                if (pollAttempts >= MAX_POLL_ATTEMPTS || document.hidden) {
+                  stopRecentVotesPolling();
+                  return;
+                }
+                checkForNewVotes().then(hasNew => {
+                  if (hasNew) loadRecentVotes();
+                });
+              }, initialInterval);
+            }
+          }
+        });
+        
+        // Switch to longer interval after first few attempts
+        if (pollAttempts === 3) {
+          clearInterval(recentVotesInterval);
+          recentVotesInterval = setInterval(() => {
+            pollAttempts++;
+            if (pollAttempts >= MAX_POLL_ATTEMPTS || document.hidden) {
+              stopRecentVotesPolling();
+              return;
+            }
+            checkForNewVotes().then(hasNew => {
+              if (hasNew) loadRecentVotes();
+            });
+          }, fallbackInterval);
+        }
+        
+        // Switch to very slow polling after more attempts
+        if (pollAttempts === 6) {
+          clearInterval(recentVotesInterval);
+          recentVotesInterval = setInterval(() => {
+            pollAttempts++;
+            if (pollAttempts >= MAX_POLL_ATTEMPTS || document.hidden) {
+              stopRecentVotesPolling();
+              return;
+            }
+            checkForNewVotes().then(hasNew => {
+              if (hasNew) loadRecentVotes();
+            });
+          }, slowInterval);
+        }
+      }, initialInterval);
+    }
+    
+    // Check for new votes without loading full data
+    async function checkForNewVotes() {
+      try {
+        const res = await fetch('/api/widgets/recent-votes-count', {
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const hasNew = data.count > lastVoteCount;
+          lastVoteCount = data.count;
+          return hasNew;
+        }
+      } catch (e) {
+        console.warn('Failed to check for new votes:', e);
+      }
+      return false;
     }
 
     function stopRecentVotesPolling() {
@@ -323,6 +487,31 @@
 
     // Expose loadRecentVotes globally so other scripts can trigger updates
     window.refreshRecentVotes = loadRecentVotes;
+    
+    // Performance monitoring for recent votes
+    async function monitorRecentVotesPerformance() {
+      try {
+        const startTime = performance.now();
+        const res = await fetch('/api/widgets/recent-votes-performance');
+        const data = await res.json();
+        const endTime = performance.now();
+        
+        console.log(`Recent votes performance: ${data.duration}ms (DB) + ${(endTime - startTime).toFixed(2)}ms (total)`);
+        
+        // Log to analytics if available
+        if (typeof gtag !== 'undefined') {
+          gtag('event', 'timing_complete', {
+            name: 'recent_votes_widget',
+            value: Math.round(endTime - startTime)
+          });
+        }
+      } catch (e) {
+        console.warn('Performance monitoring failed:', e);
+      }
+    }
+    
+    // Monitor performance periodically
+    setInterval(monitorRecentVotesPerformance, 5 * 60 * 1000); // Every 5 minutes
 
     // Initialize Draft or Pass widget
     function initDraftOrPass() {
@@ -696,12 +885,85 @@
       }
     }
 
-    // Load all widgets when page loads
-    document.addEventListener('DOMContentLoaded', () => {
+    // Progressive loading with intersection observer
+    let widgetObserver;
+    let loadedWidgets = new Set();
+    
+    function initLazyLoading() {
+      // Create intersection observer for lazy loading widgets
+      widgetObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && !loadedWidgets.has(entry.target.dataset.widget)) {
+            const widgetType = entry.target.dataset.widget;
+            loadWidget(widgetType);
+            loadedWidgets.add(widgetType);
+            widgetObserver.unobserve(entry.target);
+          }
+        });
+      }, {
+        rootMargin: '50px 0px', // Start loading 50px before widget comes into view
+        threshold: 0.1
+      });
+      
+      // Observe all widgets
+      document.querySelectorAll('[data-widget]').forEach(widget => {
+        widgetObserver.observe(widget);
+      });
+    }
+    
+    function loadWidget(widgetType) {
+      switch(widgetType) {
+        case 'top-drafters':
+          loadTopDrafters();
+          break;
+        case 'top-teams':
+          loadTopTeams();
+          break;
+        case 'recent-votes':
+          loadRecentVotes();
+          startRecentVotesPolling();
+          break;
+        case 'draft-or-pass':
+          initDraftOrPass();
+          break;
+      }
+    }
+    
+    // Load critical widgets immediately (above the fold)
+    function loadCriticalWidgets() {
+      // Load top drafters immediately as it's likely above the fold
       loadTopDrafters();
-      loadTopTeams();
-      startRecentVotesPolling();
-      initDraftOrPass();
+      loadedWidgets.add('top-drafters');
+    }
+    
+    // Performance monitoring
+    function logPerformanceMetric(name, startTime) {
+      const duration = performance.now() - startTime;
+      console.log(`Performance: ${name} took ${duration.toFixed(2)}ms`);
+      
+      // Send to analytics if available
+      if (typeof gtag !== 'undefined') {
+        gtag('event', 'timing_complete', {
+          name: name,
+          value: Math.round(duration)
+        });
+      }
+    }
+    
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', () => {
+      const pageLoadStart = performance.now();
+      
+      // Load critical content immediately
+      loadCriticalWidgets();
+      
+      // Set up lazy loading for other widgets
+      initLazyLoading();
+      
+      // Log initial page load performance
+      setTimeout(() => {
+        logPerformanceMetric('initial_page_load', pageLoadStart);
+      }, 100);
       
       // Pause polling when page is not visible to save resources
       document.addEventListener('visibilitychange', () => {
@@ -709,7 +971,10 @@
           stopRecentVotesPolling();
           stopNotificationPolling();
         } else {
-          startRecentVotesPolling();
+          // Only restart polling if recent votes widget is loaded
+          if (loadedWidgets.has('recent-votes')) {
+            startRecentVotesPolling();
+          }
           startNotificationPolling();
         }
       });
@@ -751,6 +1016,10 @@
             document.getElementById('userLabel').textContent = displayName;
             document.getElementById('userGear').style.display = 'inline-block';
             
+            // Hide login button when authenticated
+            const desktopLoginBtn = document.getElementById('desktopLoginBtn');
+            if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
+            
             // Show notification bell
             const notificationBell = document.getElementById('notificationBell');
             if (notificationBell) {
@@ -782,6 +1051,10 @@
             // Update mobile user controls
             document.getElementById('mobileUserInfo').style.display = 'block';
             
+            // Hide mobile login button when authenticated
+            const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+            if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
+            
             // Show mobile notification button
             const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
             if (mobileNotificationBtn) {
@@ -796,6 +1069,14 @@
             // Start badge polling
             startNotificationPolling();
           } else {
+            // Show login button when not authenticated
+            const desktopLoginBtn = document.getElementById('desktopLoginBtn');
+            if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
+            
+            // Show mobile login button when not authenticated
+            const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+            if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
+            
             // Hide mobile user controls when not logged in
             document.getElementById('mobileUserInfo').style.display = 'none';
           }

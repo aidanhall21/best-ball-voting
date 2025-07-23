@@ -749,6 +749,10 @@ app.post("/versus", verifyCaptcha, (req, res) => {
       teamMetaCache.delete(winnerId);
       teamMetaCache.delete(loserId);
       
+      // Invalidate recent votes cache since new vote was added
+      widgetCache.delete('recent-votes');
+      widgetCache.delete('recent-votes-count');
+      
       // Create detailed notifications for team owners (if voter is logged in and different from team owners)
       if (voterId) {
         // Get comprehensive team and voter information
@@ -2507,9 +2511,17 @@ app.listen(PORT, () => {
 // === NEW: Top 10 Drafters Widget Endpoint ===
 app.get('/api/widgets/top-drafters', async (req, res) => {
   const tournament = req.query.tournament || null;
-  const key = sanitizeKey(tournament);
+  const cacheKey = `top-drafters-${tournament || 'all'}`;
+  
+  // Check widget cache first
+  const cached = getCachedWidget(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json(cached);
+  }
 
   try {
+    const key = sanitizeKey(tournament);
     let meta = userLeaderboardCacheMeta.get(key);
     if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
       await buildUserLeaderboardCache(tournament);
@@ -2532,6 +2544,11 @@ app.get('/api/widgets/top-drafters', async (req, res) => {
         win_pct: u.win_pct
       }));
 
+    // Cache the result
+    setCachedWidget(cacheKey, top10);
+    
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes
     res.json(top10);
   } catch (e) {
     console.error('Error building top drafters widget:', e);
@@ -2541,6 +2558,15 @@ app.get('/api/widgets/top-drafters', async (req, res) => {
 
 // === NEW: Top 10 Teams Widget Endpoint ===
 app.get('/api/widgets/top-teams', (req, res) => {
+  const cacheKey = 'top-teams';
+  
+  // Check widget cache first
+  const cached = getCachedWidget(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json(cached);
+  }
+
   const sql = `
     WITH team_stats AS (
       SELECT
@@ -2577,34 +2603,50 @@ app.get('/api/widgets/top-teams', (req, res) => {
       console.error('Error fetching top teams:', err);
       return res.status(500).json({ error: 'Database error' });
     }
+    
+    // Cache the result
+    setCachedWidget(cacheKey, rows);
+    
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes
     res.json(rows);
   });
 });
 
 // === NEW: Recent Votes Widget Endpoint ===
 app.get('/api/widgets/recent-votes', (req, res) => {
+  const cacheKey = 'recent-votes';
+  
+  // Check widget cache first (shorter cache for recent votes)
+  const cached = getCachedWidget(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json(cached);
+  }
+
+  // Optimized query with better indexing and reduced complexity
   const sql = `
     SELECT 
       vm.id,
       vm.winner_id,
       vm.loser_id,
       vm.created_at,
+      vm.voter_id,
       tw.username as winner_username,
       tw.tournament as winner_tournament,
       tl.username as loser_username,
       tl.tournament as loser_tournament,
-      CASE 
-        WHEN vm.voter_id IS NULL THEN 'Anonymous'
-        ELSE COALESCE(
-          NULLIF(TRIM(u.display_name), ''),
-          (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
-          'Anonymous'
-        )
-      END as voter_name
+      u.display_name as voter_display_name,
+      COALESCE(
+        u.display_name,
+        (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+        'Anonymous'
+      ) as voter_name
     FROM versus_matches vm
     LEFT JOIN teams tw ON vm.winner_id = tw.id
     LEFT JOIN teams tl ON vm.loser_id = tl.id
     LEFT JOIN users u ON vm.voter_id = u.id
+    WHERE vm.created_at >= datetime('now', '-7 days')  -- Only look at recent votes
     ORDER BY vm.created_at DESC
     LIMIT 10
   `;
@@ -2615,13 +2657,113 @@ app.get('/api/widgets/recent-votes', (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
     
-    // Format the timestamps for display
+    // Format the data efficiently
     const formattedRows = rows.map(row => ({
-      ...row,
+      id: row.id,
+      winner_id: row.winner_id,
+      loser_id: row.loser_id,
+      created_at: row.created_at,
+      winner_username: row.winner_username || 'Anonymous',
+      winner_tournament: row.winner_tournament,
+      loser_username: row.loser_username || 'Anonymous',
+      loser_tournament: row.loser_tournament,
+      voter_name: row.voter_name,
       time_ago: getTimeAgo(new Date(row.created_at + ' UTC'))
     }));
     
+    // Cache for 30 seconds (shorter cache for recent votes)
+    setCachedWidget(cacheKey, formattedRows);
+    
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=30'); // 30 seconds
     res.json(formattedRows);
+  });
+});
+
+// === NEW: Lightweight Recent Votes Count Endpoint ===
+app.get('/api/widgets/recent-votes-count', (req, res) => {
+  const cacheKey = 'recent-votes-count';
+  
+  // Check cache first
+  const cached = getCachedWidget(cacheKey);
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json(cached);
+  }
+
+  // Very lightweight query - just count recent votes
+  const sql = `
+    SELECT COUNT(*) as count
+    FROM versus_matches 
+    WHERE created_at >= datetime('now', '-7 days')
+  `;
+
+  db.get(sql, [], (err, row) => {
+    if (err) {
+      console.error('Error fetching recent votes count:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    const result = { count: row ? row.count : 0 };
+    
+    // Cache for 15 seconds
+    setCachedWidget(cacheKey, result);
+    
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=15'); // 15 seconds
+    res.json(result);
+  });
+});
+
+// === NEW: Performance Monitoring for Recent Votes ===
+app.get('/api/widgets/recent-votes-performance', (req, res) => {
+  const startTime = Date.now();
+  
+  // Test the recent votes query performance
+  const sql = `
+    SELECT 
+      vm.id,
+      vm.winner_id,
+      vm.loser_id,
+      vm.created_at,
+      vm.voter_id,
+      tw.username as winner_username,
+      tw.tournament as winner_tournament,
+      tl.username as loser_username,
+      tl.tournament as loser_tournament,
+      COALESCE(
+        u.display_name,
+        (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
+        'Anonymous'
+      ) as voter_name
+    FROM versus_matches vm
+    LEFT JOIN teams tw ON vm.winner_id = tw.id
+    LEFT JOIN teams tl ON vm.loser_id = tl.id
+    LEFT JOIN users u ON vm.voter_id = u.id
+    WHERE vm.created_at >= datetime('now', '-7 days')
+    ORDER BY vm.created_at DESC
+    LIMIT 10
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    if (err) {
+      console.error('Performance test failed:', err);
+      return res.status(500).json({ 
+        error: 'Database error',
+        duration: duration,
+        cache_hit: false
+      });
+    }
+    
+    res.json({
+      duration: duration,
+      row_count: rows.length,
+      cache_hit: false,
+      timestamp: new Date().toISOString()
+    });
   });
 });
 
@@ -2639,3 +2781,59 @@ function getTimeAgo(date) {
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${diffDays}d ago`;
 }
+
+// === NEW: Widget Cache for Homepage Performance ===
+const WIDGET_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const RECENT_VOTES_CACHE_TTL = 30 * 1000; // 30 seconds for recent votes
+const widgetCache = new Map();
+
+function getCachedWidget(key) {
+  const cached = widgetCache.get(key);
+  const ttl = key === 'recent-votes' ? RECENT_VOTES_CACHE_TTL : WIDGET_CACHE_TTL;
+  if (cached && (Date.now() - cached.timestamp) < ttl) {
+    return cached.data;
+  }
+  return null;
+}
+
+function setCachedWidget(key, data) {
+  widgetCache.set(key, {
+    data,
+    timestamp: Date.now()
+  });
+}
+
+// Clean up expired cache entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of widgetCache.entries()) {
+    const ttl = key === 'recent-votes' ? RECENT_VOTES_CACHE_TTL : WIDGET_CACHE_TTL;
+    if (now - value.timestamp > ttl) {
+      widgetCache.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
+
+// === NEW: Database Indexes for Performance ===
+function createPerformanceIndexes() {
+  // Create indexes for recent votes widget
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_created_at ON versus_matches(created_at DESC)`, (err) => {
+    if (err) console.error('Error creating versus_matches created_at index:', err);
+  });
+  
+  db.run(`CREATE INDEX IF NOT EXISTS idx_teams_user_id ON teams(user_id)`, (err) => {
+    if (err) console.error('Error creating teams user_id index:', err);
+  });
+  
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_winner_loser ON versus_matches(winner_id, loser_id)`, (err) => {
+    if (err) console.error('Error creating versus_matches winner_loser index:', err);
+  });
+  
+  // Composite index for recent votes query
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_recent ON versus_matches(created_at DESC, winner_id, loser_id, voter_id)`, (err) => {
+    if (err) console.error('Error creating versus_matches recent index:', err);
+  });
+}
+
+// Create indexes on startup
+createPerformanceIndexes();

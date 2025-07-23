@@ -523,15 +523,31 @@
           userLabel.textContent=name;
         }
         
+        // Hide login button when authenticated
+        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
+        if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
+        
         // Setup mobile user controls
         const mobileUserInfo=document.getElementById('mobileUserInfo');
         if(mobileUserInfo) mobileUserInfo.style.display='block';
+        
+        // Hide mobile login button when authenticated
+        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+        if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
         
         const mobileNotificationBtn=document.getElementById('mobileNotificationBtn');
         if(mobileNotificationBtn) {
           mobileNotificationBtn.style.display='block';
           // Mobile notification handler is set up independently
         }
+      } else {
+        // Show login button when not authenticated
+        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
+        if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
+        
+        // Show mobile login button when not authenticated
+        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+        if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
       }
     }catch(e){console.error('quickAuth failed',e);}
   }

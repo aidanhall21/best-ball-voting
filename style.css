@@ -1,4 +1,4 @@
-body {
+  body {
     margin: 0;
     font-family: 'Söhne', 'Inter', sans-serif;
     background: #0d1117;
@@ -9,7 +9,13 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-}
+    /* Prevent mobile rendering issues */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Ensure proper rendering on mobile */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
 
   /* Ensure all buttons use Söhne font */
   button {
@@ -19,11 +25,21 @@ body {
   /* Initially hide main content until auth check completes */
   body:not(.content-visible) {
     opacity: 0;
+    /* Prevent layout shift during loading */
+    visibility: hidden;
   }
 
   body.content-visible {
     opacity: 1;
-    transition: opacity 0.2s ease;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+  }
+  
+  /* Ensure content is visible even if auth check fails */
+  body.content-visible,
+  body:not(.content-visible) .hero-section {
+    opacity: 1;
+    visibility: visible;
   }
 
   /* Main content should grow to push footer down */
@@ -273,6 +289,12 @@ body {
 
   .gear-btn:hover {
     background: #f0f6fc;
+  }
+
+  .gear-btn.active,
+  .gear-btn.active:hover {
+    background: #238636;
+    color: #ffffff;
   }
 
   /* Align the bell icon button with nav buttons */
@@ -3766,6 +3788,35 @@ body {
         "recent-votes"
         "draft-or-pass"
         "upload-promo";
+      /* Prevent layout issues on mobile */
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    
+    /* Ensure widgets don't overflow on mobile */
+    .widget {
+      min-height: auto;
+      max-width: 100%;
+      overflow: hidden;
+      word-wrap: break-word;
+    }
+    
+    /* Prevent text overflow in widget rows */
+    .drafter-row,
+    .team-row,
+    .vote-row {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .drafter-name,
+    .team-name,
+    .vote-result {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     
     /* Make widgets and widget rows fully responsive on mobile */
@@ -3826,6 +3877,39 @@ body {
   /* Top Drafters Widget - Reserve space to prevent layout shift */
   .top-drafters {
     min-height: 50px; /* Reserve space for 10 drafter rows + title */
+  }
+
+  /* Skeleton loader styles */
+  .skeleton-loader {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .skeleton-row {
+    height: 40px;
+    background: linear-gradient(90deg, #21262d 25%, #30363d 50%, #21262d 75%);
+    background-size: 200% 100%;
+    border-radius: 6px;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+  
+  .skeleton-team-card {
+    height: 120px;
+    background: linear-gradient(90deg, #21262d 25%, #30363d 50%, #21262d 75%);
+    background-size: 200% 100%;
+    border-radius: 8px;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    margin-bottom: 16px;
+  }
+  
+  @keyframes skeleton-pulse {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
   }
 
   /* Loading and error states */
