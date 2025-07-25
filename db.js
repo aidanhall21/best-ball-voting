@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-23-1359.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-23-1359.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-24-1427.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-24-1427.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -69,6 +69,7 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_team ON ratings_history(team_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_tourn ON ratings_history(tournament)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_time ON ratings_history(computed_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_history_team_time ON ratings_history(team_id, computed_at DESC)`);
 
   // Notifications table for when users receive notifications about their teams
   db.run(`
@@ -89,12 +90,62 @@ db.serialize(() => {
     )
   `);
 
+  // Matchup settings table for admin configuration
+  db.run(`
+    CREATE TABLE IF NOT EXISTS matchup_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      tournament TEXT,
+      team1_stack TEXT,
+      team2_stack TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Add new player columns if they don't exist
+  db.run(`ALTER TABLE matchup_settings ADD COLUMN team1_player TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding team1_player column:', err);
+    }
+  });
+
+  db.run(`ALTER TABLE matchup_settings ADD COLUMN team2_player TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding team2_player column:', err);
+    }
+  });
+
+  // Add new strategy type columns if they don't exist
+  db.run(`ALTER TABLE matchup_settings ADD COLUMN team1_strategy TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding team1_strategy column:', err);
+    }
+  });
+
+  db.run(`ALTER TABLE matchup_settings ADD COLUMN team2_strategy TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding team2_strategy column:', err);
+    }
+  });
+
   // ---- Indexes for performance ----
   db.run(`CREATE INDEX IF NOT EXISTS idx_votes_team_type ON votes(team_id, vote_type)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id)`);
+  
+  // Versus matches indexes for widget performance
   db.run(`CREATE INDEX IF NOT EXISTS idx_versus_winner ON versus_matches(winner_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_versus_loser ON versus_matches(loser_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_created_at ON versus_matches(created_at DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_voter ON versus_matches(voter_id)`);
+  
+  // Teams indexes for faster lookups
+  db.run(`CREATE INDEX IF NOT EXISTS idx_teams_user_id ON teams(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_teams_username ON teams(username)`);
+  
+  // User indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_twitter ON users(twitter_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_display_name ON users(display_name)`);
+  
+  // Notification indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)`);
@@ -178,7 +229,12 @@ db.all('PRAGMA table_info(teams)', (err, cols) => {
     weekly_winner: 'TEXT',
     weekly_winner_entry_fee: 'TEXT',
     weekly_winner_total_prizes: 'TEXT',
-    weekly_winner_size: 'INTEGER'
+    weekly_winner_size: 'INTEGER',
+    elite_te: 'INTEGER DEFAULT 0',
+    zero_rb: 'INTEGER DEFAULT 0', 
+    elite_qb: 'INTEGER DEFAULT 0',
+    high_t: 'INTEGER DEFAULT 0',
+    hero_rb: 'INTEGER DEFAULT 0'
   };
   Object.entries(extraTeamCols).forEach(([col, type]) => {
     if (!cols.some(c => c.name === col)) {

@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Voting History - Best Ball Voting</title>
   <link rel="stylesheet" href="style.css">
+  <script defer src="header.js"></script>
+  <script defer src="script.js"></script>
   <link rel="icon" type="image/x-icon" href="favicon_io/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="favicon_io/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon_io/favicon-32x32.png">
@@ -401,76 +403,7 @@
   </style>
 </head>
 <body>
-  <!-- Main Header Navigation -->
-  <header class="main-header">
-    <div class="header-content">
-      <!-- Logo -->
-      <div class="logo">
-        <a href="/" class="logo-link">Draft or Pass</a>
-      </div>
 
-      <!-- Desktop Navigation -->
-      <nav class="desktop-nav">
-        <a href="/upload" class="nav-link">Upload</a>
-        <a href="/draftorpass" class="nav-link">Draft or Pass</a>
-        <a href="/leaderboard" class="nav-link">Leaderboard</a>
-      </nav>
-
-      <!-- User Controls -->
-      <div class="user-controls">
-        <!-- Notification bell -->
-        <button id="notificationBell" class="notification-btn" style="display:none;">
-          🔔
-          <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
-        </button>
-        <button id="userGear" class="gear-btn" style="display:none;">Profile</button>
-        <div id="userMenu" class="user-menu" style="display:none;">
-          <p id="userLabel"></p>
-          <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
-          <button id="logoutBtn" class="logout-small">Logout</button>
-        </div>
-
-        <!-- Notification dropdown -->
-        <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
-          <div class="notification-header">
-            <h3>Notifications</h3>
-            <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
-          </div>
-          <div id="notificationList" class="notification-list">
-            <div class="loading">Loading notifications...</div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Mobile Menu Toggle -->
-      <button class="mobile-menu-toggle" id="mobileMenuToggle">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
-    </div>
-
-    <!-- Mobile Navigation -->
-    <nav class="mobile-nav" id="mobileNav">
-      <a href="/upload" class="mobile-nav-link">Upload</a>
-      <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
-      <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
-      
-      <!-- Mobile user section -->
-      <div class="mobile-user-section" id="mobileUserSection">
-        <div id="mobileUserInfo" style="display:none;">
-          <!-- Mobile notifications -->
-          <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
-            🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
-          </button>
-          <a href="/profile.html" class="mobile-profile-btn">Profile</a>
-        </div>
-        <div id="mobileLoginPrompt">
-          <p>Sign in to upload teams</p>
-        </div>
-      </div>
-    </nav>
-  </header>
 <main class="main-content">
   <!-- Page Title Section -->
   <div class="page-header">
@@ -501,13 +434,7 @@
     </div>
   </div>
 
-  <!-- Modal for viewing team details -->
-  <div id="modalOverlay" class="modal-overlay" style="display:none;">
-    <div class="modal-content">
-      <div class="modal-close"><button id="modalCloseBtn">✖</button></div>
-      <div id="modalBody"></div>
-    </div>
-  </div>
+
 
   <script>
     // Get team ID from URL parameters
@@ -520,7 +447,7 @@
     }
 
     // Global variables for team modal functionality
-    let currentUserId = null;
+    var currentUserId = window.currentUserId || null;
 
     // Mobile notification functions and variables
     let lastNotificationCount = 0;
@@ -569,33 +496,25 @@
 
     // Header navigation functionality
     function setupHeaderNavigation() {
-      console.log('Setting up header navigation');
       
       // Mobile menu toggle
       const mobileMenuToggle = document.getElementById('mobileMenuToggle');
       const mobileNav = document.getElementById('mobileNav');
-      
-      console.log('Mobile menu toggle element:', mobileMenuToggle);
-      console.log('Mobile nav element:', mobileNav);
+
       
       if (mobileMenuToggle && mobileNav) {
-        console.log('Setting up mobile menu toggle handler');
         mobileMenuToggle.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          console.log('Mobile menu toggle clicked');
           
           const isCurrentlyActive = mobileNav.classList.contains('active');
-          console.log('Menu currently active:', isCurrentlyActive);
           
           if (isCurrentlyActive) {
             mobileNav.classList.remove('active');
             mobileMenuToggle.classList.remove('active');
-            console.log('Menu closed');
           } else {
             mobileNav.classList.add('active');
             mobileMenuToggle.classList.add('active');
-            console.log('Menu opened');
           }
         });
         
@@ -635,6 +554,13 @@
           }
         });
       }
+    }
+
+    // Run setupHeaderNavigation immediately if header already injected, else wait for headerLoaded
+    if (document.querySelector('.main-header')) {
+      setupHeaderNavigation();
+    } else {
+      document.addEventListener('headerLoaded', setupHeaderNavigation);
     }
 
     // Setup header navigation and controls
@@ -801,88 +727,64 @@
       }
     }
 
-    // Check auth status first, then load voting history
-    fetch('/me')
-      .then(res => {
-        console.log('Auth response status:', res.status);
-        if (!res.ok) {
-          throw new Error(`Auth request failed with status ${res.status}`);
-        }
-        return res.json();
-      })
-      .then(data => {
-        console.log('Auth response data:', data);
-        const loggedIn = !!data.user;
-        console.log('User logged in:', loggedIn);
+    // Listen for auth state resolution from header.js
+    document.addEventListener('authStateResolved', (event) => {
+      const { isLoggedIn, user } = event.detail;
+      
+      // Setup header navigation regardless of auth status (mobile menu should always work)
+      document.addEventListener('headerLoaded', setupHeaderNavigation);
+      
+      if (isLoggedIn) {
+        currentUserId = user.id;
+        const displayName = user.display_name || user.email || 'User';
         
-        // Setup header navigation regardless of auth status (mobile menu should always work)
-        setupHeaderNavigation();
-        
-        if (loggedIn) {
-          currentUserId = data.user.id;
-          const displayName = data.user.display_name || data.user.email || 'User';
-          console.log('Setting up authenticated user interface for:', displayName);
-          
+        // Wait for header to load before accessing header elements
+        document.addEventListener('headerLoaded', () => {
           // Update desktop user controls
-          document.getElementById('userLabel').textContent = displayName;
-          document.getElementById('userGear').style.display = 'inline-block';
-          
-          // Show notification bell
-          const notificationBell = document.getElementById('notificationBell');
-          if (notificationBell) {
-            notificationBell.style.display = 'inline-block';
-          }
-          
-          // Update mobile user controls
-          const mobileUserInfo = document.getElementById('mobileUserInfo');
-          const mobileLoginPrompt = document.getElementById('mobileLoginPrompt');
-          if (mobileUserInfo) {
-            mobileUserInfo.style.display = 'block';
-          }
-          if (mobileLoginPrompt) {
-            mobileLoginPrompt.style.display = 'none';
-          }
-          
-          // Show mobile notification button
-          const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
-          if (mobileNotificationBtn) {
-            mobileNotificationBtn.style.display = 'block';
-          }
-          
-          // Show main content
-          document.body.classList.add('content-visible');
-          console.log('Content should now be visible');
+          const userLabel = document.getElementById('userLabel');
+          if (userLabel) userLabel.textContent = displayName;
           
           // Setup authenticated header controls
           setupHeaderControls();
           
           // Setup mobile notifications
           setupMobileNotifications();
-          
-          // Start notification polling
-          updateNotificationCount();
-          startNotificationPolling();
-          
-          // After auth check, load voting history
-          loadVotingHistory();
-        } else {
-          console.log('User not logged in, showing login required');
-          // Still show content-visible for the login message to appear
-          document.body.classList.add('content-visible');
-          showLoginRequired();
-        }
-      })
-      .catch(err => {
-        console.error('Auth check failed with error:', err);
+        });
+        
+        
+        // Start notification polling
+        updateNotificationCount();
+        startNotificationPolling();
+        
+        // After auth check, load voting history
+        loadVotingHistory();
+      } else {
         showLoginRequired();
-      });
+      }
+    });
 
-    // Debug: Check if mobile menu elements exist on page load
-    console.log('=== Mobile Menu Debug Info ===');
-    console.log('Mobile menu toggle element:', document.getElementById('mobileMenuToggle'));
-    console.log('Mobile nav element:', document.getElementById('mobileNav'));
-    console.log('Screen width:', window.innerWidth);
-    console.log('User agent:', navigator.userAgent);
+    // Fallback: if auth state was already resolved before this listener was added
+    if (document.body.classList.contains('content-visible')) {
+      // Check if user is authenticated based on body class
+      if (document.body.classList.contains('authenticated')) {
+        // User is logged in, but we need to wait for the script to set up currentUserId
+        setTimeout(() => {
+          if (typeof currentUserId !== 'undefined' && currentUserId) {
+            loadVotingHistory();
+          } else {
+            // Try to get user info from header elements
+            const userLabel = document.getElementById('userLabel');
+            if (userLabel && userLabel.textContent) {
+              loadVotingHistory();
+            } else {
+              showLoginRequired();
+            }
+          }
+        }, 100);
+      } else {
+        showLoginRequired();
+      }
+    }
     
 
 
@@ -931,6 +833,161 @@
     
     // Call logout setup after page loads
     setupLogoutHandlers();
+
+    // === Simple center-screen popup used by View buttons ===
+    function showSimplePopup(content = "This is a popup") {
+      // Remove any existing popup first
+      const existing = document.querySelector('.simple-popup-overlay');
+      if (existing) existing.remove();
+    
+      // Create overlay that always covers the viewport regardless of scrolling
+      const overlay = document.createElement('div');
+      overlay.className = 'simple-popup-overlay';
+      Object.assign(overlay.style, {
+        position: 'fixed',      // lock to viewport
+        inset: '0',             // shorthand for top/right/bottom/left 0
+        background: 'rgba(0,0,0,0.6)',
+        display: 'grid',        // grid makes centering trivial
+        placeItems: 'center',   // center both horizontally & vertically
+        zIndex: 9999            // very high to sit above other fixed elements
+      });
+    
+      // Create popup box
+      const box = document.createElement('div');
+      Object.assign(box.style, {
+        background: '#0d1117',
+        color: '#f0f6fc',
+        padding: '24px 32px',
+        borderRadius: '8px',
+        fontSize: '18px',
+        maxWidth: window.innerWidth <= 768 ? '98vw' : '95vw',
+        width: window.innerWidth <= 768 ? 'auto' : '600px',
+        textAlign: 'center',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+        fontFamily: "'Söhne', 'Inter', sans-serif"
+      });
+    
+      // Inject content
+      if (content instanceof Node) {
+        // Add CSS to make player-bubble fill full width in popup
+        const style = document.createElement('style');
+        style.textContent = `
+          .simple-popup-overlay .player-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            align-items: center;
+          }
+          .simple-popup-overlay .player-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 0 16px;
+          }
+          .simple-popup-overlay .player-bubble {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 48px;
+          }
+          @media (max-width: 768px) {
+            .simple-popup-overlay .player-row {
+              padding: 0 12px;
+            }
+            .simple-popup-overlay .player-bubble {
+              width: 100% !important;
+              margin: 0 6px;
+            }
+          }
+        `;
+        document.head.appendChild(style);
+        box.appendChild(content);
+      } else if (content) {
+        box.textContent = String(content);
+      }
+    
+      // Prevent click propagation inside the box
+      box.addEventListener('click', (e) => e.stopPropagation());
+    
+      // Close popup when overlay area outside box is clicked
+      overlay.addEventListener('click', () => overlay.remove());
+    
+      overlay.appendChild(box);
+      // Append to <html> instead of <body> to avoid transforms on body affecting fixed positioning
+      (document.documentElement || document.body).appendChild(overlay);
+    }
+
+    // === Team card builder ===
+    function buildTeamCard(teamId, players) {
+      const card = document.createElement("div");
+      card.className = "team-card";
+    
+      // Get tournament name for this team to handle special position color rules
+      const tournamentName = teamData?.tournament || "";
+    
+      // --- Roster construction counts at the top ---
+      const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+      players.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+      const rosterConstruction = document.createElement("div");
+      rosterConstruction.className = "roster-construction";
+      rosterConstruction.innerHTML = `<div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>`;
+      card.appendChild(rosterConstruction);
+    
+      // --- Player list (vertical) ---
+      const list = document.createElement("div");
+      list.className = "player-list";
+    
+      // Sort players first by position (QB, RB, WR, TE) then by pick number
+      const positionOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
+      const playersSorted = [...players].sort((a, b) => {
+        if (positionOrder[a.position] !== positionOrder[b.position]) {
+          return positionOrder[a.position] - positionOrder[b.position];
+        }
+        return (a.pick || 0) - (b.pick || 0);
+      });
+    
+      ["QB", "RB", "WR", "TE"].forEach(pos => {
+        playersSorted.filter(p => p.position === pos).forEach(pl => {
+          const row = document.createElement("div");
+          row.className = "player-row";
+    
+          const bubble = document.createElement("div");
+          bubble.className = "player-bubble";
+          const stackStar = pl.stack ? 
+            `<span class="stack-star ${pl.stack}">★</span>` : '';
+          // Build bubble content with pick number left-aligned and player info centered
+          const pickHTML = (pl.pick || pl.pick === 0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
+          const infoHTML = `<span class="player-info">${pl.name}${pl.team ? ` - ${pl.team}` : ''}</span>`;
+          const starHTML = stackStar; // star after info for positioning via CSS
+          bubble.innerHTML = `${pickHTML}${infoHTML}${starHTML}`;
+          bubble.style.border = `2px solid ${getBorderColor(pl.position, tournamentName)}`;
+    
+          row.appendChild(bubble);
+          list.appendChild(row);
+        });
+      });
+    
+      card.appendChild(list);
+      return card;
+    }
+
+    // === Helper for border colors ===
+    function getBorderColor(position, tournamentName = "") {
+      // Special case: In "Rookies and Sophomores" tournament, treat TE same as WR (yellow)
+      if (tournamentName === "Rookies and Sophomores" && position === "TE") {
+        return "#facc15"; // WR color (yellow)
+      }
+      
+      switch (position) {
+        case "QB": return "#a855f7";
+        case "RB": return "#22c55e";
+        case "WR": return "#facc15";
+        case "TE": return "#3b82f6";
+        default: return "#999";
+      }
+    }
 
     // Helper to determine rating tier and return appropriate CSS class
     function getRatingTierClass(rating) {
@@ -1013,17 +1070,53 @@
         document.getElementById('votingHistoryTable').innerHTML = tableHtml;
 
         // Add event listeners for view opponent buttons
-        document.querySelectorAll('.view-opponent-btn').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            const opponentId = e.target.getAttribute('data-id');
-            showTeamModal(opponentId);
+        const opponentBtns = document.querySelectorAll('.view-opponent-btn');
+        
+        opponentBtns.forEach((btn, index) => {
+          btn.addEventListener('click', async (e) => {
+
+            
+            if (typeof showSimplePopup === 'function') {
+              showSimplePopup('Loading...');
+            } else {
+              console.error('showSimplePopup not available!');
+            }
+            
+            const opponentId = btn.getAttribute('data-id');
+            if (!opponentId) return;
+            
+            try {
+              const res = await fetch(`/team/${opponentId}`);
+              if (!res.ok) throw new Error('Failed');
+              const players = await res.json();
+              const card = buildTeamCard(opponentId, players);
+              const list = card.querySelector('.player-list');
+              if (list) showSimplePopup(list.cloneNode(true));
+            } catch(err){ console.error('Popup error', err); }
           });
         });
 
-        // Add event listener for the main team view button
-        document.getElementById('viewTeamBtn').addEventListener('click', () => {
-          showTeamModal(teamId);
-        });
+        // Add event listener for the main team view button (current team)
+        const vtBtn = document.getElementById('viewTeamBtn');
+        if (vtBtn) {
+          vtBtn.addEventListener('click', async () => {
+            
+            if (typeof showSimplePopup === 'function') {
+              showSimplePopup('Loading...');
+            } else {
+              console.error('showSimplePopup not available!');
+            }
+            
+            try {
+              const res = await fetch(`/team/${teamId}`);
+              if (!res.ok) throw new Error('Failed');
+              const players = await res.json();
+              const card = buildTeamCard(teamId, players);
+              const list = card.querySelector('.player-list');
+              if (list) showSimplePopup(list.cloneNode(true));
+            } catch(err){ console.error('Popup error', err); }
+          });
+        }
 
       } catch (error) {
         console.error('Failed to load voting history:', error);
@@ -1032,78 +1125,7 @@
       }
     }
 
-    // EXACT copy of team modal functions from profile.html
-    function getBorderColor(position, tournamentName = "") {
-      // Special case: In "Rookies and Sophomores" tournament, treat TE same as WR (yellow)
-      if (tournamentName === "Rookies and Sophomores" && position === "TE") {
-        return "#facc15"; // WR color (yellow)
-      }
-      
-      switch (position) {
-        case 'QB': return '#a855f7';
-        case 'RB': return '#22c55e';
-        case 'WR': return '#facc15';
-        case 'TE': return '#3b82f6';
-        default: return '#999';
-      }
-    }
 
-    function buildTeamCard(teamId, players) {
-      const card = document.createElement('div');
-      card.className = 'team-card';
-
-      const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
-      players.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
-      const roster = document.createElement('div');
-      roster.className = 'roster-construction';
-      roster.innerHTML = `<div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>`;
-      card.appendChild(roster);
-
-      const list = document.createElement('div');
-      list.className = 'player-list';
-      const positionOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
-      const sortedPlayers = [...players].sort((a,b)=>{
-        if (positionOrder[a.position] !== positionOrder[b.position]) return positionOrder[a.position]-positionOrder[b.position];
-        return (a.pick||0)-(b.pick||0);
-      });
-
-      ['QB','RB','WR','TE'].forEach(pos=>{
-        sortedPlayers.filter(p=>p.position===pos).forEach(pl=>{
-          const row=document.createElement('div');
-          row.className='player-row';
-          const bubble=document.createElement('div');
-          bubble.className='player-bubble';
-          const stackStar = pl.stack ? `<span class="stack-star ${pl.stack}">★</span>` : '';
-          const pickHTML = (pl.pick||pl.pick===0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
-          const infoHTML = `<span class="player-info">${pl.name}${pl.team?` - ${pl.team}`:''}</span>`;
-          bubble.innerHTML = `${pickHTML}${infoHTML}${stackStar}`;
-          bubble.style.border=`2px solid ${getBorderColor(pl.position, teamData?.tournament)}`;
-          row.appendChild(bubble);
-          list.appendChild(row);
-        });
-      });
-      card.appendChild(list);
-      return card;
-    }
-
-    function showTeamModal(teamId) {
-      fetch(`/team/${teamId}`)
-        .then(res=>res.json())
-        .then(players=>{
-          const body = document.getElementById('modalBody');
-          body.innerHTML = '';
-          body.appendChild(buildTeamCard(teamId, players));
-          document.getElementById('modalOverlay').style.display = 'flex';
-        });
-    }
-
-    // Close modal buttons
-    document.addEventListener('click', (e) => {
-      if (e.target.id === 'modalCloseBtn' || e.target.id === 'modalOverlay') {
-        document.getElementById('modalOverlay').style.display = 'none';
-        document.getElementById('modalBody').innerHTML = '';
-      }
-    });
 
     // ---- Mobile Notification Functions ----
     
@@ -1123,6 +1145,16 @@
       
       // Start notification polling
       startNotificationPolling();
+    }
+
+    // Ensure mobile notifications handler is attached whether header arrived early or later
+    if (document.querySelector('.main-header')) {
+      setupMobileNotifications();
+    } else {
+
+      document.addEventListener('headerLoaded', () => {
+        setupMobileNotifications();
+      }, { once: true });
     }
 
     function showMobileNotifications() {

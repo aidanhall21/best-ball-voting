@@ -1,0 +1,57 @@
+<header class="main-header">
+  <div class="header-content">
+    <div class="logo">
+      <a href="/" class="logo-link">Draft or Pass</a>
+    </div>
+    <!-- Desktop Navigation -->
+    <nav class="desktop-nav">
+      <a href="/upload" class="nav-link">Upload</a>
+      <a href="/draftorpass" class="nav-link">Draft or Pass</a>
+      <a href="/leaderboard" class="nav-link">Leaderboard</a>
+      <a href="/upload" id="desktopLoginBtn" class="nav-link auth-visible">Login</a>
+    </nav>
+    <!-- User Controls -->
+    <div class="user-controls">
+      <button id="notificationBell" class="notification-btn auth-hidden">
+        🔔
+        <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
+      </button>
+      <button id="userGear" class="gear-btn auth-hidden">Profile</button>
+      <div id="userMenu" class="user-menu" style="display:none;">
+        <p id="userLabel"></p>
+        <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
+        <button id="logoutBtn" class="logout-small">Logout</button>
+      </div>
+      <!-- Notification dropdown -->
+      <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
+        <div class="notification-header">
+          <h3>Notifications</h3>
+          <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
+        </div>
+        <div id="notificationList" class="notification-list">
+          <div class="loading">Loading notifications...</div>
+        </div>
+      </div>
+    </div>
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+
+  <!-- Mobile Navigation Menu -->
+  <div class="mobile-nav" id="mobileNav">
+    <a href="/upload" class="mobile-nav-link">Upload</a>
+    <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
+    <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
+    <div class="mobile-user-section" id="mobileUserSection">
+      <div id="mobileUserInfo" class="auth-hidden">
+        <button id="mobileNotificationBtn" class="mobile-notification-btn auth-hidden">
+          🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
+        </button>
+        <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
+      </div>
+      <a href="/upload" id="mobileLoginBtn" class="mobile-nav-link auth-visible">Login</a>
+    </div>
+  </div>
+</header> 

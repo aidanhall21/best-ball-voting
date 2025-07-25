@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node --max-old-space-size=3072 --optimize-for-size --gc-interval=100 index.js",
+    "dev": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "restack": "node scripts/recalc_stacks.js"
   },
@@ -11,22 +13,22 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
-    "connect-sqlite3": "^0.9.16",
+    "connect-sqlite3": "^0.9.13",
     "cookie-parser": "^1.4.6",
     "csurf": "^1.11.0",
     "dotenv": "^17.0.0",
-    "express": "^5.1.0",
-    "express-session": "^1.18.1",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
     "morgan": "^1.10.0",
-    "multer": "^2.0.1",
+    "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.7.0",
-    "nodemailer": "^7.0.4",
-    "papaparse": "^5.5.3",
-    "passport": "^0.7.0",
+    "nodemailer": "^6.9.7",
+    "papaparse": "^5.4.1",
+    "passport": "^0.6.0",
     "passport-local": "^1.0.0",
     "passport-twitter": "^1.0.4",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.6"
   }
 }

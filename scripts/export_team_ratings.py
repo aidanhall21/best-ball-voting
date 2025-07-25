@@ -41,7 +41,7 @@ SD_MULTIPLIER = 0       # unused
 # -------------------------------------------------------------
 # 0. Parse command-line arguments
 # -------------------------------------------------------------
-DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-18-0852.db")
+DB_PATH = os.getenv("DB_PATH", "./teams-2025-07-24-1427.db")
 # OUTPUT_CSV = sys.argv[2] if len(sys.argv) > 2 else "team_ratings.csv"
 print(f"DB_PATH: {DB_PATH}")
 

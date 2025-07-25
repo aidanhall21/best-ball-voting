@@ -22,7 +22,7 @@
     font-family: inherit;
   }
 
-  /* Initially hide main content until auth check completes */
+  /* Initially hide main content and auth elements until auth check completes */
   body:not(.content-visible) {
     opacity: 0;
     /* Prevent layout shift during loading */
@@ -35,11 +35,54 @@
     transition: opacity 0.2s ease, visibility 0.2s ease;
   }
   
+
+  
   /* Ensure content is visible even if auth check fails */
   body.content-visible,
   body:not(.content-visible) .hero-section {
     opacity: 1;
     visibility: visible;
+  }
+
+  /* Auth state classes for smooth transitions */
+  .auth-hidden {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-2px);
+    transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+  }
+
+  .auth-visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+  }
+
+  /* When authenticated, show auth-hidden elements and completely hide auth-visible */
+  body.authenticated .auth-hidden {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  body.authenticated .auth-visible {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-2px);
+    /* Remove from layout flow to prevent gaps */
+    display: none !important;
+  }
+
+  /* Only add margin to auth-hidden elements (bell/profile) since they come after nav items */
+  .desktop-nav .auth-hidden {
+    margin-left: 1rem;
+  }
+
+  /* For mobile navigation, ensure vertical stacking doesn't shift */
+  .mobile-nav .auth-hidden,
+  .mobile-nav .auth-visible {
+    display: block !important;
   }
 
   /* Main content should grow to push footer down */
@@ -1077,50 +1120,7 @@
     background: #238636;
   }
   
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0,0,0,0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-  
-  .modal-content {
-    background: #0d1117;
-    padding: 20px;
-    border-radius: 8px;
-    position: relative;
-    width: 70%;
-    max-width: 360px;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-  
-  .modal-close {
-    text-align: right;
-    margin-bottom: 10px;
-  }
-  
-  .modal-close button {
-    background: transparent;
-    border: none;
-    color: #f0f6fc;
-    font-size: 20px;
-    cursor: pointer;
-  }
-  
-  /* Ensure modal scrolls properly on mobile */
-  @media (max-width: 768px) {
-    .modal-content {
-      width: 95%;
-      padding: 15px;
-    }
-  }
+
   
   /* ---- Auth Bar ---- */
   .auth-bar {
@@ -2279,25 +2279,7 @@
     }
     
     /* Modal mobile adjustments */
-    .modal-content {
-      width: 95%;
-      padding: 15px;
-    }
-    
-    .modal-content .player-bubble {
-      min-width: unset;
-      width: 100%;
-      font-size: 12px;
-      padding: 6px 8px;
-    }
-    
-    .modal-content .player-info {
-      margin: 0 20px;
-    }
-    
-    .modal-content .pick-num {
-      min-width: 30px;
-    }
+
     
     /* Table responsive - allow horizontal scrolling */
     .leaderboard-table-container {
@@ -3546,54 +3528,7 @@
     padding: 40px;
   }
 
-  /* Modal Styles */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-  }
 
-  .modal-content {
-    background: #161b22;
-    border-radius: 12px;
-    padding: 20px;
-    max-width: 90%;
-    max-height: 90%;
-    overflow-y: auto;
-    position: relative;
-  }
-
-  .modal-close {
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    z-index: 1001;
-  }
-
-  .modal-close button {
-    background: #da3633;
-    color: white;
-    border: none;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .modal-close button:hover {
-    background: #b91c1c;
-  }
   
   /* Ensure mobile nav is always hidden on desktop */
   @media (min-width: 769px) {
@@ -3928,6 +3863,36 @@
     font-size: 20px;
     margin: 0 0 20px;
     color: #f0f6fc;
+  }
+  
+  /* Update indicator for real-time widgets */
+  .update-indicator {
+    font-size: 14px;
+    margin-left: 8px;
+    opacity: 0.7;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* Smooth transitions for widget content updates */
+  .widget-content {
+    transition: opacity 0.15s ease;
+  }
+  
+  /* Ensure recent votes container handles smooth updates */
+  #recentVotesContent {
+    min-height: 120px; /* Prevent layout shift during updates */
+  }
+  
+  .no-votes-message {
+    text-align: center;
+    padding: 20px;
+    color: #8b949e;
+    font-style: italic;
   }
   
   /* Top Drafters Widget */
@@ -4648,5 +4613,7 @@
     /* middle horizontal line */
     linear-gradient(to right, transparent 8px, #f0f6fc 8px, #f0f6fc 32px, transparent 32px) center/40px 3px no-repeat !important;
 }
+    
+
     
     

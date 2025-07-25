@@ -1,6 +1,62 @@
 (function(){
-  // Make page visible immediately so users don't stare at a blank screen
-  document.body.classList.add('content-visible');
+  // Listen for auth state resolution from header.js
+  document.addEventListener('authStateResolved', (event) => {
+    const { isLoggedIn, user } = event.detail;
+    // Auth state is already handled by header.js, content is already visible
+  });
+
+  // === Mobile Memory Management ===
+  let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  let voteCount = 0;
+  let lastCleanup = Date.now();
+  const MOBILE_CLEANUP_INTERVAL = 10; // Clean up every 10 votes on mobile
+  const MOBILE_MEMORY_CHECK_INTERVAL = 30000; // Check memory every 30s on mobile
+
+  // Mobile memory cleanup function
+  function mobileMemoryCleanup() {
+    if (!isMobile) return;
+    
+    try {
+      // Force garbage collection if available
+      if (window.gc) {
+        window.gc();
+      }
+      
+      // Clear any cached DOM references
+      const unusedElements = document.querySelectorAll('.team-card:not(.active)');
+      unusedElements.forEach(el => {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+      
+      // Clear vote queue if it's getting too large (mobile browsers struggle with large arrays)
+      if (typeof voteQueue !== 'undefined' && voteQueue.length > 5) {
+        console.warn('Vote queue getting large on mobile, clearing old entries');
+        voteQueue.splice(0, voteQueue.length - 2); // Keep only last 2 votes
+      }
+      
+      lastCleanup = Date.now();
+    } catch (e) {
+      console.error('Mobile cleanup failed:', e);
+    }
+  }
+
+  // Memory monitoring for mobile
+  if (isMobile) {
+    setInterval(() => {
+      // Check if we need cleanup
+      if (voteCount > 0 && voteCount % MOBILE_CLEANUP_INTERVAL === 0) {
+        mobileMemoryCleanup();
+      }
+      
+      // Emergency cleanup if page has been running too long
+      if (Date.now() - lastCleanup > 120000) { // 2 minutes
+        console.warn('Emergency mobile cleanup triggered');
+        mobileMemoryCleanup();
+      }
+    }, MOBILE_MEMORY_CHECK_INTERVAL);
+  }
 
   // Utility to load external JS and run callback when ready
   function loadScript(src, cb) {
@@ -20,11 +76,55 @@
     document.head.appendChild(s);
   }
 
+  // Override vote submission for mobile optimization
+  window.mobileVoteHandler = function(winnerId, loserId) {
+    voteCount++;
+    
+    // Mobile-specific: Clear old DOM elements more aggressively
+    if (isMobile && voteCount % 5 === 0) {
+      const container = document.getElementById('teamsContainer');
+      if (container) {
+        // Clear and rebuild container to prevent DOM bloat
+        const content = container.innerHTML;
+        container.innerHTML = '';
+        setTimeout(() => {
+          container.innerHTML = content;
+        }, 10);
+      }
+    }
+    
+    // Call original vote handler if available
+    if (typeof submitVote === 'function') {
+      return submitVote(winnerId, loserId);
+    }
+  };
+
   // (Timer fallback no longer needed because we revealed the page immediately)
 
   // Load the main shared script that contains all voting logic
   loadScript('script.js', () => {
     try {
+      // Mobile-specific optimizations
+      if (isMobile) {
+        // Reduce polling frequency on mobile to save battery/memory
+        const originalSetInterval = window.setInterval;
+        window.setInterval = function(callback, delay) {
+          // Increase intervals by 50% on mobile for battery/memory savings
+          const mobileDelay = Math.max(delay * 1.5, delay);
+          return originalSetInterval.call(this, callback, mobileDelay);
+        };
+        
+        // Override fetchTeams to reduce memory usage on mobile
+        const originalFetchTeams = window.fetchTeams;
+        if (originalFetchTeams) {
+          window.fetchTeams = function(force) {
+            // On mobile, force cleanup before fetching new teams
+            mobileMemoryCleanup();
+            return originalFetchTeams.call(this, force);
+          };
+        }
+      }
+
       // Check authentication status first
       if (typeof refreshAuth === 'function') {
         refreshAuth().then(() => {
@@ -75,39 +175,32 @@
     if (typeof updateNotificationCount === 'function') {
       // Run an immediate check so badge is fresh
       updateNotificationCount();
-      // Then poll every 30 seconds like other pages
+      // Then poll every 30 seconds like other pages (mobile gets longer intervals automatically)
       setInterval(updateNotificationCount, 30000);
     }
 
     // === Attach UI event handlers that normally run in script.js DOMContentLoaded ===
+    
+    const setupHeaderEventListeners = () => {
 
-    // 1) Notification bell toggle & dropdown
-    const notificationBell = document.getElementById('notificationBell');
-    const notificationDropdown = document.getElementById('notificationDropdown');
-    if (notificationBell && notificationDropdown) {
-      notificationBell.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isVisible = notificationDropdown.style.display !== 'none';
-        notificationDropdown.style.display = isVisible ? 'none' : 'block';
-        if (!isVisible) {
-          loadNotifications();
-        }
-      });
+      // Setup mobile notifications after header is loaded
+      setupMobileNotifications();
 
-      // Hide dropdown when clicking outside
-      document.addEventListener('click', (e) => {
-        if (!notificationDropdown.contains(e.target) && !notificationBell.contains(e.target)) {
-          notificationDropdown.style.display = 'none';
-        }
-      });
-    }
+      // Setup mark all read button
+      const markAllReadBtn = document.getElementById('markAllRead');
+      if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
+      }
+    };
 
-    // 2) Profile gear button → navigate to profile page
-    const gearBtn = document.getElementById('userGear');
-    if (gearBtn) {
-      gearBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        window.location.href = 'profile.html';
+    // Wait for header to be loaded before setting up event listeners
+    if (document.querySelector('.main-header')) {
+      // Small delay to ensure DOM is fully updated
+      setTimeout(setupHeaderEventListeners, 10);
+    } else {
+      document.addEventListener('headerLoaded', () => {
+        // Small delay to ensure DOM is fully updated
+        setTimeout(setupHeaderEventListeners, 10);
       });
     }
 
@@ -259,7 +352,6 @@
     function setupMobileNotifications() {
       const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
       if (mobileNotificationBtn) {
-        console.log('Setting up mobile notification button handler');
         
         // Remove any existing handlers and set up our own
         const newBtn = mobileNotificationBtn.cloneNode(true);
@@ -268,15 +360,12 @@
         newBtn.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          console.log('Mobile notification button clicked');
           
           try {
             const authRes = await fetch('/me');
             const authData = await authRes.json();
-            console.log('Auth check result:', authData.user ? 'logged in' : 'not logged in');
             
             if (authData.user) {
-              console.log('User is logged in, showing notifications');
               showMobileNotificationOverlay();
             } else {
               alert('Please log in to view notifications');
@@ -292,12 +381,10 @@
     function showMobileNotificationOverlay() {
       let overlay = document.getElementById('mobileNotificationOverlay');
       if (!overlay) {
-        console.log('Creating mobile notification overlay');
         overlay = createMobileNotificationOverlay();
         document.body.appendChild(overlay);
       }
       
-      console.log('Showing notification overlay');
       overlay.style.display = 'flex';
       document.body.style.overflow = 'hidden';
       loadMobileNotifications();
@@ -370,8 +457,13 @@
           return;
         }
 
+        // Mobile-specific: Clear DOM before rebuilding to prevent memory buildup
         notificationList.innerHTML = '';
-        notifications.forEach((notification, index) => {
+        
+        // Limit notifications on mobile to prevent memory issues
+        const limitedNotifications = isMobile ? notifications.slice(0, 20) : notifications;
+        
+        limitedNotifications.forEach((notification, index) => {
           try {
             const item = createMobileNotificationItem(notification);
             notificationList.appendChild(item);
@@ -506,48 +598,24 @@
   });
 
   /**
-   * Quick auth check just for showing user controls
+   * Quick auth check using CSS classes for smooth transitions
    */
   async function quickAuth(){
     try{
       const res=await fetch('/me');
       const json=await res.json();
       if(json.user){
-        const bell=document.getElementById('notificationBell');
-        if(bell) bell.style.display='inline-block';
-        const gear=document.getElementById('userGear');
-        if(gear) gear.style.display='inline-block';
+        // Add authenticated class to body for smooth CSS transitions
+        document.body.classList.add('authenticated');
+        
         const userLabel=document.getElementById('userLabel');
         if(userLabel){
           const name=json.user.display_name||json.user.email||'User';
           userLabel.textContent=name;
         }
-        
-        // Hide login button when authenticated
-        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-        if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
-        
-        // Setup mobile user controls
-        const mobileUserInfo=document.getElementById('mobileUserInfo');
-        if(mobileUserInfo) mobileUserInfo.style.display='block';
-        
-        // Hide mobile login button when authenticated
-        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-        if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
-        
-        const mobileNotificationBtn=document.getElementById('mobileNotificationBtn');
-        if(mobileNotificationBtn) {
-          mobileNotificationBtn.style.display='block';
-          // Mobile notification handler is set up independently
-        }
       } else {
-        // Show login button when not authenticated
-        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-        if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
-        
-        // Show mobile login button when not authenticated
-        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-        if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
+        // Remove authenticated class for CSS transitions
+        document.body.classList.remove('authenticated');
       }
     }catch(e){console.error('quickAuth failed',e);}
   }

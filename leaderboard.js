@@ -1,6 +1,5 @@
 (function(){
-  // Reveal page immediately
-  document.body.classList.add('content-visible');
+  // Don't reveal page immediately - let header.js handle auth first
 
   function loadScript(src, cb){
     const s=document.createElement('script');
@@ -17,36 +16,8 @@
 
   loadScript('script.js', ()=>{
     try{
-      // Check authentication status first
-      if (typeof refreshAuth === 'function') {
-        refreshAuth().then(() => {
-          // After auth check, set mode and load data
-          if (typeof setMode === 'function') {
-            setMode('leaderboard');
-          } else if (typeof currentMode !== 'undefined') {
-            currentMode = 'leaderboard';
-          }
-          if(typeof fetchLeaderboard==='function'){
-            fetchLeaderboard(true);
-          }else{console.warn('fetchLeaderboard() not defined');}
-          // Quick auth to show user controls
-          quickAuth();
-        }).catch(e => {
-          console.error('Auth check failed:', e);
-          // Still try to load content even if auth fails
-          if (typeof setMode === 'function') {
-            setMode('leaderboard');
-          } else if (typeof currentMode !== 'undefined') {
-            currentMode = 'leaderboard';
-          }
-          if(typeof fetchLeaderboard==='function'){
-            fetchLeaderboard(true);
-          }
-          quickAuth();
-        });
-      } else {
-        console.warn('refreshAuth() not defined after loading script.js');
-        // Fallback: proceed without auth check
+      // Wait for auth state to be resolved by header.js
+      function initLeaderboard() {
         if (typeof setMode === 'function') {
           setMode('leaderboard');
         } else if (typeof currentMode !== 'undefined') {
@@ -54,8 +25,25 @@
         }
         if(typeof fetchLeaderboard==='function'){
           fetchLeaderboard(true);
+        }else{console.warn('fetchLeaderboard() not defined');}
+      }
+      
+      // Listen for auth resolution from header.js
+      document.addEventListener('authStateResolved', (event) => {
+        const { isLoggedIn, user } = event.detail;
+        
+        // Set global auth state variables that script.js expects
+        if (typeof currentUserId !== 'undefined') {
+          currentUserId = isLoggedIn ? user.id : null;
         }
-        quickAuth();
+        
+        // Initialize leaderboard after auth is resolved
+        initLeaderboard();
+      });
+      
+      // Fallback: if auth state was already resolved before this listener was added
+      if (document.body.classList.contains('content-visible')) {
+        setTimeout(initLeaderboard, 100);
       }
     }catch(e){console.error('init error',e);}
 
@@ -65,34 +53,25 @@
       setInterval(updateNotificationCount, 30000);
     }
 
-    // === Attach event handlers ===
+    // === Attach event handlers AFTER header is loaded ===
+    document.addEventListener('headerLoaded', () => {
+      // Small delay to ensure DOM is fully updated
+      setTimeout(() => {
+      
+      // NOTE: Notification bell and profile button are now handled universally in header.js
+      // No need to add duplicate event listeners here
 
-    // Notification dropdown
-    const notificationBell = document.getElementById('notificationBell');
-    const notificationDropdown = document.getElementById('notificationDropdown');
-    if (notificationBell && notificationDropdown) {
-      notificationBell.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isVisible = notificationDropdown.style.display !== 'none';
-        notificationDropdown.style.display = isVisible ? 'none' : 'block';
-        if (!isVisible) loadNotifications();
-      });
+      // Setup mobile notifications after header is loaded
+      setupMobileNotifications();
 
-      document.addEventListener('click', (e) => {
-        if (!notificationDropdown.contains(e.target) && !notificationBell.contains(e.target)) {
-          notificationDropdown.style.display = 'none';
-        }
-      });
-    }
+      // Setup mark all read button
+      const markAllReadBtn = document.getElementById('markAllRead');
+      if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
+      }
+    }, 10);
 
-    // Profile button → profile.html
-    const gearBtn = document.getElementById('userGear');
-    if (gearBtn) {
-      gearBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        window.location.href = 'profile.html';
-      });
-    }
+    });
 
     // ===== Notification helpers (copied from other pages) =====
 
@@ -209,16 +188,10 @@
       }
     }
 
-    const markAllReadBtn = document.getElementById('markAllRead');
-    if (markAllReadBtn) {
-      markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
-    }
-
     // === Mobile Notification Setup - Independent Implementation ===
     function setupMobileNotifications() {
       const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
       if (mobileNotificationBtn) {
-        console.log('Setting up mobile notification button handler');
         
         const newBtn = mobileNotificationBtn.cloneNode(true);
         mobileNotificationBtn.parentNode.replaceChild(newBtn, mobileNotificationBtn);
@@ -226,15 +199,12 @@
         newBtn.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          console.log('Mobile notification button clicked');
           
           try {
             const authRes = await fetch('/me');
             const authData = await authRes.json();
-            console.log('Auth check result:', authData.user ? 'logged in' : 'not logged in');
             
             if (authData.user) {
-              console.log('User is logged in, showing notifications');
               showMobileNotificationOverlay();
             } else {
               alert('Please log in to view notifications');
@@ -251,12 +221,10 @@
     function showMobileNotificationOverlay() {
       let overlay = document.getElementById('mobileNotificationOverlay');
       if (!overlay) {
-        console.log('Creating mobile notification overlay');
         overlay = createMobileNotificationOverlay();
         document.body.appendChild(overlay);
       }
       
-      console.log('Showing notification overlay');
       overlay.style.display = 'flex';
       document.body.style.overflow = 'hidden';
       loadMobileNotifications();
@@ -458,76 +426,29 @@
       if (diffHours < 24) return `${diffHours}h ago`;
       return `${diffDays}d ago`;
     }
-    
-    setupMobileNotifications();
-
-    // === Add modal close functionality ===
-    const modalCloseBtn = document.getElementById('modalCloseBtn');
-    const modalOverlay = document.getElementById('modalOverlay');
-    
-    if (modalCloseBtn) {
-      modalCloseBtn.addEventListener('click', () => {
-        modalOverlay.style.display = 'none';
-        document.getElementById('modalBody').innerHTML = '';
-      });
-    }
-
-    // Also close modal when clicking the overlay background
-    if (modalOverlay) {
-      modalOverlay.addEventListener('click', (e) => {
-        if (e.target === modalOverlay) {
-          modalOverlay.style.display = 'none';
-          document.getElementById('modalBody').innerHTML = '';
-        }
-      });
-    }
 
     // Mobile menu functionality is handled by script.js to avoid conflicts
   });
 
   /**
-   * Lightweight auth check – calls /me and toggles bell/profile visibility.
+   * Quick auth check using CSS classes for smooth transitions
    */
   async function quickAuth(){
     try{
       const res=await fetch('/me');
       const json=await res.json();
       if(json.user){
-        const bell=document.getElementById('notificationBell');
-        if(bell) bell.style.display='inline-block';
-        const gear=document.getElementById('userGear');
-        if(gear) gear.style.display='inline-block';
+        // Add authenticated class to body for smooth CSS transitions
+        document.body.classList.add('authenticated');
+        
         const userLabel=document.getElementById('userLabel');
         if(userLabel){
           const name=json.user.display_name||json.user.email||'User';
           userLabel.textContent=name;
         }
-        
-        // Hide login button when authenticated
-        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-        if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
-        
-        // Setup mobile user controls
-        const mobileUserInfo=document.getElementById('mobileUserInfo');
-        if(mobileUserInfo) mobileUserInfo.style.display='block';
-        
-        // Hide mobile login button when authenticated
-        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-        if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
-        
-        const mobileNotificationBtn=document.getElementById('mobileNotificationBtn');
-        if(mobileNotificationBtn) {
-          mobileNotificationBtn.style.display='block';
-          // Mobile notification handler is set up independently
-        }
       } else {
-        // Show login button when not authenticated
-        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-        if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
-        
-        // Show mobile login button when not authenticated
-        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-        if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
+        // Remove authenticated class for CSS transitions
+        document.body.classList.remove('authenticated');
       }
     }catch(e){console.error('quickAuth failed',e);}
   }

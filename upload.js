@@ -1,7 +1,6 @@
 // Upload page JavaScript
 document.addEventListener('DOMContentLoaded', () => {
-  // Make page visible immediately; we'll tweak elements after auth check
-  document.body.classList.add('content-visible');
+  // Don't reveal page immediately - let header.js handle auth first
   // Elements
   const uploadButton = document.getElementById('uploadButton');
   const loginTwitterBtn = document.getElementById('loginTwitterBtn');
@@ -22,17 +21,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const mobileUserInfo = document.getElementById('mobileUserInfo');
 
 
-  // Mobile menu toggle
-  mobileMenuToggle.addEventListener('click', () => {
-    mobileNav.classList.toggle('active');
-    mobileMenuToggle.classList.toggle('active');
-  });
+  // Mobile menu toggle – may not exist until header is injected
+  function setupMobileMenuToggle() {
+    const toggle = document.getElementById('mobileMenuToggle');
+    const nav = document.getElementById('mobileNav');
+    if (toggle && nav) {
+      toggle.addEventListener('click', () => {
+        nav.classList.toggle('active');
+        toggle.classList.toggle('active');
+      });
+    }
+  }
+
+  // Try immediately, then again once the header is loaded
+  setupMobileMenuToggle();
+  document.addEventListener('headerLoaded', setupMobileMenuToggle);
 
   // Close mobile menu when clicking on a link
   document.querySelectorAll('.mobile-nav-link').forEach(link => {
     link.addEventListener('click', () => {
-      mobileNav.classList.remove('active');
-      mobileMenuToggle.classList.remove('active');
+      const nav = document.getElementById('mobileNav');
+      const toggle = document.getElementById('mobileMenuToggle');
+      if (nav) nav.classList.remove('active');
+      if (toggle) toggle.classList.remove('active');
     });
   });
 
@@ -86,118 +97,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentUserId = null;
 
-  // Auth check and UI update
-  async function refreshAuth() {
-    try {
-      const res = await fetch('/me');
-      const data = await res.json();
-      const loggedIn = !!data.user;
-      currentUserId = loggedIn ? data.user.id : null;
+  // Auth check and UI update - now synchronized with header.js
+  function updateAuthUI(isLoggedIn, user = null, uploadPanel, loginPanel, userLabel, userMenu) {
+    
+    currentUserId = isLoggedIn ? user.id : null;
 
-      if (loggedIn) {
-        const hasDisplayName = !!(data.user.display_name && data.user.display_name.trim());
-        const displayName = data.user.display_name || data.user.email || 'User';
-        
-        // Update desktop user controls
+    if (isLoggedIn) {
+      const hasDisplayName = !!(user.display_name && user.display_name.trim());
+      const displayName = user.display_name || user.email || 'User';
+      
+      // Auth state classes are managed by header.js
+      
+      // Update desktop user controls
+      if (userLabel) {
         userLabel.textContent = displayName;
-        gearBtn.style.display = 'inline-block';
-        
-        // Hide login button when authenticated
-        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-        if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
-        
-        // Show notification bell
-        const notificationBell = document.getElementById('notificationBell');
-        if (notificationBell) {
-          notificationBell.style.display = 'inline-block';
-          
-          // Set up notification bell click handler
-          notificationBell.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const notificationDropdown = document.getElementById('notificationDropdown');
-            const userMenu = document.getElementById('userMenu');
-            
-            if (notificationDropdown) {
-              const isVisible = notificationDropdown.style.display !== 'none';
-              notificationDropdown.style.display = isVisible ? 'none' : 'block';
-              
-              // Hide user menu if it's open
-              if (userMenu) userMenu.style.display = 'none';
-              
-              // Load notifications when opening dropdown
-              if (!isVisible && typeof loadNotifications === 'function') {
-                loadNotifications();
-              }
-            }
-          });
-        }
-        
-        // Update mobile user controls
-        mobileUserInfo.style.display = 'block';
-        
-        // Hide mobile login button when authenticated
-        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-        if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
-        
-        // Show mobile notification button
-        const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
-        if (mobileNotificationBtn) {
-          mobileNotificationBtn.style.display = 'block';
-          
-          // Add click handler for mobile notifications
-          mobileNotificationBtn.addEventListener('click', () => {
-            showMobileNotifications();
-          });
-        }
-        
-        // Show upload section, hide login panel
-        uploadPanel.style.display = 'block';
-        loginPanel.style.display = 'none';
-        
-        // Show/hide username input based on whether user has display_name
-        if (hasDisplayName) {
-          usernameInput.style.display = 'none';
-          csvUpload.disabled = false;
-          uploadButton.disabled = !csvUpload.files.length;
-        } else {
-          usernameInput.style.display = 'block';
-          usernameInput.placeholder = 'You must create a username to upload teams';
-          const hasUsername = !!usernameInput.value.trim();
-          csvUpload.disabled = !hasUsername;
-          uploadButton.disabled = !csvUpload.files.length || !hasUsername;
-        }
-        
-        usernameInput.disabled = false;
-        uploadPanel.style.opacity = '1';
-      } else {
-        // Not logged in
-        gearBtn.style.display = 'none';
-        userMenu.style.display = 'none';
-        mobileUserInfo.style.display = 'none';
-        
-        // Show login button when not authenticated
-        const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-        if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
-        
-        // Show mobile login button when not authenticated
-        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-        if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
-        
-        uploadPanel.style.display = 'none';
-        loginPanel.style.display = 'block';
-        
-        usernameInput.disabled = true;
-        csvUpload.disabled = true;
-        uploadButton.disabled = true;
-        updateFileInputState();
       }
-
+      
+      // Show upload section, hide login panel
+      uploadPanel.style.display = 'block';
+      loginPanel.style.display = 'none';
+      
+      // Show/hide username input based on whether user has display_name
+      if (hasDisplayName) {
+        usernameInput.style.display = 'none';
+        csvUpload.disabled = false;
+        uploadButton.disabled = !csvUpload.files.length;
+      } else {
+        usernameInput.style.display = 'block';
+        usernameInput.placeholder = 'You must create a username to upload teams';
+        const hasUsername = !!usernameInput.value.trim();
+        csvUpload.disabled = !hasUsername;
+        uploadButton.disabled = !csvUpload.files.length || !hasUsername;
+      }
+      
+      usernameInput.disabled = false;
+      uploadPanel.style.opacity = '1';
+    } else {
+      // Not logged in - auth state classes are managed by header.js
+      
+      if (userMenu) {
+        userMenu.style.display = 'none';
+      }
+      
+      uploadPanel.style.display = 'none';
+      loginPanel.style.display = 'block';
+      
+      usernameInput.disabled = true;
+      csvUpload.disabled = true;
+      uploadButton.disabled = true;
       updateFileInputState();
-      document.body.classList.add('content-visible');
-    } catch (err) {
-      console.error('Auth check failed:', err);
-      document.body.classList.add('content-visible');
     }
+
+    updateFileInputState();
   }
 
   // Tab switching
@@ -279,8 +230,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (res.ok) {
-        await refreshAuth();
-        showLoginMessage('', '');
+        // On successful login, redirect to the home page so the user lands in the main flow
+        window.location.href = '/';
       } else {
         const err = await res.json().catch(() => ({}));
         showLoginMessage(err.error || 'Login failed', 'error');
@@ -321,8 +272,8 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ identifier: email, password })
         });
         if (loginRes.ok) {
-          await refreshAuth();
-          showLoginMessage('Account created successfully!', 'success');
+          // Auth state will be updated by header.js automatically
+          showLoginMessage('Account created successfully! Please sign in to continue.', 'success');
         } else {
           showLoginMessage('Account created but auto login failed. Please try logging in.', 'error');
         }
@@ -337,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       await fetch('/logout', { method: 'POST' });
-      await refreshAuth();
+      // Auth state will be updated by header.js automatically
       showLoginMessage('', '');
     });
   }
@@ -849,6 +800,59 @@ document.addEventListener('DOMContentLoaded', () => {
   updateNotificationCount();
   const notifPoll = setInterval(updateNotificationCount, 30000);
 
-  // Initialize
-  refreshAuth();
+  // Listen for auth resolution from header.js
+  document.addEventListener('authStateResolved', (event) => {
+    const { isLoggedIn, user } = event.detail;
+    
+    // Get fresh element references after header is loaded
+    const uploadPanel = document.getElementById('uploadSection');
+    const loginPanel = document.getElementById('loginPanel');
+    const userLabel = document.getElementById('userLabel');
+    const userMenu = document.getElementById('userMenu');
+    
+    // Update UI based on auth state with fresh references
+    updateAuthUI(isLoggedIn, user, uploadPanel, loginPanel, userLabel, userMenu);
+    
+    // Setup notification handlers if logged in
+    if (isLoggedIn) {
+      // Wait for header to be loaded and setup notification bell
+      setTimeout(() => {
+        const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+        if (mobileNotificationBtn) {
+          // Remove any existing handlers to avoid duplicates
+          const newBtn = mobileNotificationBtn.cloneNode(true);
+          mobileNotificationBtn.parentNode.replaceChild(newBtn, mobileNotificationBtn);
+          
+          newBtn.addEventListener('click', () => {
+            showMobileNotifications();
+          });
+        }
+      }, 100);
+    }
+    
+    // Make content visible after auth is resolved
+    document.body.classList.add('content-visible');
+  });
+  
+  // Fallback: if auth state was already resolved before this listener was added
+  if (document.body.classList.contains('content-visible')) {
+    // Small delay to ensure header.js has finished processing
+    setTimeout(async () => {
+      try {
+        const res = await fetch('/me');
+        const data = await res.json();
+        
+        // Get fresh element references
+        const uploadPanel = document.getElementById('uploadSection');
+        const loginPanel = document.getElementById('loginPanel');
+        const userLabel = document.getElementById('userLabel');
+        const userMenu = document.getElementById('userMenu');
+        
+        updateAuthUI(!!data.user, data.user, uploadPanel, loginPanel, userLabel, userMenu);
+      } catch (err) {
+        console.error('Upload: Fallback auth check failed:', err);
+        updateAuthUI(false, null, null, null, null, null);
+      }
+    }, 100);
+  }
 }); 

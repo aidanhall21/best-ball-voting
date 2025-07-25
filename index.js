@@ -180,12 +180,6 @@ async function verifyCaptcha(req, res, next) {
     const result = await cfRes.json();
 
     if (result.success) {
-      // Optional: Log successful verification details
-      console.log("Turnstile verification successful:", {
-        hostname: result.hostname,
-        challenge_ts: result.challenge_ts,
-        action: result.action
-      });
       return next();
     } else {
       // Log detailed error information
@@ -220,16 +214,43 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Serve index.html without CSRF token since we're using Turnstile
-app.get('/', (req, res) => {
+// ✨ Homepage HTML cache for performance
+let homepageHtmlCache = null;
+let homepageHtmlCacheEtag = null;
+
+function buildHomepageHtml() {
   const htmlPath = path.join(__dirname, 'index.html');
   let html = fs.readFileSync(htmlPath, 'utf8');
   const tokenScript = `\n<script>\n    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';\n  </script>\n`;
   html = html.replace('</head>', tokenScript + '</head>');
   // Inject cache-busting query string into main bundle
   html = html.replace('script.js"', `script.js?v=${ASSET_VERSION}"`);
+  
+  homepageHtmlCache = html;
+  homepageHtmlCacheEtag = crypto.createHash('md5').update(html).digest('hex');
+  return html;
+}
+
+// Build initial cache and rebuild on file changes in development
+buildHomepageHtml();
+if (process.env.NODE_ENV !== 'production') {
+  // Watch for changes in development
+  fs.watchFile(path.join(__dirname, 'index.html'), () => {
+    buildHomepageHtml();
+  });
+}
+
+// Serve index.html from memory cache with proper ETags
+app.get('/', (req, res) => {
+  // Check ETag for conditional requests
+  if (req.headers['if-none-match'] === homepageHtmlCacheEtag) {
+    return res.status(304).end();
+  }
+  
   res.setHeader('Content-Type', 'text/html');
-  res.send(html);
+  res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes cache
+  res.setHeader('ETag', homepageHtmlCacheEtag);
+  res.send(homepageHtmlCache);
 });
 
 // Serve upload page
@@ -260,6 +281,14 @@ app.get('/leaderboard', (req, res) => {
   let html = fs.readFileSync(htmlPath, 'utf8');
   // Inject cache-busting query string
   html = html.replace('leaderboard.js"', `leaderboard.js?v=${ASSET_VERSION}"`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Serve matchup settings page
+app.get('/matchup-settings', requireAdmin, (req, res) => {
+  const htmlPath = path.join(__dirname, 'matchup-settings.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
 });
@@ -638,71 +667,133 @@ let teamsCacheMeta = { etag: null, stamp: 0 };
 
 async function buildTeamsCache() {
   return new Promise((resolve, reject) => {
-    const sql = `
-      WITH win_ct AS (
-        SELECT winner_id AS team_id, COUNT(*) AS wins
-        FROM versus_matches
-        GROUP BY winner_id
-      ),
-      loss_ct AS (
-        SELECT loser_id AS team_id, COUNT(*) AS losses
-        FROM versus_matches
-        GROUP BY loser_id
-      )
-      SELECT 
-        t.id            AS team_id,
-        t.tournament    AS tournament,
-        t.username      AS username,
-        t.user_id       AS user_id,
-        COALESCE(w.wins, 0)   AS wins,
-        COALESCE(l.losses, 0) AS losses,
-        p.position      AS position,
-        p.name          AS name,
-        p.pick          AS pick,
-        p.team          AS team,
-        p.stack         AS stack
-      FROM teams t
-      JOIN players p     ON p.team_id = t.id
-      LEFT JOIN win_ct w ON w.team_id = t.id
-      LEFT JOIN loss_ct l ON l.team_id = t.id
-    `;
-
-    db.all(sql, [], (err, rows) => {
-      if (err) return reject(err);
-
+    const startTime = Date.now();
+    
+    // Get team count first for progress tracking
+    db.get('SELECT COUNT(*) as count FROM teams', [], (countErr, countRow) => {
+      if (countErr) return reject(countErr);
+      
+      const totalTeams = countRow.count;
+      
+      // Use smaller batch size to reduce memory usage
+      const BATCH_SIZE = 500; // Reduced from 1000
+      const DELAY_BETWEEN_BATCHES = 5; // Reduced delay
+      
       const teams = {};
       const tournaments = {};
       const usernames = {};
       const userIds = {};
       const totals = {}; // wins & losses per team
+      const strategies = {}; // strategy flags per team
+      
+      let processed = 0;
+      let offset = 0;
+      
+      const processBatch = async () => {
+        // Use LIMIT/OFFSET instead of getting all IDs first
+        const sql = `
+          SELECT 
+            t.id            AS team_id,
+            t.tournament    AS tournament,
+            t.username      AS username,
+            t.user_id       AS user_id,
+            t.high_t        AS high_t,
+            t.zero_rb       AS zero_rb,
+            t.elite_qb      AS elite_qb,
+            t.elite_te      AS elite_te,
+            t.hero_rb       AS hero_rb,
+            COALESCE(wins_count.wins, 0) AS wins,
+            COALESCE(losses_count.losses, 0) AS losses,
+            p.position      AS position,
+            p.name          AS name,
+            p.pick          AS pick,
+            p.team          AS team,
+            p.stack         AS stack
+          FROM teams t
+          JOIN players p ON p.team_id = t.id
+          LEFT JOIN (
+            SELECT winner_id, COUNT(*) as wins
+            FROM versus_matches
+            GROUP BY winner_id
+          ) wins_count ON t.id = wins_count.winner_id
+          LEFT JOIN (
+            SELECT loser_id, COUNT(*) as losses
+            FROM versus_matches
+            GROUP BY loser_id
+          ) losses_count ON t.id = losses_count.loser_id
+          WHERE t.id IN (
+            SELECT id FROM teams 
+            ORDER BY id 
+            LIMIT ${BATCH_SIZE} OFFSET ${offset}
+          )
+          ORDER BY t.id, p.pick
+        `;
 
-      rows.forEach((row) => {
-        if (!teams[row.team_id]) {
-          teams[row.team_id] = [];
-          tournaments[row.team_id] = row.tournament;
-          usernames[row.team_id] = row.username;
-          userIds[row.team_id] = row.user_id;
-          totals[row.team_id] = { wins: row.wins, losses: row.losses };
-        }
-        teams[row.team_id].push({
-          position: row.position,
-          name: row.name,
-          pick: row.pick,
-          team: row.team,
-          stack: row.stack
+        db.all(sql, [], (err, rows) => {
+          if (err) return reject(err);
+
+          // If no rows, we're done
+          if (rows.length === 0) {
+            // Write final cache
+            const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds, totals, strategies };
+            const jsonStr = JSON.stringify(payloadObj);
+            
+            // Use async compression to avoid blocking
+            zlib.gzip(jsonStr, (gzipErr, gz) => {
+              if (gzipErr) return reject(gzipErr);
+              
+              fs.writeFile(CACHE_FILE_PATH, gz, (writeErr) => {
+                if (writeErr) return reject(writeErr);
+                
+                teamsCacheMeta = {
+                  etag: crypto.createHash('md5').update(jsonStr).digest('hex'),
+                  stamp: Date.now()
+                };
+                
+                const duration = Date.now() - startTime;
+                return resolve();
+              });
+            });
+            return;
+          }
+
+          const processedTeamsInBatch = new Set();
+          
+          // Process this batch more efficiently
+          rows.forEach((row) => {
+            if (!teams[row.team_id]) {
+              teams[row.team_id] = [];
+              tournaments[row.team_id] = row.tournament;
+              usernames[row.team_id] = row.username;
+              userIds[row.team_id] = row.user_id;
+              totals[row.team_id] = { wins: row.wins, losses: row.losses };
+              strategies[row.team_id] = {
+                high_t: row.high_t,
+                zero_rb: row.zero_rb,
+                elite_qb: row.elite_qb,
+                elite_te: row.elite_te,
+                hero_rb: row.hero_rb
+              };
+              processedTeamsInBatch.add(row.team_id);
+            }
+            teams[row.team_id].push({
+              position: row.position,
+              name: row.name,
+              pick: row.pick,
+              team: row.team,
+              stack: row.stack
+            });
+          });
+
+          processed += processedTeamsInBatch.size;
+          offset += BATCH_SIZE;
+          
+          // Continue with next batch after small delay
+          setTimeout(processBatch, DELAY_BETWEEN_BATCHES);
         });
-      });
-
-      const payloadObj = { teams: Object.entries(teams), tournaments, usernames, userIds, totals };
-      const jsonStr = JSON.stringify(payloadObj);
-      const gz = zlib.gzipSync(jsonStr);
-
-      fs.writeFileSync(CACHE_FILE_PATH, gz);
-      teamsCacheMeta = {
-        etag: crypto.createHash('md5').update(jsonStr).digest('hex'),
-        stamp: Date.now()
       };
-      resolve();
+      
+      processBatch();
     });
   });
 }
@@ -711,21 +802,342 @@ async function buildTeamsCache() {
 buildTeamsCache().catch(err => console.error('Error building /teams cache:', err));
 setInterval(() => buildTeamsCache().catch(err => console.error('Error building /teams cache:', err)), CACHE_REFRESH_MS);
 
-app.get('/teams', (req, res) => {
+app.get('/teams', async (req, res) => {
   if (!teamsCacheMeta.etag) {
     return res.status(503).json({ error: 'Cache building, try again shortly.' });
   }
 
-  if (req.headers['if-none-match'] === teamsCacheMeta.etag) {
-    return res.status(304).end();
+  // Check if there are matchup settings that filter teams
+  const matchupSettings = await new Promise((resolve) => {
+    db.get('SELECT * FROM matchup_settings WHERE id = 1', (err, row) => {
+      if (err) {
+        console.error('Error fetching matchup settings:', err);
+        resolve(null);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+
+  const filterTournament = matchupSettings?.tournament;
+  const filterTeam1Stack = matchupSettings?.team1_stack;
+  const filterTeam2Stack = matchupSettings?.team2_stack;
+  const filterTeam1Player = matchupSettings?.team1_player;
+  const filterTeam2Player = matchupSettings?.team2_player;
+  const filterTeam1Strategy = matchupSettings?.team1_strategy;
+  const filterTeam2Strategy = matchupSettings?.team2_strategy;
+  
+  // If no filters at all, serve the full cached file
+  if (!filterTournament && !filterTeam1Stack && !filterTeam2Stack && !filterTeam1Player && !filterTeam2Player && !filterTeam1Strategy && !filterTeam2Strategy) {
+    if (req.headers['if-none-match'] === teamsCacheMeta.etag) {
+      return res.status(304).end();
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Cache-Control', 'public, max-age=900');
+    res.setHeader('ETag', teamsCacheMeta.etag);
+
+    return fs.createReadStream(CACHE_FILE_PATH).pipe(res);
   }
 
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Encoding', 'gzip');
-  res.setHeader('Cache-Control', 'public, max-age=900');
-  res.setHeader('ETag', teamsCacheMeta.etag);
+  // Filters are active - need to filter the data
+  try {
+    // Read and decompress the cache file
+    const gzippedData = fs.readFileSync(CACHE_FILE_PATH);
+    const jsonStr = zlib.gunzipSync(gzippedData).toString('utf8');
+    const fullData = JSON.parse(jsonStr);
 
-  fs.createReadStream(CACHE_FILE_PATH).pipe(res);
+    // Helper function to check if a team has a primary stack for a given NFL team
+    const teamHasPrimaryStack = (teamData, nflTeam) => {
+      if (!teamData || !Array.isArray(teamData)) return false;
+      return teamData.some(player => 
+        player.team === nflTeam && player.stack === 'primary'
+      );
+    };
+
+    // Helper function to check if a team has a specific player
+    const teamHasPlayer = (teamData, playerName) => {
+      if (!teamData || !Array.isArray(teamData)) return false;
+      return teamData.some(player => 
+        player.name === playerName
+      );
+    };
+
+    // Filter teams based on all criteria
+    let filteredTeams = fullData.teams;
+
+    // Filter by tournament if specified
+    if (filterTournament) {
+      filteredTeams = filteredTeams.filter(([teamId]) => {
+        return fullData.tournaments[teamId] === filterTournament;
+      });
+    }
+
+    // Separate teams into categories based on stack, player, and strategy requirements
+    let team1Candidates = [];
+    let team2Candidates = [];
+    let generalCandidates = [];
+
+    // Strategy data is now available from the cache
+    const strategyData = fullData.strategies || {};
+    
+    if (filterTeam1Strategy || filterTeam2Strategy) {
+      
+      // Debug: Count strategy distributions in cache
+      const strategyCounts = {
+        high_t: 0,
+        zero_rb: 0,
+        elite_qb: 0,
+        elite_te: 0,
+        hero_rb: 0
+      };
+      
+      Object.values(strategyData).forEach(strategies => {
+        if (strategies.high_t === 1) strategyCounts.high_t++;
+        if (strategies.zero_rb === 1) strategyCounts.zero_rb++;
+        if (strategies.elite_qb === 1) strategyCounts.elite_qb++;
+        if (strategies.elite_te === 1) strategyCounts.elite_te++;
+        if (strategies.hero_rb === 1) strategyCounts.hero_rb++;
+      });
+      
+    }
+
+    if (filterTeam1Stack || filterTeam2Stack || filterTeam1Player || filterTeam2Player || filterTeam1Strategy || filterTeam2Strategy) {
+      
+      let debugCount = 0;
+      filteredTeams.forEach(([teamId, teamData]) => {
+        const hasTeam1Stack = filterTeam1Stack ? teamHasPrimaryStack(teamData, filterTeam1Stack) : true;
+        const hasTeam2Stack = filterTeam2Stack ? teamHasPrimaryStack(teamData, filterTeam2Stack) : true;
+        const hasTeam1Player = filterTeam1Player ? teamHasPlayer(teamData, filterTeam1Player) : true;
+        const hasTeam2Player = filterTeam2Player ? teamHasPlayer(teamData, filterTeam2Player) : true;
+        
+        // Strategy checks
+        const hasTeam1Strategy = filterTeam1Strategy ? (strategyData[teamId] && strategyData[teamId][filterTeam1Strategy] === 1) : true;
+        const hasTeam2Strategy = filterTeam2Strategy ? (strategyData[teamId] && strategyData[teamId][filterTeam2Strategy] === 1) : true;
+
+        // Debug first few teams
+        if (debugCount < 5 && (filterTeam1Strategy || filterTeam2Strategy)) {
+          debugCount++;
+        }
+
+        // Team1 candidates must match stack, player, and strategy requirements (if specified)
+        const matchesTeam1 = hasTeam1Stack && hasTeam1Player && hasTeam1Strategy;
+        // Team2 candidates must match stack, player, and strategy requirements (if specified)  
+        const matchesTeam2 = hasTeam2Stack && hasTeam2Player && hasTeam2Strategy;
+
+        if ((filterTeam1Stack || filterTeam1Player || filterTeam1Strategy) && matchesTeam1) {
+          team1Candidates.push([teamId, teamData]);
+        }
+        if ((filterTeam2Stack || filterTeam2Player || filterTeam2Strategy) && matchesTeam2) {
+          team2Candidates.push([teamId, teamData]);
+        }
+        
+        // Teams that don't match specific requirements but are still valid
+        if (!matchesTeam1 && !matchesTeam2) {
+          generalCandidates.push([teamId, teamData]);
+        }
+      });
+
+      // Update filteredTeams based on filtering logic
+      const hasTeam1Filters = filterTeam1Stack || filterTeam1Player || filterTeam1Strategy;
+      const hasTeam2Filters = filterTeam2Stack || filterTeam2Player || filterTeam2Strategy;
+      
+      if (hasTeam1Filters && hasTeam2Filters) {
+        // Both teams have filters - include teams that match either filter
+        filteredTeams = [...team1Candidates, ...team2Candidates];
+      } else if (hasTeam1Filters) {
+        // Only team1 has filters - include team1 candidates + general candidates
+        filteredTeams = [...team1Candidates, ...generalCandidates];
+      } else if (hasTeam2Filters) {
+        // Only team2 has filters - include team2 candidates + general candidates  
+        filteredTeams = [...team2Candidates, ...generalCandidates];
+      }
+      // If no filters, filteredTeams stays as the original (all teams)
+      
+      // Remove duplicates (teams that might match both team1 and team2 criteria)
+      const seenTeamIds = new Set();
+      filteredTeams = filteredTeams.filter(([teamId]) => {
+        if (seenTeamIds.has(teamId)) {
+          return false;
+        }
+        seenTeamIds.add(teamId);
+        return true;
+      });
+
+      // If no teams match the requirements, fall back to a different tournament
+      if (((filterTeam1Stack || filterTeam1Player || filterTeam1Strategy) && team1Candidates.length === 0) || 
+          ((filterTeam2Stack || filterTeam2Player || filterTeam2Strategy) && team2Candidates.length === 0)) {
+        
+        
+        // Query database for teams with the required stacks/players across all tournaments
+        const findTeamsWithFilters = () => {
+          return new Promise((resolve) => {
+            let conditions = [];
+            let params = [];
+            
+            if (filterTeam1Stack) {
+              conditions.push(`EXISTS (SELECT 1 FROM players p1 WHERE p1.team_id = t.id AND p1.team = ? AND p1.stack = 'primary')`);
+              params.push(filterTeam1Stack);
+            }
+            
+            if (filterTeam1Player) {
+              conditions.push(`EXISTS (SELECT 1 FROM players p1p WHERE p1p.team_id = t.id AND p1p.name = ?)`);
+              params.push(filterTeam1Player);
+            }
+            
+            if (filterTeam2Stack) {
+              conditions.push(`EXISTS (SELECT 1 FROM players p2 WHERE p2.team_id = t.id AND p2.team = ? AND p2.stack = 'primary')`);
+              params.push(filterTeam2Stack);
+            }
+            
+            if (filterTeam2Player) {
+              conditions.push(`EXISTS (SELECT 1 FROM players p2p WHERE p2p.team_id = t.id AND p2p.name = ?)`);
+              params.push(filterTeam2Player);
+            }
+            
+            if (filterTeam1Strategy) {
+              conditions.push(`t.${filterTeam1Strategy} = 1`);
+            }
+            
+            if (filterTeam2Strategy) {
+              conditions.push(`t.${filterTeam2Strategy} = 1`);
+            }
+            
+            const sql = `
+              SELECT DISTINCT t.tournament
+              FROM teams t
+              WHERE ${conditions.join(' OR ')}
+              AND t.tournament IS NOT NULL
+              ORDER BY t.tournament
+              LIMIT 1
+            `;
+            
+            db.get(sql, params, (err, row) => {
+              if (err) {
+                console.error('Error finding tournament with filters:', err);
+                resolve(null);
+              } else {
+                resolve(row?.tournament || null);
+              }
+            });
+          });
+        };
+
+        const fallbackTournament = await findTeamsWithFilters();
+        
+        if (fallbackTournament) {
+          
+          // Re-filter with the fallback tournament
+          filteredTeams = fullData.teams.filter(([teamId]) => {
+            return fullData.tournaments[teamId] === fallbackTournament;
+          });
+          
+          // Recalculate candidates with the new tournament
+          team1Candidates = [];
+          team2Candidates = [];
+          generalCandidates = [];
+          
+          filteredTeams.forEach(([teamId, teamData]) => {
+            const hasTeam1Stack = filterTeam1Stack ? teamHasPrimaryStack(teamData, filterTeam1Stack) : true;
+            const hasTeam2Stack = filterTeam2Stack ? teamHasPrimaryStack(teamData, filterTeam2Stack) : true;
+            const hasTeam1Player = filterTeam1Player ? teamHasPlayer(teamData, filterTeam1Player) : true;
+            const hasTeam2Player = filterTeam2Player ? teamHasPlayer(teamData, filterTeam2Player) : true;
+
+            const matchesTeam1 = hasTeam1Stack && hasTeam1Player;
+            const matchesTeam2 = hasTeam2Stack && hasTeam2Player;
+
+            if ((filterTeam1Stack || filterTeam1Player) && matchesTeam1) {
+              team1Candidates.push([teamId, teamData]);
+            }
+            if ((filterTeam2Stack || filterTeam2Player) && matchesTeam2) {
+              team2Candidates.push([teamId, teamData]);
+            }
+            
+            if (!matchesTeam1 && !matchesTeam2) {
+              generalCandidates.push([teamId, teamData]);
+            }
+          });
+        }
+      }
+
+      // Add metadata to help frontend identify which teams match which criteria
+      filteredTeams = filteredTeams.map(([teamId, teamData]) => {
+        const hasTeam1Stack = filterTeam1Stack ? teamHasPrimaryStack(teamData, filterTeam1Stack) : false;
+        const hasTeam2Stack = filterTeam2Stack ? teamHasPrimaryStack(teamData, filterTeam2Stack) : false;
+        const hasTeam1Player = filterTeam1Player ? teamHasPlayer(teamData, filterTeam1Player) : false;
+        const hasTeam2Player = filterTeam2Player ? teamHasPlayer(teamData, filterTeam2Player) : false;
+        
+        const matchesTeam1 = (filterTeam1Stack ? hasTeam1Stack : true) && (filterTeam1Player ? hasTeam1Player : true);
+        const matchesTeam2 = (filterTeam2Stack ? hasTeam2Stack : true) && (filterTeam2Player ? hasTeam2Player : true);
+        
+        return [teamId, teamData, {
+          matchesTeam1Stack: hasTeam1Stack,
+          matchesTeam2Stack: hasTeam2Stack,
+          matchesTeam1Player: hasTeam1Player,
+          matchesTeam2Player: hasTeam2Player,
+          matchesTeam1: matchesTeam1,
+          matchesTeam2: matchesTeam2,
+          preferredFor: matchesTeam1 ? 'team1' : (matchesTeam2 ? 'team2' : null)
+        }];
+      });
+    }
+
+    // Filter other maps to only include the filtered teams
+    const filteredTeamIds = new Set(filteredTeams.map(([teamId]) => teamId));
+    const filteredTournaments = {};
+    const filteredUsernames = {};
+    const filteredUserIds = {};
+    const filteredTotals = {};
+    const filteredStrategies = {};
+
+    filteredTeamIds.forEach(teamId => {
+      if (fullData.tournaments[teamId]) filteredTournaments[teamId] = fullData.tournaments[teamId];
+      if (fullData.usernames[teamId]) filteredUsernames[teamId] = fullData.usernames[teamId];
+      if (fullData.userIds[teamId]) filteredUserIds[teamId] = fullData.userIds[teamId];
+      if (fullData.totals[teamId]) filteredTotals[teamId] = fullData.totals[teamId];
+      if (fullData.strategies[teamId]) filteredStrategies[teamId] = fullData.strategies[teamId];
+    });
+
+    const filteredData = {
+      teams: filteredTeams,
+      tournaments: filteredTournaments,
+      usernames: filteredUsernames,
+      userIds: filteredUserIds,
+      totals: filteredTotals,
+      strategies: filteredStrategies,
+      // Add filtering metadata
+      stackFilters: {
+        team1Stack: filterTeam1Stack,
+        team2Stack: filterTeam2Stack,
+        team1Player: filterTeam1Player,
+        team2Player: filterTeam2Player,
+        team1Strategy: filterTeam1Strategy,
+        team2Strategy: filterTeam2Strategy,
+        team1Candidates: team1Candidates.length,
+        team2Candidates: team2Candidates.length
+      }
+    };
+    
+
+    // Create a custom ETag for the filtered data
+    const filteredJsonStr = JSON.stringify(filteredData);
+    const filteredEtag = crypto.createHash('md5').update(filteredJsonStr).digest('hex');
+
+    if (req.headers['if-none-match'] === filteredEtag) {
+      return res.status(304).end();
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'public, max-age=300'); // Shorter cache for filtered data
+    res.setHeader('ETag', filteredEtag);
+
+    res.json(filteredData);
+
+  } catch (error) {
+    console.error('Error filtering teams data:', error);
+    res.status(500).json({ error: 'Failed to filter teams data' });
+  }
 });
 
 // Yes/No voting has been removed - only versus matchups are supported
@@ -857,15 +1269,35 @@ app.get("/versus-stats/:teamId", (req, res) => {
 const teamMetaCache = new Map();
 const TEAM_META_CACHE_TTL = 30 * 1000; // 30 seconds
 
-// Cleanup expired cache entries every 2 minutes
+// Cleanup expired cache entries every 5 minutes (reduced from 2 minutes)
 setInterval(() => {
   const now = Date.now();
+  let cleaned = 0;
   for (const [key, value] of teamMetaCache.entries()) {
     if (now - value.timestamp > TEAM_META_CACHE_TTL) {
       teamMetaCache.delete(key);
+      cleaned++;
     }
   }
-}, 2 * 60 * 1000);
+}, 5 * 60 * 1000); // Changed from 2 minutes to 5 minutes
+
+// === Memory monitoring ===
+setInterval(() => {
+  const used = process.memoryUsage();
+  const mb = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+  
+  // Log memory usage if it's getting high
+  if (used.heapUsed > 1024 * 1024 * 1024) { // > 1GB
+    console.warn(`⚠️ High memory usage: RSS: ${mb(used.rss)}MB, Heap: ${mb(used.heapUsed)}MB`);
+    
+    // Log cache sizes
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
+  }
+}, 60 * 1000); // Check every minute
 
 // Combined meta endpoint: owner info + versus stats (wins/losses)
 app.get("/team-meta/:teamId", (req, res) => {
@@ -1577,6 +2009,95 @@ app.get('/dashboard', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
+// === NEW: Admin check endpoint ===
+app.get('/api/admin/check', requireAdmin, (req, res) => {
+  res.json({ admin: true });
+});
+
+// === NEW: Teams with stacks endpoint ===
+app.get('/api/admin/teams-with-stacks', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT DISTINCT 
+      p.team as stack
+    FROM players p
+    WHERE p.team IS NOT NULL AND p.team != ''
+    ORDER BY p.team
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// === NEW: Players endpoint ===
+app.get('/api/admin/players', requireAdmin, (req, res) => {
+  const sql = `
+    SELECT DISTINCT 
+      p.name,
+      p.position,
+      p.team
+    FROM players p
+    WHERE p.name IS NOT NULL AND p.name != ''
+    ORDER BY p.name
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// === NEW: Get current matchup settings ===
+app.get('/api/admin/matchup-settings', requireAdmin, (req, res) => {
+  db.get('SELECT * FROM matchup_settings WHERE id = 1', (err, row) => {
+    if (err) {
+      console.error('Error fetching matchup settings:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Return the settings or defaults if none exist
+    res.json({
+      tournament: row ? row.tournament : '',
+      team1Stack: row ? row.team1_stack : '',
+      team2Stack: row ? row.team2_stack : '',
+      team1Player: row ? row.team1_player : '',
+      team2Player: row ? row.team2_player : '',
+      team1Strategy: row ? row.team1_strategy : '',
+      team2Strategy: row ? row.team2_strategy : ''
+    });
+  });
+});
+
+// === NEW: Force cache rebuild (admin only) ===
+app.post('/api/admin/rebuild-cache', requireAdmin, async (req, res) => {
+  try {
+    await buildTeamsCache();
+    res.json({ success: true, message: 'Cache rebuilt successfully' });
+  } catch (err) {
+    console.error('Cache rebuild failed:', err);
+    res.status(500).json({ error: 'Cache rebuild failed' });
+  }
+});
+
+// === NEW: Save matchup settings ===
+app.post('/api/admin/matchup-settings', requireAdmin, (req, res) => {
+  const { tournament, team1Stack, team2Stack, team1Player, team2Player, team1Strategy, team2Strategy } = req.body;
+  
+  // Use INSERT OR REPLACE to handle both first-time and update scenarios
+  db.run(
+    `INSERT OR REPLACE INTO matchup_settings (id, tournament, team1_stack, team2_stack, team1_player, team2_player, team1_strategy, team2_strategy, updated_at) 
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [tournament || null, team1Stack || null, team2Stack || null, team1Player || null, team2Player || null, team1Strategy || null, team2Strategy || null],
+    function(err) {
+      if (err) {
+        console.error('Error saving matchup settings:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      res.json({ success: true, message: 'Settings saved successfully' });
+    }
+  );
+});
+
 // === NEW: Return total number of versus votes cast by the logged-in user ===
 app.get("/my/votes-count", requireAuth, (req, res) => {
   db.get(
@@ -1645,9 +2166,9 @@ app.get('/my/profile', requireAuth, (req, res) => {
           }
           response.uploads = rows || [];
 
-          // Get voting stats - first get my team IDs
+          // Get voting stats - first get my team IDs with limit
           db.all(
-            'SELECT id FROM teams WHERE user_id = ?',
+            'SELECT id FROM teams WHERE user_id = ? LIMIT 500',
             [userId],
             (err3, myTeams) => {
               if (err3) {
@@ -1660,43 +2181,41 @@ app.get('/my/profile', requireAuth, (req, res) => {
                 return res.json(response); // No teams, return early
               }
 
-              // Complex query to get win/loss stats by voter
-              const statsQuery = `
-                WITH voter_stats AS (
-                  SELECT 
-                    vm.voter_id,
-                    u.display_name as voter_name,
-                    COUNT(CASE WHEN vm.winner_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as wins,
-                    COUNT(CASE WHEN vm.loser_id IN (${myTeamIds.map(() => '?').join(',')}) THEN 1 END) as losses,
-                    COUNT(*) as total_votes
-                  FROM versus_matches vm
-                  JOIN users u ON vm.voter_id = u.id
-                  WHERE vm.voter_id IS NOT NULL
-                    AND (
-                      vm.winner_id IN (${myTeamIds.map(() => '?').join(',')})
-                      OR 
-                      vm.loser_id IN (${myTeamIds.map(() => '?').join(',')})
-                    )
-                  GROUP BY vm.voter_id
-                  HAVING total_votes >= 3
-                )
-                SELECT 
-                  voter_id,
-                  voter_name,
-                  wins,
-                  losses,
-                  total_votes,
-                  CAST(wins AS FLOAT) / (wins + losses) as win_rate
-                FROM voter_stats
-                WHERE voter_name IS NOT NULL
-                ORDER BY win_rate DESC`;
+              // Limit team IDs to prevent massive IN clauses
+              const limitedTeamIds = myTeamIds.slice(0, 100); // Limit to 100 teams max
+              
+              if (limitedTeamIds.length === 0) {
+                return res.json(response);
+              }
 
-              // Build params array - need to repeat myTeamIds 4 times for the different IN clauses
+              // Simplified query to reduce memory usage
+              const statsQuery = `
+                SELECT 
+                  vm.voter_id,
+                  u.display_name as voter_name,
+                  COUNT(CASE WHEN vm.winner_id IN (${limitedTeamIds.map(() => '?').join(',')}) THEN 1 END) as wins,
+                  COUNT(CASE WHEN vm.loser_id IN (${limitedTeamIds.map(() => '?').join(',')}) THEN 1 END) as losses,
+                  COUNT(*) as total_votes
+                FROM versus_matches vm
+                JOIN users u ON vm.voter_id = u.id
+                WHERE vm.voter_id IS NOT NULL
+                  AND (
+                    vm.winner_id IN (${limitedTeamIds.map(() => '?').join(',')})
+                    OR 
+                    vm.loser_id IN (${limitedTeamIds.map(() => '?').join(',')})
+                  )
+                GROUP BY vm.voter_id
+                HAVING total_votes >= 3
+                ORDER BY wins DESC
+                LIMIT 50
+              `;
+
+              // Build params array - need to repeat limitedTeamIds 4 times for the different IN clauses
               const params = [
-                ...myTeamIds, // For wins IN clause
-                ...myTeamIds, // For losses IN clause
-                ...myTeamIds, // For winner_id IN clause
-                ...myTeamIds  // For loser_id IN clause
+                ...limitedTeamIds, // For wins IN clause
+                ...limitedTeamIds, // For losses IN clause
+                ...limitedTeamIds, // For winner_id IN clause
+                ...limitedTeamIds  // For loser_id IN clause
               ];
 
               db.all(statsQuery, params, (err4, statsRows) => {
@@ -1764,19 +2283,17 @@ app.get('/my/profile', requireAuth, (req, res) => {
                   winRate: ((r.wins / (r.wins + r.losses)) * 100).toFixed(1)
                 }));
 
-                // === NEW: Fetch vote results for each of the user's teams ===
+                // === Simplified team stats query ===
                 const teamStatsSql = `
-                  WITH team_stats AS (
-                    SELECT
-                      t.id,
-                      t.tournament,
-                      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
-                      COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
-                      COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
-                    FROM teams t
-                    WHERE t.user_id = ?
-                  )
-                  SELECT * FROM team_stats
+                  SELECT
+                    t.id,
+                    t.tournament,
+                    COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
+                    COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
+                    COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
+                  FROM teams t
+                  WHERE t.user_id = ?
+                  LIMIT 100
                 `;
 
                 db.all(teamStatsSql, [userId], (err5, teamRows) => {
@@ -1789,11 +2306,9 @@ app.get('/my/profile', requireAuth, (req, res) => {
 
                   // Calculate percentages to match leaderboard formatting
                   const enriched = teamRows.map(r => {
-                    const voteTotal = r.yes_votes + r.no_votes;
-                    const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
                     const h2hTotal = r.wins + r.losses;
                     const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
-                    return { ...r, yes_pct, win_pct };
+                    return { ...r, win_pct };
                   });
 
                   response.voteResults = enriched;
@@ -2510,28 +3025,48 @@ app.listen(PORT, () => {
 
 // === NEW: Top 10 Drafters Widget Endpoint ===
 app.get('/api/widgets/top-drafters', async (req, res) => {
+  const startTime = Date.now();
   const tournament = req.query.tournament || null;
   const cacheKey = `top-drafters-${tournament || 'all'}`;
   
-  // Check widget cache first
+  // Check widget cache first with longer TTL for this expensive operation
   const cached = getCachedWidget(cacheKey);
   if (cached) {
     res.setHeader('X-Cache', 'HIT');
+    logWidgetPerformance('top-drafters', startTime, true);
     return res.json(cached);
   }
 
   try {
     const key = sanitizeKey(tournament);
     let meta = userLeaderboardCacheMeta.get(key);
-    if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
+    
+    // If cache is still reasonably fresh (within 30 minutes), use it to avoid file I/O
+    const cacheAge = meta ? Date.now() - meta.stamp : Infinity;
+    const maxCacheAge = 30 * 60 * 1000; // 30 minutes
+    
+    if (!meta || cacheAge > maxCacheAge) {
       await buildUserLeaderboardCache(tournament);
       meta = userLeaderboardCacheMeta.get(key);
     }
 
-    // Read and decompress cached leaderboard
-    const buf = fs.readFileSync(meta.filePath);
-    const jsonStr = zlib.gunzipSync(buf).toString('utf8');
-    const data = JSON.parse(jsonStr);
+    // Async file operations to avoid blocking the event loop
+    const readFileAsync = () => {
+      return new Promise((resolve, reject) => {
+        fs.readFile(meta.filePath, (err, buf) => {
+          if (err) return reject(err);
+          try {
+            const jsonStr = zlib.gunzipSync(buf).toString('utf8');
+            const data = JSON.parse(jsonStr);
+            resolve(data);
+          } catch (parseErr) {
+            reject(parseErr);
+          }
+        });
+      });
+    };
+
+    const data = await readFileAsync();
 
     const top10 = data
       .sort((a, b) => b.median_madden - a.median_madden)
@@ -2544,11 +3079,12 @@ app.get('/api/widgets/top-drafters', async (req, res) => {
         win_pct: u.win_pct
       }));
 
-    // Cache the result
-    setCachedWidget(cacheKey, top10);
+    // Cache the result for longer since this is expensive to compute
+    setCachedWidget(cacheKey, top10, 10 * 60 * 1000); // 10 minutes widget cache
     
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes
+    res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes browser cache
+    logWidgetPerformance('top-drafters', startTime, false);
     res.json(top10);
   } catch (e) {
     console.error('Error building top drafters widget:', e);
@@ -2558,43 +3094,49 @@ app.get('/api/widgets/top-drafters', async (req, res) => {
 
 // === NEW: Top 10 Teams Widget Endpoint ===
 app.get('/api/widgets/top-teams', (req, res) => {
+  const startTime = Date.now();
   const cacheKey = 'top-teams';
   
   // Check widget cache first
   const cached = getCachedWidget(cacheKey);
   if (cached) {
     res.setHeader('X-Cache', 'HIT');
+    logWidgetPerformance('top-teams', startTime, true);
     return res.json(cached);
   }
 
+  // Optimized query using JOINs instead of subqueries for better performance
   const sql = `
-    WITH team_stats AS (
-      SELECT
-        t.id,
-        t.username,
-        t.tournament,
-        COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
-        COALESCE((
-          SELECT COUNT(*) FROM versus_matches vm 
-          WHERE vm.winner_id = t.id
-        ), 0) AS wins,
-        COALESCE((
-          SELECT COUNT(*) FROM versus_matches vm 
-          WHERE vm.loser_id = t.id
-        ), 0) AS losses
-      FROM teams t
-    )
     SELECT 
-      id,
-      username,
-      tournament,
-      madden,
-      wins,
-      losses,
-      wins + losses as total_votes
-    FROM team_stats
-    WHERE total_votes > 0
-    ORDER BY madden DESC
+      t.id,
+      t.username,
+      t.tournament,
+      COALESCE(rh.madden, 0) AS madden,
+      COALESCE(wins_count.wins, 0) AS wins,
+      COALESCE(losses_count.losses, 0) AS losses,
+      COALESCE(wins_count.wins, 0) + COALESCE(losses_count.losses, 0) as total_votes
+    FROM teams t
+    LEFT JOIN (
+      SELECT team_id, madden
+      FROM ratings_history rh1
+      WHERE rh1.computed_at = (
+        SELECT MAX(rh2.computed_at) 
+        FROM ratings_history rh2 
+        WHERE rh2.team_id = rh1.team_id
+      )
+    ) rh ON t.id = rh.team_id
+    LEFT JOIN (
+      SELECT winner_id, COUNT(*) as wins
+      FROM versus_matches
+      GROUP BY winner_id
+    ) wins_count ON t.id = wins_count.winner_id
+    LEFT JOIN (
+      SELECT loser_id, COUNT(*) as losses
+      FROM versus_matches
+      GROUP BY loser_id
+    ) losses_count ON t.id = losses_count.loser_id
+    WHERE (COALESCE(wins_count.wins, 0) + COALESCE(losses_count.losses, 0)) > 0
+    ORDER BY COALESCE(rh.madden, 0) DESC
     LIMIT 10
   `;
 
@@ -2604,27 +3146,30 @@ app.get('/api/widgets/top-teams', (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
     
-    // Cache the result
+    // Cache the result for longer since this data doesn't change frequently
     setCachedWidget(cacheKey, rows);
     
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes
+    res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes cache
+    logWidgetPerformance('top-teams', startTime, false);
     res.json(rows);
   });
 });
 
 // === NEW: Recent Votes Widget Endpoint ===
 app.get('/api/widgets/recent-votes', (req, res) => {
+  const startTime = Date.now();
   const cacheKey = 'recent-votes';
   
   // Check widget cache first (shorter cache for recent votes)
   const cached = getCachedWidget(cacheKey);
   if (cached) {
     res.setHeader('X-Cache', 'HIT');
+    logWidgetPerformance('recent-votes', startTime, true);
     return res.json(cached);
   }
 
-  // Optimized query with better indexing and reduced complexity
+  // Simplified query - remove complex subquery in SELECT for better performance
   const sql = `
     SELECT 
       vm.id,
@@ -2636,12 +3181,7 @@ app.get('/api/widgets/recent-votes', (req, res) => {
       tw.tournament as winner_tournament,
       tl.username as loser_username,
       tl.tournament as loser_tournament,
-      u.display_name as voter_display_name,
-      COALESCE(
-        u.display_name,
-        (SELECT username FROM teams WHERE user_id = vm.voter_id LIMIT 1),
-        'Anonymous'
-      ) as voter_name
+      COALESCE(u.display_name, 'Anonymous') as voter_name
     FROM versus_matches vm
     LEFT JOIN teams tw ON vm.winner_id = tw.id
     LEFT JOIN teams tl ON vm.loser_id = tl.id
@@ -2657,26 +3197,76 @@ app.get('/api/widgets/recent-votes', (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
     
-    // Format the data efficiently
-    const formattedRows = rows.map(row => ({
-      id: row.id,
-      winner_id: row.winner_id,
-      loser_id: row.loser_id,
-      created_at: row.created_at,
-      winner_username: row.winner_username || 'Anonymous',
-      winner_tournament: row.winner_tournament,
-      loser_username: row.loser_username || 'Anonymous',
-      loser_tournament: row.loser_tournament,
-      voter_name: row.voter_name,
-      time_ago: getTimeAgo(new Date(row.created_at + ' UTC'))
-    }));
+    // Handle voter name fallback if display_name is null but user has teams
+    const processedRows = [];
+    let completed = 0;
     
-    // Cache for 30 seconds (shorter cache for recent votes)
-    setCachedWidget(cacheKey, formattedRows);
+    const processRow = (row, index) => {
+      // If voter_name is 'Anonymous' but we have a voter_id, try to get team username
+      if (row.voter_name === 'Anonymous' && row.voter_id) {
+        db.get(
+          'SELECT username FROM teams WHERE user_id = ? LIMIT 1',
+          [row.voter_id],
+          (err, teamRow) => {
+            if (!err && teamRow) {
+              row.voter_name = teamRow.username;
+            }
+            
+            processedRows[index] = {
+              id: row.id,
+              winner_id: row.winner_id,
+              loser_id: row.loser_id,
+              created_at: row.created_at,
+              winner_username: row.winner_username || 'Anonymous',
+              winner_tournament: row.winner_tournament,
+              loser_username: row.loser_username || 'Anonymous',
+              loser_tournament: row.loser_tournament,
+              voter_name: row.voter_name,
+              time_ago: getTimeAgo(new Date(row.created_at + ' UTC'))
+            };
+            
+            completed++;
+            if (completed === rows.length) {
+              finishResponse();
+            }
+          }
+        );
+      } else {
+        processedRows[index] = {
+          id: row.id,
+          winner_id: row.winner_id,
+          loser_id: row.loser_id,
+          created_at: row.created_at,
+          winner_username: row.winner_username || 'Anonymous',
+          winner_tournament: row.winner_tournament,
+          loser_username: row.loser_username || 'Anonymous',
+          loser_tournament: row.loser_tournament,
+          voter_name: row.voter_name,
+          time_ago: getTimeAgo(new Date(row.created_at + ' UTC'))
+        };
+        
+        completed++;
+        if (completed === rows.length) {
+          finishResponse();
+        }
+      }
+    };
     
-    res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, max-age=30'); // 30 seconds
-    res.json(formattedRows);
+    const finishResponse = () => {
+      // Cache for 10 seconds (faster cache for recent votes)
+      setCachedWidget(cacheKey, processedRows);
+      
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('Cache-Control', 'public, max-age=10'); // 10 seconds browser cache
+      logWidgetPerformance('recent-votes', startTime, false);
+      res.json(processedRows);
+    };
+    
+    if (rows.length === 0) {
+      return finishResponse();
+    }
+    
+    rows.forEach(processRow);
   });
 });
 
@@ -2706,11 +3296,11 @@ app.get('/api/widgets/recent-votes-count', (req, res) => {
     
     const result = { count: row ? row.count : 0 };
     
-    // Cache for 15 seconds
+    // Cache for 5 seconds (very fast updates for count checking)
     setCachedWidget(cacheKey, result);
     
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, max-age=15'); // 15 seconds
+    res.setHeader('Cache-Control', 'public, max-age=5'); // 5 seconds browser cache
     res.json(result);
   });
 });
@@ -2784,56 +3374,114 @@ function getTimeAgo(date) {
 
 // === NEW: Widget Cache for Homepage Performance ===
 const WIDGET_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const RECENT_VOTES_CACHE_TTL = 30 * 1000; // 30 seconds for recent votes
+const RECENT_VOTES_CACHE_TTL = 10 * 1000; // 10 seconds for recent votes (faster updates)
 const widgetCache = new Map();
 
 function getCachedWidget(key) {
   const cached = widgetCache.get(key);
-  const ttl = key === 'recent-votes' ? RECENT_VOTES_CACHE_TTL : WIDGET_CACHE_TTL;
-  if (cached && (Date.now() - cached.timestamp) < ttl) {
+  if (!cached) return null;
+  
+  // Use custom TTL if provided, otherwise use default based on key
+  const ttl = cached.customTtl || 
+    (key === 'recent-votes' ? RECENT_VOTES_CACHE_TTL : WIDGET_CACHE_TTL);
+    
+  if ((Date.now() - cached.timestamp) < ttl) {
     return cached.data;
   }
   return null;
 }
 
-function setCachedWidget(key, data) {
+function setCachedWidget(key, data, customTtl = null) {
   widgetCache.set(key, {
     data,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    customTtl
   });
 }
 
-// Clean up expired cache entries every 10 minutes
+// Optimized cache cleanup with memory monitoring
 setInterval(() => {
   const now = Date.now();
+  let cleaned = 0;
+  
+  // Get memory usage for monitoring
+  const memoryUsage = process.memoryUsage();
+  const heapUsedMB = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+  
+  // More aggressive cleanup if memory usage is high
+  const isHighMemory = heapUsedMB > 512; // 512MB threshold
+  const aggressiveCleanup = isHighMemory;
+  
+  // Clean widget cache with adaptive TTL
   for (const [key, value] of widgetCache.entries()) {
-    const ttl = key === 'recent-votes' ? RECENT_VOTES_CACHE_TTL : WIDGET_CACHE_TTL;
-    if (now - value.timestamp > ttl) {
+    const baseTtl = value.customTtl || 
+      (key === 'recent-votes' ? RECENT_VOTES_CACHE_TTL : WIDGET_CACHE_TTL);
+    
+    // Reduce TTL by 50% if memory is high
+    const effectiveTtl = aggressiveCleanup ? baseTtl * 0.5 : baseTtl;
+    
+    if (now - value.timestamp > effectiveTtl) {
       widgetCache.delete(key);
+      cleaned++;
     }
   }
-}, 10 * 60 * 1000);
+  
+  // Clean team metadata cache more aggressively if needed
+  if (aggressiveCleanup && teamMetaCache.size > 100) {
+    const entries = Array.from(teamMetaCache.entries())
+      .sort((a, b) => b[1].timestamp - a[1].timestamp);
+    
+    teamMetaCache.clear();
+    // Keep only the 50 most recent entries
+    entries.slice(0, 50).forEach(([key, value]) => {
+      teamMetaCache.set(key, value);
+    });
+    
+  }
+  
+  // Clean old leaderboard cache entries (more aggressive if high memory)
+  const maxCacheEntries = aggressiveCleanup ? 3 : 5;
+  const cleanLeaderboardCache = (cache, name) => {
+    if (cache.size > maxCacheEntries) {
+      const entries = Array.from(cache.entries())
+        .sort((a, b) => b[1].stamp - a[1].stamp);
+      
+      cache.clear();
+      entries.slice(0, maxCacheEntries).forEach(([key, value]) => {
+        cache.set(key, value);
+      });
+    }
+  };
+  
+  cleanLeaderboardCache(teamLeaderboardCacheMeta, 'team leaderboard');
+  cleanLeaderboardCache(userLeaderboardCacheMeta, 'user leaderboard');
+  
+  // Force garbage collection if memory is very high and gc is available
+  if (heapUsedMB > 1024 && global.gc) {
+    global.gc();
+  }
+}, 15 * 60 * 1000); // Run every 15 minutes for more responsive cleanup
 
-// === NEW: Database Indexes for Performance ===
-function createPerformanceIndexes() {
-  // Create indexes for recent votes widget
-  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_created_at ON versus_matches(created_at DESC)`, (err) => {
-    if (err) console.error('Error creating versus_matches created_at index:', err);
+// === NEW: Additional Specialized Indexes ===
+function createSpecializedIndexes() {
+  
+  // Specialized composite index for recent votes widget (removed WHERE clause due to SQLite limitations)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_recent_widget ON versus_matches(created_at DESC, winner_id, loser_id, voter_id)`, (err) => {
+    if (err) console.error('Error creating versus_matches recent widget index:', err);
+    else console.log('✅ Recent votes widget index created successfully');
   });
   
-  db.run(`CREATE INDEX IF NOT EXISTS idx_teams_user_id ON teams(user_id)`, (err) => {
-    if (err) console.error('Error creating teams user_id index:', err);
-  });
-  
-  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_winner_loser ON versus_matches(winner_id, loser_id)`, (err) => {
-    if (err) console.error('Error creating versus_matches winner_loser index:', err);
-  });
-  
-  // Composite index for recent votes query
-  db.run(`CREATE INDEX IF NOT EXISTS idx_versus_matches_recent ON versus_matches(created_at DESC, winner_id, loser_id, voter_id)`, (err) => {
-    if (err) console.error('Error creating versus_matches recent index:', err);
-  });
 }
 
-// Create indexes on startup
-createPerformanceIndexes();
+// Performance monitoring for widget endpoints
+function logWidgetPerformance(widgetName, startTime, cacheHit = false) {
+  const duration = Date.now() - startTime;
+  
+  // Track slow operations
+  if (duration > 500) {
+    console.warn(`⚠️ Slow widget: ${widgetName} took ${duration}ms`);
+  }
+}
+
+// Create specialized indexes on startup
+createSpecializedIndexes();

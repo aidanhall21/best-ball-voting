@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Draft or Pass</title>
   <link rel="stylesheet" href="style.css" />
+  <script defer src="header.js"></script>
   <!-- Favicons -->
   <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
@@ -24,10 +25,19 @@
   <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
   <meta name="twitter:image:alt" content="Draft or Pass - Best Ball Voting app preview">
   
+  <!-- DNS prefetch for external resources -->
+  <link rel="dns-prefetch" href="//challenges.cloudflare.com">
+  <link rel="dns-prefetch" href="//static.cloudflareinsights.com">
+  
   <!-- Preload critical resources -->
   <link rel="preload" href="/api/widgets/top-drafters" as="fetch" crossorigin>
+  <link rel="preload" href="/api/widgets/top-teams" as="fetch" crossorigin>
+  <link rel="preload" href="/api/widgets/recent-votes" as="fetch" crossorigin>
   <link rel="preload" href="style.css" as="style">
   <link rel="preload" href="script.js" as="script">
+  
+  <!-- Prefetch likely next page -->
+  <link rel="prefetch" href="/draftorpass">
   
   <!-- Cloudflare Web Analytics -->
   <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
@@ -40,72 +50,6 @@
   </script>
 </head>
 <body>
-  <!-- Main Header Navigation -->
-  <header class="main-header">
-    <div class="header-content">
-      <div class="logo">
-        <a href="/" class="logo-link">Draft or Pass</a>
-      </div>
-      
-      <!-- Desktop Navigation -->
-      <nav class="desktop-nav">
-        <a href="/upload" class="nav-link">Upload</a>
-        <a href="/draftorpass" class="nav-link">Draft or Pass</a>
-        <a href="/leaderboard" class="nav-link">Leaderboard</a>
-        <a href="/upload" id="desktopLoginBtn" class="nav-link" style="display:none;">Login</a>
-      </nav>
-      
-      <!-- User Controls -->
-      <div class="user-controls">
-        <!-- Notification bell -->
-        <button id="notificationBell" class="notification-btn" style="display:none;">
-          🔔
-          <span id="notificationBadge" class="notification-badge" style="display:none;"></span>
-        </button>
-        <button id="userGear" class="gear-btn" style="display:none;">Profile</button>
-        <div id="userMenu" class="user-menu" style="display:none;">
-          <p id="userLabel"></p>
-          <a href="profile.html" id="profileLink" class="profile-link">Profile</a>
-          <button id="logoutBtn" class="logout-small">Logout</button>
-        </div>
-        <!-- Notification dropdown -->
-        <div id="notificationDropdown" class="notification-dropdown" style="display:none;">
-          <div class="notification-header">
-            <h3>Notifications</h3>
-            <button id="markAllRead" class="mark-all-read-btn">Mark all read</button>
-          </div>
-          <div id="notificationList" class="notification-list">
-            <div class="loading">Loading notifications...</div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Mobile Menu Toggle -->
-      <button class="mobile-menu-toggle" id="mobileMenuToggle">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
-    </div>
-    
-    <!-- Mobile Navigation Menu -->
-    <div class="mobile-nav" id="mobileNav">
-      <a href="/upload" class="mobile-nav-link">Upload</a>
-      <a href="/draftorpass" class="mobile-nav-link">Draft or Pass</a>
-      <a href="/leaderboard" class="mobile-nav-link">Leaderboard</a>
-      <div class="mobile-user-section" id="mobileUserSection">
-        <div id="mobileUserInfo" style="display:none;">
-          <!-- Mobile notifications -->
-          <button id="mobileNotificationBtn" class="mobile-notification-btn" style="display:none;">
-            🔔 Notifications <span id="mobileNotificationBadge" class="mobile-notification-count" style="display:none;"></span>
-          </button>
-          <a href="profile.html" id="mobileProfileLink" class="mobile-profile-btn">Profile</a>
-        </div>
-        <a href="/upload" id="mobileLoginBtn" class="mobile-nav-link" style="display:none;">Login</a>
-      </div>
-    </div>
-  </header>
-
   <!-- Hero Section -->
   <section class="hero-section">
     <div class="hero-content">
@@ -147,7 +91,7 @@
 
     <!-- Recent Votes Widget -->
     <div class="widget recent-votes" data-widget="recent-votes">
-      <h2>📊 Recent Votes</h2>
+      <h2>📊 Recent Votes <span id="recentVotesIndicator" class="update-indicator" style="visibility:hidden;">🔄</span></h2>
       <div class="widget-content" id="recentVotesContent">
         <div class="skeleton-loader">
           <div class="skeleton-row"></div>
@@ -173,7 +117,7 @@
 
     <!-- Draft or Pass Widget -->
     <div class="widget draft-or-pass" data-widget="draft-or-pass">
-      <h2>Vote Now - Which Team is Better?</h2>
+      <h2>Vote Now - Which Team is Better? <span id="draftOrPassIndicator" class="update-indicator" style="visibility:hidden;">🔄</span></h2>
       <div class="widget-content" id="draftOrPassContent">
         <div id="teamsContainer" class="teams-container">
           <div class="skeleton-loader">
@@ -191,7 +135,7 @@
 
   <script src="analytics.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="script.js"></script>
+  <script defer src="script.js"></script>
   <script>
     // Load Top 10 Drafters widget
     async function loadTopDrafters() {
@@ -321,10 +265,23 @@
       }
     }
 
+    // Show/hide update indicator
+    function showUpdateIndicator() {
+      const indicator = document.getElementById('recentVotesIndicator');
+      if (indicator) indicator.style.visibility = 'visible';
+    }
+    
+    function hideUpdateIndicator() {
+      const indicator = document.getElementById('recentVotesIndicator');
+      if (indicator) indicator.style.visibility = 'hidden';
+    }
+
     // Load Recent Votes widget
     async function loadRecentVotes() {
       const container = document.getElementById('recentVotesContent');
       if (!container) return;
+      
+      showUpdateIndicator();
       
       try {
         const controller = new AbortController();
@@ -333,7 +290,7 @@
         const res = await fetch('/api/widgets/recent-votes', {
           signal: controller.signal,
           headers: {
-            'Cache-Control': 'max-age=30' // Cache for 30 seconds
+            'Cache-Control': 'max-age=10' // Cache for 10 seconds
           }
         });
         
@@ -343,7 +300,19 @@
         const data = await res.json();
         
         if (!data || !data.length) {
-          container.innerHTML = '<div class="no-votes-message">No votes yet</div>';
+          // Smooth transition to "no votes" message
+          const currentContent = container.innerHTML;
+          const noVotesMessage = '<div class="no-votes-message">No votes yet</div>';
+          
+          if (currentContent !== noVotesMessage) {
+            container.style.opacity = '0.7';
+            container.style.transition = 'opacity 0.15s ease';
+            
+            setTimeout(() => {
+              container.innerHTML = noVotesMessage;
+              container.style.opacity = '1';
+            }, 150);
+          }
           return;
         }
 
@@ -370,8 +339,30 @@
           fragment.appendChild(voteRow);
         });
         
-        container.innerHTML = '';
-        container.appendChild(fragment);
+        // Smooth update without flickering - only update if content actually changed
+        const newContent = Array.from(fragment.children);
+        const existingContent = container.querySelectorAll('.vote-row');
+        
+        // Check if content actually changed by comparing first few items
+        let contentChanged = newContent.length !== existingContent.length;
+        if (!contentChanged && newContent.length > 0 && existingContent.length > 0) {
+          // Compare first item to detect new votes
+          const newFirstItem = newContent[0]?.innerHTML || '';
+          const existingFirstItem = existingContent[0]?.innerHTML || '';
+          contentChanged = newFirstItem !== existingFirstItem;
+        }
+        
+        if (contentChanged) {
+          // Smooth transition: fade out, update, fade in
+          container.style.opacity = '0.7';
+          container.style.transition = 'opacity 0.15s ease';
+          
+          setTimeout(() => {
+            container.innerHTML = '';
+            container.appendChild(fragment);
+            container.style.opacity = '1';
+          }, 150);
+        }
         
       } catch (e) {
         console.error('Error loading recent votes:', e);
@@ -380,23 +371,25 @@
         } else {
           container.innerHTML = '<div class="error-message">Failed to load data</div>';
         }
+      } finally {
+        hideUpdateIndicator();
       }
     }
 
     // Auto-update recent votes with smart polling
     let recentVotesInterval;
     let pollAttempts = 0;
-    const MAX_POLL_ATTEMPTS = 8; // Stop after 2 minutes of polling
+    const MAX_POLL_ATTEMPTS = 20; // Keep polling longer for better user experience
     let lastVoteCount = 0;
     
     function startRecentVotesPolling() {
       // Initial load
       loadRecentVotes();
       
-      // Smart polling: start with 10s, then adjust based on activity
-      const initialInterval = 10000;
-      const fallbackInterval = 20000;
-      const slowInterval = 45000;
+      // Aggressive polling for real-time feel: start with 5s, keep responsive
+      const initialInterval = 5000;   // 5 seconds for initial fast updates
+      const fallbackInterval = 8000;  // 8 seconds after initial activity
+      const slowInterval = 15000;     // 15 seconds for background polling
       
       recentVotesInterval = setInterval(() => {
         pollAttempts++;
@@ -486,7 +479,82 @@
     }
 
     // Expose loadRecentVotes globally so other scripts can trigger updates
-    window.refreshRecentVotes = loadRecentVotes;
+    window.refreshRecentVotes = async () => {
+      // Force refresh by bypassing all caches
+      const container = document.getElementById('recentVotesContent');
+      if (!container) return;
+      
+      showUpdateIndicator();
+      
+      try {
+        const res = await fetch('/api/widgets/recent-votes', {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length) {
+            const fragment = document.createDocumentFragment();
+            
+            data.forEach((vote) => {
+              const voteRow = document.createElement('div');
+              voteRow.className = 'vote-row';
+              voteRow.innerHTML = `
+                <div class="vote-result">
+                  <span class="winner">${vote.winner_username}</span>
+                  <span class="vs-text">defeated</span>
+                  <span class="loser">${vote.loser_username}</span>
+                </div>
+                <div class="tournament-text">
+                  <span class="vs-text">${vote.winner_tournament}</span>
+                </div>
+                <div class="vote-meta">
+                  <span class="voter">by ${vote.voter_name}</span>
+                  <span class="time">${vote.time_ago}</span>
+                </div>
+              `;
+              fragment.appendChild(voteRow);
+            });
+            
+            // Smooth update for force refresh - same anti-flicker logic
+            const newContent = Array.from(fragment.children);
+            const existingContent = container.querySelectorAll('.vote-row');
+            
+            // Check if content actually changed
+            let contentChanged = newContent.length !== existingContent.length;
+            if (!contentChanged && newContent.length > 0 && existingContent.length > 0) {
+              const newFirstItem = newContent[0]?.innerHTML || '';
+              const existingFirstItem = existingContent[0]?.innerHTML || '';
+              contentChanged = newFirstItem !== existingFirstItem;
+            }
+            
+            if (contentChanged) {
+              container.style.opacity = '0.7';
+              container.style.transition = 'opacity 0.15s ease';
+              
+              setTimeout(() => {
+                container.innerHTML = '';
+                container.appendChild(fragment);
+                container.style.opacity = '1';
+              }, 150);
+            }
+          }
+        }
+             } catch (e) {
+         console.warn('Force refresh failed, falling back to normal load:', e);
+         loadRecentVotes();
+       } finally {
+         hideUpdateIndicator();
+       }
+       
+       // Also reset the vote count to trigger immediate check
+       lastVoteCount = 0;
+       // Reset poll attempts to keep polling active
+       pollAttempts = 0;
+     };
     
     // Performance monitoring for recent votes
     async function monitorRecentVotesPerformance() {
@@ -495,9 +563,7 @@
         const res = await fetch('/api/widgets/recent-votes-performance');
         const data = await res.json();
         const endTime = performance.now();
-        
-        console.log(`Recent votes performance: ${data.duration}ms (DB) + ${(endTime - startTime).toFixed(2)}ms (total)`);
-        
+                
         // Log to analytics if available
         if (typeof gtag !== 'undefined') {
           gtag('event', 'timing_complete', {
@@ -513,15 +579,70 @@
     // Monitor performance periodically
     setInterval(monitorRecentVotesPerformance, 5 * 60 * 1000); // Every 5 minutes
 
+    // Show/hide draft or pass loading indicator
+    function showDraftOrPassIndicator() {
+      const indicator = document.getElementById('draftOrPassIndicator');
+      if (indicator) indicator.style.visibility = 'visible';
+    }
+    
+    function hideDraftOrPassIndicator() {
+      const indicator = document.getElementById('draftOrPassIndicator');
+      if (indicator) indicator.style.visibility = 'hidden';
+    }
+
     // Initialize Draft or Pass widget
     function initDraftOrPass() {
       // Set mode to versus for the voting functionality
       if (typeof currentMode !== 'undefined') {
         currentMode = 'versus';
       }
-      // Trigger initial teams fetch
-      if (typeof fetchTeams === 'function') {
-        fetchTeams(true);
+      
+      // Custom fetch that preserves skeleton loading for homepage widget
+      const container = document.getElementById("teamsContainer");
+      if (!container) return;
+      
+      // Show loading indicator
+      showDraftOrPassIndicator();
+      
+      if (typeof fetch === 'function') {
+        fetch("/teams")
+          .then(res => res.json())
+          .then(data => {
+            // Process teams data (simplified version of what fetchTeams does)
+            if (typeof teams !== 'undefined' && typeof shuffle === 'function') {
+              teams = shuffle(data.teams);
+              if (data.tournaments) teamTournaments = data.tournaments;
+              if (data.usernames) teamUsernames = data.usernames;
+              if (data.userIds) teamUserIds = data.userIds;
+              if (data.totals) {
+                teamVoteTotals = {};
+                Object.entries(data.totals).forEach(([tid, t]) => {
+                  teamVoteTotals[tid] = (t.wins || 0) + (t.losses || 0);
+                });
+              }
+              if (typeof currentUserId !== 'undefined' && currentUserId) {
+                myTeamIds = Object.keys(teamUserIds || {}).filter(tid => teamUserIds[tid] === currentUserId);
+              } else {
+                myTeamIds = [];
+              }
+              currentIndex = 0;
+              
+              // Render the teams (this will replace skeleton)
+              if (typeof renderVersus === 'function') {
+                renderVersus();
+              }
+            }
+          })
+          .catch(err => {
+            console.error('Failed to load teams for homepage widget:', err);
+            if (container) {
+              container.innerHTML = '<div class="error-message">Failed to load teams</div>';
+            }
+          })
+          .finally(() => {
+            // Hide loading indicator when done
+            hideDraftOrPassIndicator();
+          });
       }
     }
 
@@ -663,23 +784,7 @@
       if (notifPoll) { clearInterval(notifPoll); notifPoll = null; }
     }
 
-    // Simple time ago formatting function
-    function formatTimeAgo(date) {
-      const now = new Date();
-      const diffMs = now - date;
-      const diffSecs = Math.floor(diffMs / 1000);
-      const diffMins = Math.floor(diffSecs / 60);
-      const diffHours = Math.floor(diffMins / 60);
-      const diffDays = Math.floor(diffHours / 24);
-
-      if (diffSecs < 60) return `${diffSecs}s ago`;
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      return `${diffDays}d ago`;
-    }
-
     // ---- Mobile Notification Functions ----
-
     function showMobileNotifications() {
       // Create mobile notification overlay if it doesn't exist
       let overlay = document.getElementById('mobileNotificationOverlay');
@@ -785,15 +890,12 @@
 
       const timeAgo = formatTimeAgo(new Date(notification.created_at));
       
-      // Create enhanced notification message with links for versus votes
       let messageHTML = notification.message;
       
       if (notification.type === 'versus_vote' && notification.related_team_id) {
-        // First, create the team link
         const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
         messageHTML = messageHTML.replace('your team', teamLink);
         
-        // If we have opponent info, find and replace just the opponent name at the very end
         if (notification.opponent_team_id) {
           const againstIndex = messageHTML.lastIndexOf('against ');
           if (againstIndex !== -1) {
@@ -885,12 +987,70 @@
       }
     }
 
+    // === INITIALISE MOBILE NOTIFICATION BUTTON ===
+    function setupMobileNotifications() {
+      const btn = document.getElementById('mobileNotificationBtn');
+      if (!btn) {
+        return;
+      }
+
+      // Remove previous listeners by cloning
+      const clone = btn.cloneNode(true);
+      btn.parentNode.replaceChild(clone, btn);
+
+      clone.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        try {
+          const res = await fetch('/me');
+          const auth = await res.json();
+          if (auth && auth.user) {
+            // Ensure global currentUserId is set so script.js variant works if it overwrote ours
+            window.currentUserId = auth.user.id;
+            // Prefer our local overlay without login guard if script.js one blocks
+            if (typeof showMobileNotifications === 'function') {
+              showMobileNotifications();
+            } else {
+              console.warn('[Index] showMobileNotifications not defined');
+            }
+          } else {
+            alert('Please log in to view notifications');
+          }
+        } catch (err) {
+          console.error('[Index] Auth check failed', err);
+          alert('Please log in to view notifications');
+        }
+      });
+    }
+
+    // Always (re)run when header injected
+    document.addEventListener('headerLoaded', () => {
+      // Delay slightly to ensure DOM tree updated
+      setTimeout(setupMobileNotifications, 50);
+    });
+
+    // Simple time ago formatting function
+    function formatTimeAgo(date) {
+      const now = new Date();
+      const diffMs = now - date;
+      const diffSecs = Math.floor(diffMs / 1000);
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffSecs < 60) return `${diffSecs}s ago`;
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      return `${diffDays}d ago`;
+    }
+
     // Progressive loading with intersection observer
     let widgetObserver;
     let loadedWidgets = new Set();
     
     function initLazyLoading() {
-      // Create intersection observer for lazy loading widgets
+      // Create intersection observer for lazy loading widgets (excluding critical widgets)
       widgetObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting && !loadedWidgets.has(entry.target.dataset.widget)) {
@@ -905,9 +1065,13 @@
         threshold: 0.1
       });
       
-      // Observe all widgets
+      // Observe all widgets except critical ones that load immediately
       document.querySelectorAll('[data-widget]').forEach(widget => {
-        widgetObserver.observe(widget);
+        const widgetType = widget.dataset.widget;
+        // Skip widgets that are loaded as critical widgets
+        if (!loadedWidgets.has(widgetType)) {
+          widgetObserver.observe(widget);
+        }
       });
     }
     
@@ -929,17 +1093,20 @@
       }
     }
     
-    // Load critical widgets immediately (above the fold)
+    // Load critical widgets immediately (above the fold and layout-critical)
     function loadCriticalWidgets() {
       // Load top drafters immediately as it's likely above the fold
       loadTopDrafters();
       loadedWidgets.add('top-drafters');
+      
+      // Load draft or pass widget immediately to prevent layout jump and smooth UX
+      initDraftOrPass();
+      loadedWidgets.add('draft-or-pass');
     }
     
     // Performance monitoring
     function logPerformanceMetric(name, startTime) {
       const duration = performance.now() - startTime;
-      console.log(`Performance: ${name} took ${duration.toFixed(2)}ms`);
       
       // Send to analytics if available
       if (typeof gtag !== 'undefined') {
@@ -956,6 +1123,9 @@
       
       // Load critical content immediately
       loadCriticalWidgets();
+
+      // Run mobile notification setup in case header already present
+      setTimeout(setupMobileNotifications, 100);
       
       // Set up lazy loading for other widgets
       initLazyLoading();
@@ -979,53 +1149,57 @@
         }
       });
 
-      // Mobile menu toggle
-      const mobileMenuToggle = document.getElementById('mobileMenuToggle');
-      const mobileNav = document.getElementById('mobileNav');
-      
-      mobileMenuToggle.addEventListener('click', () => {
-        mobileNav.classList.toggle('active');
-        mobileMenuToggle.classList.toggle('active');
-      });
-      
-      // Close mobile menu when clicking on a link
-      document.querySelectorAll('.mobile-nav-link').forEach(link => {
-        link.addEventListener('click', () => {
-          mobileNav.classList.remove('active');
-          mobileMenuToggle.classList.remove('active');
-        });
-      });
-      
-      // Start voting button
-      const startVotingBtn = document.getElementById('startVotingBtn');
-      if (startVotingBtn) {
-        startVotingBtn.addEventListener('click', () => {
-          window.location.href = '/draftorpass';
-        });
+      // Wait for header to load before accessing header elements
+      function initHeaderDependentFeatures() {
+        // Mobile menu toggle
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        const mobileNav = document.getElementById('mobileNav');
+        
+        if (mobileMenuToggle && mobileNav) {
+          mobileMenuToggle.addEventListener('click', () => {
+            mobileNav.classList.toggle('active');
+            mobileMenuToggle.classList.toggle('active');
+          });
+          
+          // Close mobile menu when clicking on a link
+          document.querySelectorAll('.mobile-nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+              mobileNav.classList.remove('active');
+              mobileMenuToggle.classList.remove('active');
+            });
+          });
+        }
+        
+        // Start voting button
+        const startVotingBtn = document.getElementById('startVotingBtn');
+        if (startVotingBtn) {
+          startVotingBtn.addEventListener('click', () => {
+            window.location.href = '/draftorpass';
+          });
+        }
       }
-      
-      // Check auth status and update UI
-      fetch('/me')
-        .then(res => res.json())
-        .then(data => {
-          const loggedIn = !!data.user;
-          if (loggedIn) {
-            const displayName = data.user.display_name || data.user.email || 'User';
-            
+
+      // Listen for auth state resolution from header.js
+      document.addEventListener('authStateResolved', (event) => {
+        const { isLoggedIn, user } = event.detail;
+        
+        if (isLoggedIn) {
+          const displayName = user.display_name || user.email || 'User';
+          
+          // Start badge polling (non-header dependent)
+          startNotificationPolling();
+          
+
+
+          // Set up header-dependent features after auth check
+          document.addEventListener('headerLoaded', () => {
             // Update desktop user controls
-            document.getElementById('userLabel').textContent = displayName;
-            document.getElementById('userGear').style.display = 'inline-block';
+            const userLabel = document.getElementById('userLabel');
+            if (userLabel) userLabel.textContent = displayName;
             
-            // Hide login button when authenticated
-            const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-            if (desktopLoginBtn) desktopLoginBtn.style.display = 'none';
-            
-            // Show notification bell
+            // Set up notification bell click handler
             const notificationBell = document.getElementById('notificationBell');
             if (notificationBell) {
-              notificationBell.style.display = 'inline-block';
-              
-              // Set up notification bell click handler
               notificationBell.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const notificationDropdown = document.getElementById('notificationDropdown');
@@ -1048,101 +1222,133 @@
               });
             }
             
-            // Update mobile user controls
-            document.getElementById('mobileUserInfo').style.display = 'block';
-            
-            // Hide mobile login button when authenticated
-            const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-            if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
-            
-            // Show mobile notification button
+            // Add mobile notification click handler for all users
             const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
             if (mobileNotificationBtn) {
-              mobileNotificationBtn.style.display = 'block';
+              // Remove any existing handlers to avoid duplicates
+              const newBtn = mobileNotificationBtn.cloneNode(true);
+              mobileNotificationBtn.parentNode.replaceChild(newBtn, mobileNotificationBtn);
               
-              // Add click handler for mobile notifications
-              mobileNotificationBtn.addEventListener('click', () => {
-                showMobileNotifications();
+              newBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                try {
+                  const authRes = await fetch('/me');
+                  const authData = await authRes.json();
+                  
+                  if (authData.user) {
+                    showMobileNotifications();
+                  } else {
+                    alert('Please log in to view notifications');
+                  }
+                } catch (e) {
+                  console.error('Auth check failed:', e);
+                  alert('Please log in to view notifications');
+                }
               });
             }
             
-            // Start badge polling
-            startNotificationPolling();
-          } else {
-            // Show login button when not authenticated
-            const desktopLoginBtn = document.getElementById('desktopLoginBtn');
-            if (desktopLoginBtn) desktopLoginBtn.style.display = 'inline-block';
+            // Initialize header-dependent features for all users
+            initHeaderDependentFeatures();
+          });
+        } else {
+          // Not logged in - still need to initialize header features
+          document.addEventListener('headerLoaded', () => {
+            // Add mobile notification click handler for all users (even when not logged in)
+            const mobileNotificationBtn = document.getElementById('mobileNotificationBtn');
+            if (mobileNotificationBtn) {
+              // Remove any existing handlers to avoid duplicates
+              const newBtn = mobileNotificationBtn.cloneNode(true);
+              mobileNotificationBtn.parentNode.replaceChild(newBtn, mobileNotificationBtn);
+              
+              newBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                try {
+                  const authRes = await fetch('/me');
+                  const authData = await authRes.json();
+                  
+                  if (authData.user) {
+                    showMobileNotifications();
+                  } else {
+                    alert('Please log in to view notifications');
+                  }
+                } catch (e) {
+                  console.error('Auth check failed:', e);
+                  alert('Please log in to view notifications');
+                }
+              });
+            }
             
-            // Show mobile login button when not authenticated
-            const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-            if (mobileLoginBtn) mobileLoginBtn.style.display = 'block';
-            
-            // Hide mobile user controls when not logged in
-            document.getElementById('mobileUserInfo').style.display = 'none';
-          }
-          
-          // Show content after auth check
-          document.body.classList.add('content-visible');
-        })
-        .catch(err => {
-          console.error('Auth check failed:', err);
-          document.body.classList.add('content-visible');
-        });
-      
-      // Logout functionality
-      document.getElementById('logoutBtn').addEventListener('click', async () => {
-        await fetch('/logout', { method: 'POST' });
-        window.location.reload();
+            initHeaderDependentFeatures();
+          });
+        }
       });
-      
 
-      
-      // Profile button - go directly to profile page
-      const userGear = document.getElementById('userGear');
-      
-      userGear.addEventListener('click', (e) => {
-        if (userGear.style.display !== 'none') {
-          window.location.href = '/profile.html';
+      // Set up header-dependent features that require header elements
+      // This will be called after header is loaded
+      document.addEventListener('headerLoaded', () => {
+        // Logout functionality
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+          logoutBtn.addEventListener('click', async () => {
+            await fetch('/logout', { method: 'POST' });
+            window.location.reload();
+          });
         }
-      });
-      
-      // Mark all notifications as read button
-      const markAllReadBtn = document.getElementById('markAllRead');
-      if (markAllReadBtn) {
-        markAllReadBtn.addEventListener('click', async () => {
-          try {
-            const res = await fetch('/notifications/read-all', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (res.ok) {
-              // Mark all notification items as read visually
-              document.querySelectorAll('.notification-item.unread').forEach(item => {
-                item.classList.remove('unread');
-                item.classList.add('read');
+
+        // Profile button - go directly to profile page
+        const userGear = document.getElementById('userGear');
+        if (userGear) {
+          userGear.addEventListener('click', (e) => {
+            if (userGear.style.display !== 'none') {
+              window.location.href = '/profile.html';
+            }
+          });
+        }
+        
+        // Mark all notifications as read button
+        const markAllReadBtn = document.getElementById('markAllRead');
+        if (markAllReadBtn) {
+          markAllReadBtn.addEventListener('click', async () => {
+            try {
+              const res = await fetch('/notifications/read-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
               });
               
-              // Update notification count badge
-              if (typeof updateNotificationCount === 'function') {
-                updateNotificationCount();
+              if (res.ok) {
+                // Mark all notification items as read visually
+                document.querySelectorAll('.notification-item.unread').forEach(item => {
+                  item.classList.remove('unread');
+                  item.classList.add('read');
+                });
+                
+                // Update notification count badge
+                if (typeof updateNotificationCount === 'function') {
+                  updateNotificationCount();
+                }
+                
+              } else {
+                console.error('Failed to mark all notifications as read');
               }
-              
-            } else {
-              console.error('Failed to mark all notifications as read');
+            } catch (e) {
+              console.error('Error marking all notifications as read:', e);
             }
-          } catch (e) {
-            console.error('Error marking all notifications as read:', e);
+          });
+        }
+        
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('.user-controls')) {
+            const userMenu = document.getElementById('userMenu');
+            const notificationDropdown = document.getElementById('notificationDropdown');
+            if (userMenu) userMenu.style.display = 'none';
+            if (notificationDropdown) notificationDropdown.style.display = 'none';
           }
         });
-      }
-      
-      // Close dropdowns when clicking outside
-      document.addEventListener('click', (e) => {
-        if (!e.target.closest('.user-controls')) {
-          document.getElementById('userMenu').style.display = 'none';
-          document.getElementById('notificationDropdown').style.display = 'none';
-        }
       });
     });
   </script>

@@ -229,7 +229,6 @@ function getCaptchaToken() {
             console.error('Turnstile not supported in this browser');
           }
         });
-        console.log('New widget created:', widgetId);
       } catch (e) {
         pendingChallenges--;
         return reject(new Error('Failed to create Turnstile widget: ' + e.message));
@@ -425,6 +424,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Mobile menu functionality
   function toggleMobileMenu() {
+    if (!mobileMenu) return;
     const isActive = mobileMenu.classList.contains('active');
     if (isActive) {
       closeMobileMenuFunc();
@@ -434,27 +434,33 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function openMobileMenuFunc() {
-    mobileMenu.classList.add('active');
-    hamburgerBtn.classList.add('active');
+    if (mobileMenu) mobileMenu.classList.add('active');
+    if (hamburgerBtn) hamburgerBtn.classList.add('active');
     document.body.style.overflow = 'hidden'; // Prevent background scrolling
   }
 
   function closeMobileMenuFunc() {
-    mobileMenu.classList.remove('active');
-    hamburgerBtn.classList.remove('active');
+    if (mobileMenu) mobileMenu.classList.remove('active');
+    if (hamburgerBtn) hamburgerBtn.classList.remove('active');
     document.body.style.overflow = ''; // Restore scrolling
   }
 
-  // Mobile menu event listeners
-  hamburgerBtn.addEventListener('click', toggleMobileMenu);
-  closeMobileMenu.addEventListener('click', closeMobileMenuFunc);
+  // Mobile menu event listeners (only if elements exist)
+  if (hamburgerBtn) {
+    hamburgerBtn.addEventListener('click', toggleMobileMenu);
+  }
+  if (closeMobileMenu) {
+    closeMobileMenu.addEventListener('click', closeMobileMenuFunc);
+  }
   
   // Close mobile menu when clicking outside the menu content
-  mobileMenu.addEventListener('click', (e) => {
-    if (e.target === mobileMenu) {
-      closeMobileMenuFunc();
-    }
-  });
+  if (mobileMenu) {
+    mobileMenu.addEventListener('click', (e) => {
+      if (e.target === mobileMenu) {
+        closeMobileMenuFunc();
+      }
+    });
+  }
 
 
 
@@ -933,23 +939,34 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Event: Twitter login
-  loginTwitterBtn.addEventListener('click', () => {
-    window.location = '/auth/twitter';
-  });
+  if (loginTwitterBtn) {
+    loginTwitterBtn.addEventListener('click', () => {
+      window.location = '/auth/twitter';
+    });
+  }
 
   // Event: Twitter signup (same as login)
-  document.getElementById('signupTwitterBtn').addEventListener('click', () => {
-    window.location = '/auth/twitter';
-  });
+  const signupTwitterBtn = document.getElementById('signupTwitterBtn');
+  if (signupTwitterBtn) {
+    signupTwitterBtn.addEventListener('click', () => {
+      window.location = '/auth/twitter';
+    });
+  }
 
   // Tab switching
-  document.getElementById('loginTab').addEventListener('click', () => {
-    setAuthTab('login');
-  });
+  const loginTab = document.getElementById('loginTab');
+  if (loginTab) {
+    loginTab.addEventListener('click', () => {
+      setAuthTab('login');
+    });
+  }
   
-  document.getElementById('signupTab').addEventListener('click', () => {
-    setAuthTab('signup');
-  });
+  const signupTab = document.getElementById('signupTab');
+  if (signupTab) {
+    signupTab.addEventListener('click', () => {
+      setAuthTab('signup');
+    });
+  }
 
   function setAuthTab(tab) {
     const loginTab = document.getElementById('loginTab');
@@ -973,107 +990,116 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Event: Email login
-  loginEmailForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    if (!email || !password) return;
-    const res = await fetch('/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: email, password })
-    });
-    if (res.ok) {
-      await refreshAuth();
-    } else {
-      const err = await res.json().catch(() => ({}));
-      showLoginMessage(err.error || 'Login failed', 'error');
-    }
-  });
-
-  // Event: Email signup
-  document.getElementById('signupEmailForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('signupUsername').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value;
-    const passwordConfirm = document.getElementById('signupPasswordConfirm').value;
-    const emailConfirm = document.getElementById('signupEmailConfirm').value.trim();
-    
-    // Validation
-    if (!username || !email || !emailConfirm || !password || !passwordConfirm) {
-      showLoginMessage('All fields are required', 'error');
-      return;
-    }
-    if (email !== emailConfirm) {
-      showLoginMessage('Emails do not match', 'error');
-      return;
-    }
-    
-    if (password !== passwordConfirm) {
-      showLoginMessage('Passwords do not match', 'error');
-      return;
-    }
-    
-    if (password.length < 6) {
-      showLoginMessage('Password must be at least 6 characters', 'error');
-      return;
-    }
-    
-    const res = await fetch('/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, emailConfirm, password })
-    });
-    
-    if (res.ok) {
-      // automatically log in after register
-      const loginRes = await fetch('/login', {
+  if (loginEmailForm) {
+    loginEmailForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      if (!email || !password) return;
+      const res = await fetch('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: email, password })
       });
-      if (loginRes.ok) {
+      if (res.ok) {
         await refreshAuth();
-        showLoginMessage('Account created successfully!', 'success');
       } else {
-        showLoginMessage('Account created but auto login failed. Please try logging in.', 'error');
+        const err = await res.json().catch(() => ({}));
+        showLoginMessage(err.error || 'Login failed', 'error');
       }
-    } else {
-      const err = await res.json().catch(() => ({}));
-      showLoginMessage(err.error || 'Registration failed', 'error');
-    }
-  });
+    });
+  }
+
+  // Event: Email signup
+  const signupEmailForm = document.getElementById('signupEmailForm');
+  if (signupEmailForm) {
+    signupEmailForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('signupUsername').value.trim();
+      const email = document.getElementById('signupEmail').value.trim();
+      const password = document.getElementById('signupPassword').value;
+      const passwordConfirm = document.getElementById('signupPasswordConfirm').value;
+      const emailConfirm = document.getElementById('signupEmailConfirm').value.trim();
+      
+      // Validation
+      if (!username || !email || !emailConfirm || !password || !passwordConfirm) {
+        showLoginMessage('All fields are required', 'error');
+        return;
+      }
+      if (email !== emailConfirm) {
+        showLoginMessage('Emails do not match', 'error');
+        return;
+      }
+      
+      if (password !== passwordConfirm) {
+        showLoginMessage('Passwords do not match', 'error');
+        return;
+      }
+      
+      if (password.length < 6) {
+        showLoginMessage('Password must be at least 6 characters', 'error');
+        return;
+      }
+      
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, emailConfirm, password })
+      });
+      
+      if (res.ok) {
+        // automatically log in after register
+        const loginRes = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: email, password })
+        });
+        if (loginRes.ok) {
+          await refreshAuth();
+          showLoginMessage('Account created successfully!', 'success');
+        } else {
+          showLoginMessage('Account created but auto login failed. Please try logging in.', 'error');
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showLoginMessage(err.error || 'Registration failed', 'error');
+      }
+    });
+  }
 
   // Event: logout (button inside menu now)
-  logoutBtn.addEventListener("click", async () => {
-    await fetch('/logout', { method: 'POST' });
-    await refreshAuth();
-    showLoginMessage('', '');
-  });
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      await fetch('/logout', { method: 'POST' });
+      await refreshAuth();
+      showLoginMessage('', '');
+    });
+  }
 
   // Event: Forgot password
-  forgotPasswordLink.addEventListener('click', async (e) => {
-    e.preventDefault();
-    const emailInput = document.getElementById('loginEmail');
-    const email = emailInput.value.trim();
-    if (!email) {
-      showLoginMessage('Please enter your email address above first.', 'error');
-      emailInput.focus();
-      return;
-    }
+  if (forgotPasswordLink) {
+    forgotPasswordLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const emailInput = document.getElementById('loginEmail');
+      const email = emailInput.value.trim();
+      if (!email) {
+        showLoginMessage('Please enter your email address above first.', 'error');
+        emailInput.focus();
+        return;
+      }
 
-    const res = await fetch('/password-reset/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      const res = await fetch('/password-reset/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (res.ok) {
+        showLoginMessage('If that email is registered, a reset link has been sent.', 'info');
+      } else {
+        showLoginMessage('Failed to initiate reset.', 'error');
+      }
     });
-    if (res.ok) {
-      showLoginMessage('If that email is registered, a reset link has been sent.', 'info');
-    } else {
-      showLoginMessage('Failed to initiate reset.', 'error');
-    }
-  });
+  }
 
   // Check auth on load and then set initial mode once we know auth state
   refreshAuth().then(() => {
@@ -1087,19 +1113,24 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Enable/disable file input and upload button based on file selection and username
-  usernameInput.addEventListener("input", (e) => {
-    updateFileInputState();
-    // Clear any previous warning once typing starts
-    showUploadMessage('', '');
-  });
+  if (usernameInput) {
+    usernameInput.addEventListener("input", (e) => {
+      updateFileInputState();
+      // Clear any previous warning once typing starts
+      showUploadMessage('', '');
+    });
+  }
 
   // Enable/disable upload button based on file selection
-  csvUpload.addEventListener("change", (e) => {
-    uploadButton.disabled = !e.target.files.length;
-  });
+  if (csvUpload) {
+    csvUpload.addEventListener("change", (e) => {
+      uploadButton.disabled = !e.target.files.length;
+    });
+  }
 
   // Handle file upload when button is clicked
-  uploadButton.addEventListener("click", () => {
+  if (uploadButton) {
+    uploadButton.addEventListener("click", () => {
     const file = csvUpload.files[0];
     const username = usernameInput.value.trim(); // Optional now
 
@@ -1164,7 +1195,8 @@ document.addEventListener("DOMContentLoaded", () => {
         showUploadMessage(error.message || "Failed to upload teams. Please try again.", "error");
         uploadButton.disabled = false;
       });
-  });
+    });
+  }
 
   // Gear button click handler - go directly to profile page
   if (gearBtn) {
@@ -1312,6 +1344,83 @@ function fetchTeams(force = false) {
     .then(data => {
       teams = shuffle(data.teams);
       teamTournaments = data.tournaments || {};
+      
+      // NEW: Handle stack filtering metadata and pre-compute candidates
+      if (data.stackFilters) {
+        window.stackFilters = data.stackFilters;
+        
+        // Pre-compute team candidates for performance
+        window.precomputedCandidates = {
+          team1: [],
+          team2: [],
+          general: []
+        };
+        
+        if (data.stackFilters.team1Stack || data.stackFilters.team2Stack || data.stackFilters.team1Player || data.stackFilters.team2Player || data.stackFilters.team1Strategy || data.stackFilters.team2Strategy) {
+          teams.forEach(teamEntry => {
+            const [teamId, playersArray, metadata] = teamEntry;
+            
+            // Check team1 requirements (stack and/or player)
+            let matchesTeam1 = true;
+            if (data.stackFilters.team1Stack) {
+              matchesTeam1 = matchesTeam1 && (
+                (metadata && metadata.matchesTeam1Stack) ||
+                playersArray.some(player => 
+                  player && player.team === data.stackFilters.team1Stack && player.stack === 'primary'
+                )
+              );
+            }
+            if (data.stackFilters.team1Player) {
+              matchesTeam1 = matchesTeam1 && (
+                (metadata && metadata.matchesTeam1Player) ||
+                playersArray.some(player => 
+                  player && player.name === data.stackFilters.team1Player
+                )
+              );
+            }
+            
+            // Check team2 requirements (stack and/or player)
+            let matchesTeam2 = true;
+            if (data.stackFilters.team2Stack) {
+              matchesTeam2 = matchesTeam2 && (
+                (metadata && metadata.matchesTeam2Stack) ||
+                playersArray.some(player => 
+                  player && player.team === data.stackFilters.team2Stack && player.stack === 'primary'
+                )
+              );
+            }
+            if (data.stackFilters.team2Player) {
+              matchesTeam2 = matchesTeam2 && (
+                (metadata && metadata.matchesTeam2Player) ||
+                playersArray.some(player => 
+                  player && player.name === data.stackFilters.team2Player
+                )
+              );
+            }
+            
+            // Only consider teams as matches if they have the relevant filters
+                    const hasTeam1Filters = data.stackFilters.team1Stack || data.stackFilters.team1Player || data.stackFilters.team1Strategy;
+        const hasTeam2Filters = data.stackFilters.team2Stack || data.stackFilters.team2Player || data.stackFilters.team2Strategy;
+            
+            // Categorize teams
+            if (hasTeam1Filters && matchesTeam1) {
+              window.precomputedCandidates.team1.push(teamEntry);
+            }
+            if (hasTeam2Filters && matchesTeam2) {
+              window.precomputedCandidates.team2.push(teamEntry);
+            }
+            if ((!hasTeam1Filters || !matchesTeam1) && (!hasTeam2Filters || !matchesTeam2)) {
+              window.precomputedCandidates.general.push(teamEntry);
+            }
+          });
+          
+          
+        }
+      } else {
+        window.stackFilters = null;
+        window.precomputedCandidates = null;
+      }
+      
       // build username map
       if (data.usernames) {
         teamUsernames = data.usernames;
@@ -1388,6 +1497,7 @@ function getTournamentCategory(tourName = "") {
   if (tourName === "The Eliminator") return "Eliminator";
   if (tourName === "Weekly Winners") return "Weekly Winners";
   if (tourName === "Rookies and Sophomores") return "Rookies & Sophomores";
+  if (tourName === "Badge Bros Brawl") return "Badge Bros Brawl";
   if (preDraftNames.includes(tourName)) return "Pre Draft";
   return "Post Draft";
 }
@@ -1452,10 +1562,7 @@ async function renderVersus() {
 
   // Clear any previous vote function reference only if no clicks are pending
   if (clickQueue.length === 0) {
-    console.log(`🔄 Clearing vote function - no pending clicks`);
     currentVoteFunction = null;
-  } else {
-    console.log(`⏸️ Preserving vote function - ${clickQueue.length} clicks pending`);
   }
 
   // Declare here so it is in scope for sendVersusVote
@@ -1587,15 +1694,45 @@ async function renderVersus() {
     return null;
   };
 
-  if (!teamId1) {
+    // ===== NEW: Stack/Player-based team selection (optimized with pre-computed candidates) =====
+  // If filters are active, use pre-computed candidates for fast selection
+  if (window.precomputedCandidates && (window.stackFilters.team1Stack || window.stackFilters.team2Stack || window.stackFilters.team1Player || window.stackFilters.team2Player || window.stackFilters.team1Strategy || window.stackFilters.team2Strategy)) {
+    
+    // Try to find team1 with required filters
+    if ((window.stackFilters.team1Stack || window.stackFilters.team1Player || window.stackFilters.team1Strategy) && !teamId1 && window.precomputedCandidates.team1.length > 0) {
+      const targetBucket = pickRandomBucket();
+      for (const [tid, teamData] of shuffle(window.precomputedCandidates.team1)) {
+        try {
+          let totalVotes = teamVoteTotals[tid];
+          if (totalVotes === undefined) {
+            const meta = await fetchTeamMeta(tid);
+            totalVotes = (meta.wins || 0) + (meta.losses || 0);
+            teamVoteTotals[tid] = totalVotes;
+          }
+          if (getBucket(totalVotes) === targetBucket) {
+            teamId1 = tid;
+            break;
+          }
+        } catch (_) { /* skip */ }
+      }
+      // If no team matches the bucket, just pick any team with the stack
+      if (!teamId1) {
+        teamId1 = randElem(window.precomputedCandidates.team1)[0];
+      }
+    }
+  }
+
+  // Only run normal team1 selection if no team1 filters are defined
+  if (!teamId1 && !window.stackFilters?.team1Stack && !window.stackFilters?.team1Player && !window.stackFilters?.team1Strategy) {
     const targetBucket = pickRandomBucket();
     teamId1 = await pickTeamInBucket(targetBucket);
   }
 
+  // Only run normal team2 selection if no team2 filters are defined
   // If we successfully picked teamId1 via buckets, choose teamId2 respecting
   // the existing tournament / different-user rules.  Otherwise fall through
   // to the legacy random-tournament logic below.
-  if (teamId1 && !teamId2) {
+  if (teamId1 && !teamId2 && !window.stackFilters?.team2Stack && !window.stackFilters?.team2Player && !window.stackFilters?.team2Strategy) {
     const tour = teamTournaments[teamId1];
     const list = (tour && tourGroups[tour]) ? tourGroups[tour] : [];
     const differentUserTeams = list.filter(id => id !== teamId1 && (teamUserIds[id] || null) !== (teamUserIds[teamId1] || null));
@@ -1611,25 +1748,79 @@ async function renderVersus() {
     return usernamesSet.size >= 2;
   });
 
-  if (!teamId1 || !teamId2) {
+  // Fallback logic - only select teams that don't have filter requirements
+  if (!teamId1 || (!teamId2 && !window.stackFilters?.team2Stack && !window.stackFilters?.team2Player && !window.stackFilters?.team2Strategy)) {
     if (eligibleTours.length) {
       const [tour, list] = weightedTournamentSelect(eligibleTours);
-      teamId1 = randElem(list);
-      const user1 = teamUsernames[teamId1] || "__anon__";
-      const differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
-      if (differentUserTeams.length) {
-        const bucket2 = pickRandomBucket();
-        teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
+      
+      // Only set teamId1 if not already set by filter logic
+      if (!teamId1 && !window.stackFilters?.team1Stack && !window.stackFilters?.team1Player && !window.stackFilters?.team1Strategy) {
+        teamId1 = randElem(list);
+      }
+      
+      // Only set teamId2 if not already set by filter logic and no team2 filters required
+      if (!teamId2 && !window.stackFilters?.team2Stack && !window.stackFilters?.team2Player && !window.stackFilters?.team2Strategy && teamId1) {
+        const user1 = teamUsernames[teamId1] || "__anon__";
+        const differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
+        if (differentUserTeams.length) {
+          const bucket2 = pickRandomBucket();
+          teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
+        }
       }
     } else {
-      // ultimate fallback: any two distinct random teams
-      let idx1 = Math.floor(Math.random() * teams.length);
-      let idx2;
-      do {
-        idx2 = Math.floor(Math.random() * teams.length);
-      } while (idx2 === idx1);
-      teamId1 = teams[idx1][0];
-      teamId2 = teams[idx2][0];
+      // ultimate fallback: any two distinct random teams (only if no filter requirements)
+      if (!teamId1 && !window.stackFilters?.team1Stack && !window.stackFilters?.team1Player && !window.stackFilters?.team1Strategy) {
+        let idx1 = Math.floor(Math.random() * teams.length);
+        teamId1 = teams[idx1][0];
+      }
+      
+      if (!teamId2 && !window.stackFilters?.team2Stack && !window.stackFilters?.team2Player && !window.stackFilters?.team2Strategy && teamId1) {
+        let idx2;
+        do {
+          idx2 = Math.floor(Math.random() * teams.length);
+        } while (teams[idx2][0] === teamId1);
+        teamId2 = teams[idx2][0];
+      }
+    }
+  }
+
+  // ===== NEW: Team2 filter selection (after team1 is determined) =====
+  // Handle case where only team2 filters are defined, or team2 filters are defined and team1 was selected normally
+  if (window.precomputedCandidates && (window.stackFilters.team2Stack || window.stackFilters.team2Player || window.stackFilters.team2Strategy) && teamId1 && window.precomputedCandidates.team2.length > 0) {
+    const tour = teamTournaments[teamId1];
+    const list = (tour && tourGroups[tour]) ? tourGroups[tour] : teams.map(([tid]) => tid);
+    
+    // Filter pre-computed team2 candidates by tournament and user constraints
+    const validTeam2Candidates = window.precomputedCandidates.team2.filter(([tid]) => 
+      tid !== teamId1 && 
+      list.includes(tid) &&
+      (teamUserIds[tid] || null) !== (teamUserIds[teamId1] || null)
+    );
+    
+    if (validTeam2Candidates.length > 0) {
+      const targetBucket = pickRandomBucket();
+      let foundTeam2 = false;
+      
+      for (const [tid, teamData] of shuffle(validTeam2Candidates)) {
+        try {
+          let totalVotes = teamVoteTotals[tid];
+          if (totalVotes === undefined) {
+            const meta = await fetchTeamMeta(tid);
+            totalVotes = (meta.wins || 0) + (meta.losses || 0);
+            teamVoteTotals[tid] = totalVotes;
+          }
+          if (getBucket(totalVotes) === targetBucket) {
+            teamId2 = tid;
+            foundTeam2 = true;
+            break;
+          }
+        } catch (_) { /* skip */ }
+      }
+      
+      // If no team matches the bucket, just pick any team with the stack
+      if (!foundTeam2) {
+        teamId2 = randElem(validTeam2Candidates)[0];
+      }
     }
   }
 
@@ -2297,33 +2488,98 @@ function renderLeaderboard(data) {
     };
   });
 
-  // attach view button listeners if team view
+  container.appendChild(tableContainer);
+
+  // Attach simple popup to View buttons (team view only)
   if (leaderboardType === "team") {
     tableContainer.querySelectorAll(".view-team-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const id = e.target.getAttribute("data-id");
-        showTeamModal(id);
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const id = btn.getAttribute("data-id");
+        try {
+          const res = await fetch(`/team/${id}`);
+          if (!res.ok) throw new Error('Failed to load team');
+          const players = await res.json();
+
+          // Re-use existing buildTeamCard logic to create markup, then extract just the player list
+          const card = buildTeamCard(id, players);
+          const list = card.querySelector('.player-list');
+          if (list) {
+            // Detach list from card to avoid unnecessary wrappers
+            const clonedList = list.cloneNode(true);
+            showSimplePopup(clonedList);
+          } else {
+            showSimplePopup('Unable to render team');
+          }
+        } catch (err) {
+          console.error('View load error', err);
+          showSimplePopup('Error loading team');
+        }
       });
     });
   }
-
-  container.appendChild(tableContainer);
 }
 
 function hideModal() {
-  document.getElementById("modalOverlay").style.display = "none";
-  document.getElementById("modalBody").innerHTML = "";
+  const existingModal = document.querySelector('.modal-overlay');
+  if (existingModal) {
+    existingModal.remove();
+  }
 }
 
 function showTeamModal(teamId) {
   fetch(`/team/${teamId}`)
     .then(res => res.json())
     .then(players => {
-      const body = document.getElementById("modalBody");
-      body.innerHTML = "";
+      // Remove any existing modal
+      const existingModal = document.querySelector('.modal-overlay');
+      if (existingModal) {
+        existingModal.remove();
+      }
+      
+      // Create modal and append directly to body to avoid transform containment issues
+      const modalOverlay = document.createElement('div');
+      modalOverlay.className = 'modal-overlay';
+      modalOverlay.style.display = 'flex';
+      modalOverlay.style.position = 'fixed';
+      modalOverlay.style.top = '0';
+      modalOverlay.style.left = '0';
+      modalOverlay.style.width = '100vw';
+      modalOverlay.style.height = '100vh';
+      modalOverlay.style.zIndex = '1000';
+      
+      const modalContent = document.createElement('div');
+      modalContent.className = 'modal-content';
+      
+      const modalClose = document.createElement('div');
+      modalClose.className = 'modal-close';
+      modalClose.innerHTML = '<button id="modalCloseBtn">✖</button>';
+      
+      const modalBody = document.createElement('div');
+      modalBody.id = 'modalBody';
+      
       const card = buildTeamCard(teamId, players);
-      body.appendChild(card);
-      document.getElementById("modalOverlay").style.display = "flex";
+      modalBody.appendChild(card);
+      
+      modalContent.appendChild(modalClose);
+      modalContent.appendChild(modalBody);
+      modalOverlay.appendChild(modalContent);
+      
+      // Append directly to body to avoid transform containment
+      document.body.appendChild(modalOverlay);
+      
+      // Add event listeners
+      modalClose.querySelector('#modalCloseBtn').addEventListener('click', () => {
+        modalOverlay.remove();
+      });
+      
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) {
+          modalOverlay.remove();
+        }
+      });
     });
 }
 
@@ -3028,9 +3284,110 @@ function initMobileMenu() {
   }
 }
 
-// Initialize when DOM is ready
+// Initialize when header is loaded
+function initMobileMenuWhenReady() {
+  if (document.getElementById('mobileMenuToggle')) {
+    initMobileMenu();
+  } else {
+    document.addEventListener('headerLoaded', initMobileMenu);
+  }
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initMobileMenu);
+  document.addEventListener('DOMContentLoaded', initMobileMenuWhenReady);
 } else {
-  initMobileMenu();
+  initMobileMenuWhenReady();
+}
+
+// Ensure mobile notifications are fully set up once header is injected (in case refreshAuth ran before header loaded)
+document.addEventListener('headerLoaded', () => {
+  // Re-run setup to attach handler to fresh DOM elements
+  if (typeof setupMobileNotifications === 'function') {
+    setupMobileNotifications();
+  }
+});
+
+// === Simple center-screen popup used by leaderboard "View" buttons ===
+function showSimplePopup(content = "This is a popup") {
+  // Remove any existing popup first
+  const existing = document.querySelector('.simple-popup-overlay');
+  if (existing) existing.remove();
+
+  // Create overlay that always covers the viewport regardless of scrolling
+  const overlay = document.createElement('div');
+  overlay.className = 'simple-popup-overlay';
+  Object.assign(overlay.style, {
+    position: 'fixed',      // lock to viewport
+    inset: '0',             // shorthand for top/right/bottom/left 0
+    background: 'rgba(0,0,0,0.6)',
+    display: 'grid',        // grid makes centering trivial
+    placeItems: 'center',   // center both horizontally & vertically
+    zIndex: 9999            // very high to sit above other fixed elements
+  });
+
+  // Create popup box
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    background: '#0d1117',
+    color: '#f0f6fc',
+    padding: '24px 32px',
+    borderRadius: '8px',
+    fontSize: '18px',
+    maxWidth: window.innerWidth <= 768 ? '98vw' : '95vw',
+    width: window.innerWidth <= 768 ? 'auto' : '600px',
+    textAlign: 'center',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+    fontFamily: "'Söhne', 'Inter', sans-serif"
+  });
+
+  // Inject content
+  if (content instanceof Node) {
+    // Add CSS to make player-bubble fill full width in popup
+    const style = document.createElement('style');
+    style.textContent = `
+      .simple-popup-overlay .player-list {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        align-items: center;
+      }
+      .simple-popup-overlay .player-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        padding: 0 16px;
+      }
+      .simple-popup-overlay .player-bubble {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 48px;
+      }
+      @media (max-width: 768px) {
+        .simple-popup-overlay .player-row {
+          padding: 0 12px;
+        }
+        .simple-popup-overlay .player-bubble {
+          width: 100% !important;
+          margin: 0 6px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    box.appendChild(content);
+  } else if (content) {
+    box.textContent = String(content);
+  }
+
+  // Prevent click propagation inside the box (so clicking text doesn't close it)
+  box.addEventListener('click', (e) => e.stopPropagation());
+
+  // Close popup when overlay area outside box is clicked
+  overlay.addEventListener('click', () => overlay.remove());
+
+  overlay.appendChild(box);
+  // Append to <html> instead of <body> to avoid transforms on body affecting fixed positioning
+  (document.documentElement || document.body).appendChild(overlay);
 }
