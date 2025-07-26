@@ -565,26 +565,7 @@
 
     // Setup header navigation and controls
     function setupHeaderControls() {
-      // Desktop notification bell
-      const notificationBell = document.getElementById('notificationBell');
-      const notificationDropdown = document.getElementById('notificationDropdown');
-      if (notificationBell && notificationDropdown) {
-        notificationBell.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const userMenu = document.querySelector('.user-menu');
-          const isVisible = notificationDropdown.style.display !== 'none';
-          
-          // Toggle notification dropdown
-          notificationDropdown.style.display = isVisible ? 'none' : 'block';
-          // Hide user menu if open
-          if (userMenu) userMenu.style.display = 'none';
-          
-          // Load notifications when opening
-          if (!isVisible) {
-            loadDesktopNotifications();
-          }
-        });
-      }
+      // NOTE: Notification bell is handled universally in header.js - no need to duplicate here
       
       // Profile gear button
       const userGear = document.getElementById('userGear');
@@ -599,15 +580,37 @@
       if (markAllReadBtn) {
         markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
       }
+
+      // Fallback: if button wasn't present yet, attach once header loads
+      document.addEventListener('headerLoaded', () => {
+        const hdrBtn = document.getElementById('markAllRead');
+        if (hdrBtn) {
+          const fresh = hdrBtn.cloneNode(true);
+          hdrBtn.parentNode.replaceChild(fresh, hdrBtn);
+          fresh.addEventListener('click', markAllNotificationsAsRead);
+        }
+      });
       
       // Close dropdowns when clicking outside
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.user-controls')) {
+          const notificationDropdown = document.getElementById('notificationDropdown');
           if (notificationDropdown) notificationDropdown.style.display = 'none';
           const userMenu = document.querySelector('.user-menu');
           if (userMenu) userMenu.style.display = 'none';
         }
       });
+    }
+
+    // === Ensure header controls are initialized ===
+    if (document.querySelector('.main-header')) {
+      // Header already injected
+      setupHeaderControls();
+    } else {
+      // Defer until headerLoaded fires (header.js injects header and emits event)
+      document.addEventListener('headerLoaded', () => {
+        setupHeaderControls();
+      }, { once: true });
     }
 
     // Desktop notification functions

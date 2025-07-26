@@ -494,6 +494,16 @@ document.addEventListener('DOMContentLoaded', () => {
     markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
   }
 
+  // Re-attach listener after the header is injected dynamically (if it wasn’t present earlier)
+  document.addEventListener('headerLoaded', () => {
+    const hdrBtn = document.getElementById('markAllRead');
+    if (hdrBtn) {
+      const newBtn = hdrBtn.cloneNode(true); // remove any stale listeners
+      hdrBtn.parentNode.replaceChild(newBtn, hdrBtn);
+      newBtn.addEventListener('click', markAllNotificationsAsRead);
+    }
+  });
+
   // Simple notification loading function
   window.loadNotifications = async function() {
     const notificationList = document.getElementById('notificationList');

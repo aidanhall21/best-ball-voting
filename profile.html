@@ -2103,6 +2103,16 @@
       markAllReadBtnDesk.addEventListener('click', markAllNotificationsAsRead);
     }
 
+    // Ensure the listener exists even if header injected late
+    document.addEventListener('headerLoaded', () => {
+      const hdrBtn = document.getElementById('markAllRead');
+      if (hdrBtn) {
+        const clone = hdrBtn.cloneNode(true);
+        hdrBtn.parentNode.replaceChild(clone, hdrBtn);
+        clone.addEventListener('click', markAllNotificationsAsRead);
+      }
+    });
+
     // === Simple center-screen popup used by View buttons ===
     function showSimplePopup(content = "This is a popup") {
       // Remove any existing popup first
