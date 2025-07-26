@@ -94,6 +94,44 @@
     flex: 1 0 auto;
   }
 
+  /* === SPECIAL BANNER === */
+  .special-banner {
+    background: linear-gradient(135deg, #1a5f7a 0%, #2d7a9a 50%, #1a5f7a 100%);
+    color: #ffffff;
+    text-align: center;
+    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #0d4a5f;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .special-banner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  @media (max-width: 768px) {
+    .special-banner {
+      font-size: 14px;
+      padding: 10px 16px;
+    }
+  }
+
   /* === MAIN HEADER NAVIGATION === */
   .main-header {
     background: #161b22;
