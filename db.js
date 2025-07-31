@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-26-0931.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-26-0931.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-07-30-1250.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-30-1250.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -50,6 +50,20 @@ db.serialize(() => {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS elo_ratings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id TEXT NOT NULL,
+      tournament TEXT,
+      username TEXT,
+      elo REAL NOT NULL,
+      wins INTEGER DEFAULT 0,
+      losses INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (team_id) REFERENCES teams (id)
+    )
+  `);
+
   // (no single-row ratings table anymore; snapshots are stored in ratings_history)
 
   // Store the computed Bradley-Terry ratings and Madden-style overall ratings
@@ -70,6 +84,12 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_tourn ON ratings_history(tournament)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_hist_time ON ratings_history(computed_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_history_team_time ON ratings_history(team_id, computed_at DESC)`);
+
+  // Elo ratings indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_elo_ratings_team ON elo_ratings(team_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_elo_ratings_tournament ON elo_ratings(tournament)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_elo_ratings_created ON elo_ratings(created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_elo_ratings_team_time ON elo_ratings(team_id, created_at DESC)`);
 
   // Notifications table for when users receive notifications about their teams
   db.run(`

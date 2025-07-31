@@ -20,7 +20,7 @@ let teamTournaments = {};
 let currentMode = "upload"; // 'upload' | 'versus' | 'leaderboard'
 let leaderboardType = "team"; // 'team' or 'user'
 let leaderboardData = [];
-let sortKey = "madden"; // Default to Draftr Rating (team view is default)
+let sortKey = "elo_rating"; // Default to Elo Rating (team view is default)
 let sortDir = "desc";
 let teamUsernames = {};
 let teamUserIds = {}; // teamId -> user_id mapping
@@ -1953,15 +1953,55 @@ async function renderVersus() {
       const optimisticMeta1 = { ...meta1 };
       const optimisticMeta2 = { ...meta2 };
       
+      // Calculate current total matches for each team (before this vote)
+      const team1Matches = (meta1.wins || 0) + (meta1.losses || 0);
+      const team2Matches = (meta2.wins || 0) + (meta2.losses || 0);
+      
+      // Get current user ID for vote weight calculation
+      const voterId = currentUserId;
+      
+      // Calculate vote weight based on team ownership
+      const voteWeight = calculateVoteWeightClient(voterId, 
+        teamUserIds[teamId1], teamUserIds[teamId2]);
+      
+      // Calculate new ELO ratings optimistically
+      const currentElo1 = optimisticMeta1.elo_rating || STARTING_ELO;
+      const currentElo2 = optimisticMeta2.elo_rating || STARTING_ELO;
+      
+      let newEloRatings;
       if (winnerId === teamId1) {
         // Team 1 wins, Team 2 loses
         optimisticMeta1.wins = (optimisticMeta1.wins || 0) + 1;
         optimisticMeta2.losses = (optimisticMeta2.losses || 0) + 1;
+        
+        newEloRatings = calculateNewEloRatingsClient(
+          currentElo1, currentElo2, voteWeight, team1Matches, team2Matches
+        );
+        optimisticMeta1.elo_rating = newEloRatings.winnerNewElo;
+        optimisticMeta2.elo_rating = newEloRatings.loserNewElo;
+        
+        // Calculate ELO changes (deltas)
+        optimisticMeta1.elo_delta = newEloRatings.winnerNewElo - currentElo1;
+        optimisticMeta2.elo_delta = newEloRatings.loserNewElo - currentElo2;
       } else {
         // Team 2 wins, Team 1 loses
         optimisticMeta2.wins = (optimisticMeta2.wins || 0) + 1;
         optimisticMeta1.losses = (optimisticMeta1.losses || 0) + 1;
+        
+        newEloRatings = calculateNewEloRatingsClient(
+          currentElo2, currentElo1, voteWeight, team2Matches, team1Matches
+        );
+        optimisticMeta1.elo_rating = newEloRatings.loserNewElo;
+        optimisticMeta2.elo_rating = newEloRatings.winnerNewElo;
+        
+        // Calculate ELO changes (deltas)
+        optimisticMeta1.elo_delta = newEloRatings.loserNewElo - currentElo1;
+        optimisticMeta2.elo_delta = newEloRatings.winnerNewElo - currentElo2;
       }
+      
+      // Calculate new percentiles for color coding (approximation)
+      optimisticMeta1.percentile = calculateOptimisticPercentile(optimisticMeta1.elo_rating);
+      optimisticMeta2.percentile = calculateOptimisticPercentile(optimisticMeta2.elo_rating);
 
       // Recalculate win percentages with optimistic data
       const updateWinPct = (meta) => {
@@ -1989,16 +2029,30 @@ async function renderVersus() {
         </div>
       `;
 
-      // --- NEW: Update tournament labels with rating boxes ---
+      // --- NEW: Update tournament labels with ELO rating boxes (including deltas) ---
       const label1 = card1.querySelector('.tournament-label');
       if (label1) {
-        const ratingBox = formatRatingBox((optimisticMeta1.madden !== undefined ? optimisticMeta1.madden : (optimisticMeta1.rating || 0)));
-        label1.innerHTML = `${ratingBox} ${tournamentName1}`;
+        const ratingBox = formatEloRatingBoxWithDelta(
+          optimisticMeta1.elo_rating || 1500, 
+          optimisticMeta1.percentile || 0.5,
+          optimisticMeta1.elo_delta
+        );
+        label1.innerHTML = `
+          <div class="tournament-rating">${ratingBox}</div>
+          <div class="tournament-name">${tournamentName1}</div>
+        `;
       }
       const label2 = card2.querySelector('.tournament-label');
       if (label2) {
-        const ratingBox = formatRatingBox((optimisticMeta2.madden !== undefined ? optimisticMeta2.madden : (optimisticMeta2.rating || 0)));
-        label2.innerHTML = `${ratingBox} ${tournamentName2}`;
+        const ratingBox = formatEloRatingBoxWithDelta(
+          optimisticMeta2.elo_rating || 1500, 
+          optimisticMeta2.percentile || 0.5,
+          optimisticMeta2.elo_delta
+        );
+        label2.innerHTML = `
+          <div class="tournament-rating">${ratingBox}</div>
+          <div class="tournament-name">${tournamentName2}</div>
+        `;
       }
 
       // Reveal the "Next Matchup" button now that a vote has been made
@@ -2097,29 +2151,31 @@ async function renderVersus() {
 
 // fetchLeaderboard
 function fetchLeaderboard(force = false) {
-  // Ensure default sort for both views is by Draftr Rating (desc)
-  const expectedRatingKey = leaderboardType === "team" ? "madden" : "median_madden";
+  // Use Elo rating keys for sorting
+  const expectedRatingKey = leaderboardType === "team" ? "elo_rating" : "avg_elo";
+  
   if (sortKey !== expectedRatingKey) {
     sortKey = expectedRatingKey;
     sortDir = "desc";
   }
 
-  // Reuse cached data ONLY for team view (and when not forcing)
+  // Don't reuse cached data when forcing refresh
   if (!force && leaderboardType === "team" && leaderboardRawData.length && leaderboardRawData[0]?.id !== undefined) {
     leaderboardData = leaderboardRawData;
     sortAndRender();
     return;
   }
 
+  // Always use Elo endpoints
   let endpoint;
   if (leaderboardType === "team") {
-    endpoint = "/api/leaderboard";
+    endpoint = "/api/leaderboard/elo";
   } else {
-    // leaderboardType === "user"
-    endpoint = "/api/leaderboard/users";
-    if (currentTournament) {
-      endpoint += `?tournament=${encodeURIComponent(currentTournament)}`;
-    }
+    endpoint = "/api/leaderboard/elo/users";
+  }
+  
+  if (currentTournament) {
+    endpoint += `?tournament=${encodeURIComponent(currentTournament)}`;
   }
 
   fetch(endpoint)
@@ -2198,7 +2254,7 @@ function renderLeaderboard(data) {
     btnUser.classList.toggle("active", leaderboardType === "user");
     btnTeam.onclick = () => {
       leaderboardType = "team";
-      sortKey = "madden"; // Default to Draftr Rating for team view
+      sortKey = "elo_rating"; // Default to Elo Rating for team view
       sortDir = "desc";
       currentTournament = ""; // reset tournament
       // Keep currentUsernameFilter as-is
@@ -2209,7 +2265,7 @@ function renderLeaderboard(data) {
     };
     btnUser.onclick = () => {
       leaderboardType = "user";
-      sortKey = "median_madden"; // Default to Draftr Rating for user view
+      sortKey = "avg_elo"; // Default to Elo Rating for user view
       sortDir = "desc";
       currentTournament = "";
       currentUsernameFilter = ""; // reset user filter when switching views
@@ -2228,6 +2284,7 @@ function renderLeaderboard(data) {
       btnUser.classList.toggle("active", leaderboardType === "user");
     }
   }
+
 
   // ==== Filter wrapper (holds tournament + username selects) ====
   let filtersWrapper = container.querySelector('.filters-wrapper');
@@ -2454,14 +2511,18 @@ function renderLeaderboard(data) {
       const usernameCell = row.username && row.username !== "-" 
         ? `<a href="voting-history.html?teamId=${row.id}" class="username-link">${row.username}</a>`
         : "-";
-      const maddenFmt = formatRatingBox(row.madden);
-      tr.innerHTML = `<td>${viewBtn}</td><td>${maddenFmt}</td><td>${usernameCell}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      
+      const ratingDisplay = formatEloRatingBox(row.elo_rating, row.percentile);
+      
+      tr.innerHTML = `<td>${viewBtn}</td><td>${ratingDisplay}</td><td>${usernameCell}</td><td>${row.tournament || "-"}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     } else {
       const usernameCell = row.username && row.username !== "-" 
         ? `<a href="profile.html?user=${encodeURIComponent(row.username)}" class="username-link">${row.username}</a>`
         : "-";
-      const medMaddenFmt = formatRatingBox(row.median_madden);
-      tr.innerHTML = `<td>${medMaddenFmt}</td><td>${usernameCell}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
+      
+      const ratingDisplay = formatEloRatingBox(row.avg_elo, row.percentile, true); // true indicates user rating
+      
+      tr.innerHTML = `<td>${ratingDisplay}</td><td>${usernameCell}</td><td>${row.wins}</td><td>${row.losses}</td><td>${winPct}%</td>`;
     }
     tbody.appendChild(tr);
   });
@@ -2470,9 +2531,11 @@ function renderLeaderboard(data) {
 
   // Make W, L, Win% sortable
   const headerCells = headerRow.querySelectorAll("th");
+  const ratingKey = leaderboardType === "team" ? "elo_rating" : "avg_elo";
+  
   const sortableKeys = leaderboardType === "team" 
-    ? [null, "madden", null, null, "wins", "losses", "win_pct"] // Team view: Team, Rating, User, Contest, W, L, Win%
-    : ["median_madden", null, "wins", "losses", "win_pct"];      // User view: Rating, User, W, L, Win%
+    ? [null, ratingKey, null, null, "wins", "losses", "win_pct"] // Team view: Team, Rating, User, Contest, W, L, Win%
+    : [ratingKey, null, "wins", "losses", "win_pct"];            // User view: Rating, User, W, L, Win%
   headerCells.forEach((th, idx) => {
     const key = sortableKeys[idx];
     if (!key) return; // skip non-sortable columns
@@ -3024,6 +3087,134 @@ function formatRatingBox(rating) {
   if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
   const tierClass = getRatingTierClass(rating);
   return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+}
+
+// Helper to format Elo rating with percentile-based coloring
+function formatEloRatingBox(eloRating, percentile, isUserRating = false) {
+  if (!eloRating || eloRating === 0) return '<span class="rating-box tier-none">-</span>';
+  
+  // Use percentile directly to determine color tier
+  const tierClass = isUserRating ? getUserPercentileTierClass(percentile) : getTeamPercentileTierClass(percentile);
+  
+  return `<span class="rating-box ${tierClass}">${Math.round(eloRating)}</span>`;
+}
+
+// ---- ELO Rating Calculation Functions (Client-side) ----
+const STARTING_ELO = 1500.0;
+const BASE_K_FACTOR = 128.0;
+
+function calculateVoteWeightClient(voterId, winnerUserId, loserUserId) {
+  if (!voterId) return 1.0;
+  
+  const voterIdStr = String(voterId);
+  const winnerUserIdStr = winnerUserId ? String(winnerUserId) : null;
+  const loserUserIdStr = loserUserId ? String(loserUserId) : null;
+  
+  if (voterIdStr === winnerUserIdStr) {
+    return 0.5; // Self-votes count as half
+  } else if (voterIdStr === loserUserIdStr) {
+    return 1.5; // Voting against own team gets extra credit
+  } else {
+    return 1.0; // Neutral votes get normal weight
+  }
+}
+
+function calculateExpectedScoreClient(ratingA, ratingB) {
+  return 1.0 / (1.0 + Math.pow(10, (ratingB - ratingA) / 400.0));
+}
+
+function calculateAdaptiveKFactorClient(baseK, voteWeight, matchesPlayed) {
+  // Weight adjustment: higher weight = higher K-factor
+  const weightMultiplier = voteWeight;
+  
+  // Experience adjustment: fewer matches = higher K-factor
+  const experienceFactor = Math.max(0.5, 1.0 - (matchesPlayed / 200.0));
+  
+  return baseK * weightMultiplier * experienceFactor;
+}
+
+function calculateNewEloRatingsClient(winnerElo, loserElo, voteWeight, winnerMatches, loserMatches) {
+  // Calculate expected scores
+  const winnerExpected = calculateExpectedScoreClient(winnerElo, loserElo);
+  const loserExpected = 1.0 - winnerExpected;
+  
+  // Calculate adaptive K-factors
+  const winnerK = calculateAdaptiveKFactorClient(BASE_K_FACTOR, voteWeight, winnerMatches);
+  const loserK = calculateAdaptiveKFactorClient(BASE_K_FACTOR, voteWeight, loserMatches);
+  
+  // Update ELO ratings
+  const winnerNewElo = winnerElo + winnerK * (1.0 - winnerExpected);
+  const loserNewElo = loserElo + loserK * (0.0 - loserExpected);
+  
+  return {
+    winnerNewElo: Math.round(winnerNewElo),
+    loserNewElo: Math.round(loserNewElo)
+  };
+}
+
+function calculateOptimisticPercentile(newElo, minElo = 800, maxElo = 2200) {
+  // Simple percentile approximation for immediate display
+  // In a real system, this would use the actual global distribution
+  if (maxElo === minElo) return 0.5;
+  return Math.max(0, Math.min(1, (newElo - minElo) / (maxElo - minElo)));
+}
+
+// Helper to format ELO rating with delta change
+function formatEloRatingBoxWithDelta(eloRating, percentile, eloDelta) {
+  if (!eloRating || eloRating === 0) return '<span class="rating-box tier-none">-</span>';
+  
+  // Use percentile directly to determine color tier
+  const tierClass = getPercentileTierClass(percentile);
+  
+  // Format the rating box
+  const ratingBox = `<span class="rating-box ${tierClass}">${Math.round(eloRating)}</span>`;
+  
+  // Format the delta with appropriate sign and color (outside the rating box)
+  let deltaDisplay = '';
+  if (eloDelta !== undefined && eloDelta !== 0) {
+    const deltaSign = eloDelta > 0 ? '+' : '';
+    const deltaClass = eloDelta > 0 ? 'elo-delta-positive' : 'elo-delta-negative';
+    deltaDisplay = ` <span class="${deltaClass}">(${deltaSign}${Math.round(eloDelta)})</span>`;
+  }
+  
+  return `${deltaDisplay}${ratingBox}`;
+}
+
+// Helper to determine color tier from percentile for team ratings
+function getTeamPercentileTierClass(percentile) {
+  if (percentile < 0.10) {
+    return 'tier-bottom';   // 0-10%: Dark Red
+  } else if (percentile < 0.30) {
+    return 'tier-low';      // 10-30%: Red
+  } else if (percentile < 0.50) {
+    return 'tier-below';    // 30-50%: Orange
+  } else if (percentile < 0.70) {
+    return 'tier-average';  // 50-70%: Yellow
+  } else if (percentile < 0.90) {
+    return 'tier-good';     // 70-90%: Green
+  } else {
+    return 'tier-elite';    // 90-100%: Blue
+  }
+}
+
+// Helper to determine color tier from percentile for user ratings (more generous tiers)
+function getUserPercentileTierClass(percentile) {
+  if (percentile < 0.2) {
+    return 'tier-bottom';   // 0-5%: Dark Red
+  } else if (percentile < 0.4) {
+    return 'tier-low';      // 5-20%: Red
+  } else if (percentile < 0.60) {
+    return 'tier-average';  // 40-60%: Yellow
+  } else if (percentile < 0.8) {
+    return 'tier-good';     // 60-85%: Green
+  } else {
+    return 'tier-elite';    // 85-100%: Blue
+  }
+}
+
+// Legacy function for backward compatibility - defaults to team rating tiers
+function getPercentileTierClass(percentile) {
+  return getTeamPercentileTierClass(percentile);
 }
 
 // ---- Mobile Notification Functions ----

@@ -31,3 +31,9 @@ team_ratings.csv
 leaderboard_*.json.gz
 leaderboard_users_*.json.gz
 teams_cache.json.gz
+
+.claude/
+CLAUDE.md
+
+*.csv
+*.sql

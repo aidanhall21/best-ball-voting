@@ -2561,7 +2561,7 @@
   
   /* Tournament/contest name label on team cards */
   .tournament-label {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     margin-bottom: 8px;
     color: #f0f6fc;
@@ -2868,16 +2868,28 @@
 }
   
   /* Rating boxes with tier-based colors */
-.rating-box {
+.team-card .rating-box {
   display: inline-block;
-  padding: 4px 8px;
+  padding: 5px 10px;
   border-radius: 4px;
   font-weight: 600;
-  font-size: 12px;
-  min-width: 24px;
+  font-size: 15px !important;
+  min-width: 28px;
   text-align: center;
   border: 1px solid;
 }
+
+  /* Rating boxes with tier-based colors */
+  .widget .rating-box {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 13px !important;
+    min-width: 24px;
+    text-align: center;
+    border: 1px solid;
+  }
 
 /* Tier colors based on Madden rating ranges */
 .rating-box.tier-none {
@@ -2898,18 +2910,56 @@
   border-color: #c2410c;
 }
 
-.rating-box.tier-average {
-  background-color: #ca8a04;
+/* 0-12%: Bottom tier - Very Dark Red */
+.rating-box.tier-bottom {
+  background-color: #7f1d1d;
   color: #ffffff;
-  border-color: #a16207;
+  border-color: #991b1b;
 }
 
+/* 12-25%: Low tier - Red */
+.rating-box.tier-low {
+  background-color: #dc2626;
+  color: #ffffff;
+  border-color: #b91c1c;
+}
+
+/* 25-33%: Below tier - Dark Orange */
+.rating-box.tier-below {
+  background-color: #c2410c;
+  color: #ffffff;
+  border-color: #9a3412;
+}
+
+/* 33-50%: Below Average - Brown/Orange */
+.rating-box.tier-below-avg {
+  background-color: #92400e;
+  color: #ffffff;
+  border-color: #78350f;
+}
+
+/* 50-67%: Average - Dark Yellow/Gold */
+.rating-box.tier-average {
+  background-color: #a16207;
+  color: #ffffff;
+  border-color: #92400e;
+}
+
+/* 67-80%: Above Average - Olive Green */
+.rating-box.tier-above-avg {
+  background-color: #65a30d;
+  color: #ffffff;
+  border-color: #4d7c0f;
+}
+
+/* 80-90%: Good - Green */
 .rating-box.tier-good {
   background-color: #16a34a;
   color: #ffffff;
   border-color: #15803d;
 }
 
+/* 90-100%: Elite - Blue */
 .rating-box.tier-elite {
   background-color: #2563eb;
   color: #ffffff;
@@ -2918,9 +2968,49 @@
   
   @media (max-width: 768px) {
     .rating-box {
-      font-size: 10px;
+      font-size: 12px;
       padding: 3px 6px;
       min-width: 22px;
+    }
+  }
+  
+  /* ELO Delta Styles */
+  .elo-delta-positive {
+    color: #22c55e;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  
+  .elo-delta-negative {
+    color: #ef4444;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  
+  /* Tournament Label Layout */
+  .tournament-rating {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  
+  .tournament-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #f0f6fc;
+    line-height: 1.2;
+  }
+  
+  @media (max-width: 768px) {
+    .elo-delta-positive,
+    .elo-delta-negative {
+      font-size: 12px;
+    }
+    
+    .tournament-name {
+      font-size: 14px;
     }
   }
   
@@ -4033,7 +4123,7 @@
 
   @media (max-width: 768px) {
     .rating-box {
-      font-size: 10px;
+      font-size: 12px;
       padding: 3px 6px;
       min-width: 22px;
     }

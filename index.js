@@ -143,6 +143,129 @@ const ASSET_VERSION = (() => {
     : `${date}.${time}`;
 })();
 
+// ---- ELO Rating Calculation Functions ----
+const STARTING_ELO = 1500.0;
+const BASE_K_FACTOR = 128.0;
+
+function calculateVoteWeight(voterId, winnerUserId, loserUserId) {
+  if (!voterId) return 1.0;
+  
+  const voterIdStr = String(voterId);
+  const winnerUserIdStr = winnerUserId ? String(winnerUserId) : null;
+  const loserUserIdStr = loserUserId ? String(loserUserId) : null;
+  
+  if (voterIdStr === winnerUserIdStr) {
+    return 0.5; // Self-votes count as half
+  } else if (voterIdStr === loserUserIdStr) {
+    return 1.5; // Voting against own team gets extra credit
+  } else {
+    return 1.0; // Neutral votes get normal weight
+  }
+}
+
+function calculateExpectedScore(ratingA, ratingB) {
+  return 1.0 / (1.0 + Math.pow(10, (ratingB - ratingA) / 400.0));
+}
+
+function calculateAdaptiveKFactor(baseK, voteWeight, matchesPlayed) {
+  // Weight adjustment: higher weight = higher K-factor
+  const weightMultiplier = voteWeight;
+  
+  // Experience adjustment: fewer matches = higher K-factor
+  const experienceFactor = Math.max(0.5, 1.0 - (matchesPlayed / 200.0));
+  
+  return baseK * weightMultiplier * experienceFactor;
+}
+
+function getLatestEloRatings(teamIds, callback) {
+  // Get the most recent ELO rating for each team, or use starting rating if none exists
+  const placeholders = teamIds.map(() => '?').join(',');
+  
+  db.all(
+    `SELECT 
+      team_id,
+      elo,
+      wins,
+      losses,
+      tournament,
+      username
+    FROM (
+      SELECT 
+        team_id,
+        elo,
+        wins,
+        losses,
+        tournament,
+        username,
+        ROW_NUMBER() OVER (PARTITION BY team_id ORDER BY created_at DESC) as rn
+      FROM elo_ratings
+      WHERE team_id IN (${placeholders})
+    ) ranked
+    WHERE rn = 1`,
+    teamIds,
+    (err, rows) => {
+      if (err) return callback(err, null);
+      
+      // Create map of team_id -> rating data
+      const ratings = {};
+      
+      // Get team info for teams that don't have ELO ratings yet
+      db.all(
+        `SELECT id, tournament, username FROM teams WHERE id IN (${placeholders})`,
+        teamIds,
+        (err2, teamRows) => {
+          if (err2) return callback(err2, null);
+          
+          teamIds.forEach(teamId => {
+            const existingRating = rows.find(r => r.team_id === teamId);
+            const teamInfo = teamRows.find(t => t.id === teamId);
+            
+            if (existingRating) {
+              ratings[teamId] = {
+                elo: existingRating.elo,
+                wins: existingRating.wins,
+                losses: existingRating.losses,
+                tournament: existingRating.tournament,
+                username: existingRating.username
+              };
+            } else {
+              // Use starting ELO for new teams
+              ratings[teamId] = {
+                elo: STARTING_ELO,
+                wins: 0,
+                losses: 0,
+                tournament: teamInfo ? teamInfo.tournament : null,
+                username: teamInfo ? teamInfo.username : null
+              };
+            }
+          });
+          
+          callback(null, ratings);
+        }
+      );
+    }
+  );
+}
+
+function calculateNewEloRatings(winnerElo, loserElo, voteWeight, winnerMatches, loserMatches) {
+  // Calculate expected scores
+  const winnerExpected = calculateExpectedScore(winnerElo, loserElo);
+  const loserExpected = 1.0 - winnerExpected;
+  
+  // Calculate adaptive K-factors
+  const winnerK = calculateAdaptiveKFactor(BASE_K_FACTOR, voteWeight, winnerMatches);
+  const loserK = calculateAdaptiveKFactor(BASE_K_FACTOR, voteWeight, loserMatches);
+  
+  // Update ELO ratings
+  const winnerNewElo = winnerElo + winnerK * (1.0 - winnerExpected);
+  const loserNewElo = loserElo + loserK * (0.0 - loserExpected);
+  
+  return {
+    winnerNewElo: Math.round(winnerNewElo),
+    loserNewElo: Math.round(loserNewElo)
+  };
+}
+
 // Middleware to verify Turnstile captcha token
 async function verifyCaptcha(req, res, next) {
   const token = req.body.captcha;
@@ -525,11 +648,12 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
             // --- Apply player-level updates for existing teams ---
             existingPlayerUpdates.forEach((pl) => {
               db.run(
-                `UPDATE players SET picked_at = COALESCE(picked_at, ?), appearance = COALESCE(appearance, ?) WHERE team_id = ? AND position = ? AND name = ? AND pick = ?`,
-                [pl.pickedAt, pl.appearance, pl.teamId, pl.position, pl.name, pl.pick],
+                `UPDATE players SET name = ?, team = ?, picked_at = COALESCE(picked_at, ?), appearance = COALESCE(appearance, ?) WHERE team_id = ? AND position = ? AND pick = ?`,
+                [pl.name, pl.team, pl.pickedAt, pl.appearance, pl.teamId, pl.position, pl.pick],
                 function(err) {
                   if (err) { console.error('Player update err', err); return; }
                   if (this.changes === 0) {
+                    // Only insert if no player exists at this team_id + position + pick combination
                     db.run(
                       `INSERT INTO players (team_id, position, name, pick, team, stack, picked_at, appearance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                       [pl.teamId, pl.position, pl.name, pl.pick, pl.team, null, pl.pickedAt, pl.appearance],
@@ -622,11 +746,12 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
             // --- Apply player-level updates for existing teams ---
             existingPlayerUpdates.forEach((pl) => {
               db.run(
-                `UPDATE players SET picked_at = COALESCE(picked_at, ?), appearance = COALESCE(appearance, ?) WHERE team_id = ? AND position = ? AND name = ? AND pick = ?`,
-                [pl.pickedAt, pl.appearance, pl.teamId, pl.position, pl.name, pl.pick],
+                `UPDATE players SET name = ?, team = ?, picked_at = COALESCE(picked_at, ?), appearance = COALESCE(appearance, ?) WHERE team_id = ? AND position = ? AND pick = ?`,
+                [pl.name, pl.team, pl.pickedAt, pl.appearance, pl.teamId, pl.position, pl.pick],
                 function(err) {
                   if (err) { console.error('Player update err', err); return; }
                   if (this.changes === 0) {
+                    // Only insert if no player exists at this team_id + position + pick combination
                     db.run(
                       `INSERT INTO players (team_id, position, name, pick, team, stack, picked_at, appearance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                       [pl.teamId, pl.position, pl.name, pl.pick, pl.team, null, pl.pickedAt, pl.appearance],
@@ -1151,80 +1276,144 @@ app.post("/versus", verifyCaptcha, (req, res) => {
     return res.status(400).json({ error: "Winner and loser IDs required" });
   }
 
-  db.run(
-    `INSERT INTO versus_matches (winner_id, loser_id, voter_id) VALUES (?, ?, ?)`,
-    [winnerId, loserId, voterId],
-    (err) => {
-      if (err) return res.status(500).json({ error: "Failed to record match result" });
-      
-      // Clear cache for both teams since their stats changed
-      teamMetaCache.delete(winnerId);
-      teamMetaCache.delete(loserId);
-      
-      // Invalidate recent votes cache since new vote was added
-      widgetCache.delete('recent-votes');
-      widgetCache.delete('recent-votes-count');
-      
-      // Create detailed notifications for team owners (if voter is logged in and different from team owners)
-      if (voterId) {
-        // Get comprehensive team and voter information
-        db.all(
-          `SELECT t.id, t.user_id, t.username, t.tournament, u.display_name
-           FROM teams t 
-           LEFT JOIN users u ON t.user_id = u.id 
-           WHERE t.id IN (?, ?)`,
-          [winnerId, loserId],
-          (err2, teamRows) => {
-            if (err2) {
-              console.error('Error fetching team owners for notifications:', err2);
-              return; // Don't fail the entire request
-            }
+  // First, get current ELO ratings for both teams
+  getLatestEloRatings([winnerId, loserId], (eloErr, eloRatings) => {
+    if (eloErr) {
+      console.error('Error getting ELO ratings:', eloErr);
+      return res.status(500).json({ error: "Failed to get team ratings" });
+    }
 
-            // Get voter information
-            db.get(
-              `SELECT u.display_name
-               FROM users u WHERE u.id = ?`,
-              [voterId],
-              (err3, voterRow) => {
-                if (err3) {
-                  console.error('Error fetching voter info for notifications:', err3);
-                  return;
+    // Get team owner info for vote weight calculation
+    db.all(
+      `SELECT t.id, t.user_id, t.username, t.tournament, u.display_name
+       FROM teams t 
+       LEFT JOIN users u ON t.user_id = u.id 
+       WHERE t.id IN (?, ?)`,
+      [winnerId, loserId],
+      (err2, teamRows) => {
+        if (err2) {
+          console.error('Error fetching team info:', err2);
+          return res.status(500).json({ error: "Failed to get team information" });
+        }
+
+        const winnerTeam = teamRows.find(t => t.id === winnerId);
+        const loserTeam = teamRows.find(t => t.id === loserId);
+        
+        if (!winnerTeam || !loserTeam) {
+          return res.status(400).json({ error: "Invalid team IDs" });
+        }
+
+        // Calculate vote weight
+        const voteWeight = calculateVoteWeight(voterId, winnerTeam.user_id, loserTeam.user_id);
+        
+        // Get current ELO data
+        const winnerRating = eloRatings[winnerId];
+        const loserRating = eloRatings[loserId];
+        
+        // Calculate match counts for adaptive K-factor
+        const winnerMatches = winnerRating.wins + winnerRating.losses;
+        const loserMatches = loserRating.wins + loserRating.losses;
+        
+        // Calculate new ELO ratings
+        const newRatings = calculateNewEloRatings(
+          winnerRating.elo,
+          loserRating.elo,
+          voteWeight,
+          winnerMatches,
+          loserMatches
+        );
+
+        // Record the versus match
+        db.run(
+          `INSERT INTO versus_matches (winner_id, loser_id, voter_id) VALUES (?, ?, ?)`,
+          [winnerId, loserId, voterId],
+          (err) => {
+            if (err) return res.status(500).json({ error: "Failed to record match result" });
+            
+            // Record new ELO ratings for both teams
+            const winnerNewWins = winnerRating.wins + voteWeight;
+            const loserNewLosses = loserRating.losses + voteWeight;
+            
+            // Insert winner's new ELO rating
+            db.run(
+              `INSERT INTO elo_ratings (team_id, tournament, username, elo, wins, losses) 
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [winnerId, winnerTeam.tournament, winnerTeam.username, newRatings.winnerNewElo, winnerNewWins, winnerRating.losses],
+              (eloErr1) => {
+                if (eloErr1) {
+                  console.error('Error recording winner ELO rating:', eloErr1);
                 }
-
-                const voterName = voterRow?.display_name || 'Someone';
-
-                teamRows.forEach(team => {
-                  // Only create notification if team has an owner and it's not the voter themselves
-                  if (team.user_id && team.user_id !== voterId) {
-                    const isWinner = team.id === winnerId;
-                    const opponentTeam = teamRows.find(t => t.id !== team.id);
-                    const opponentName = opponentTeam?.display_name || opponentTeam?.username || 'another user';
-                    
-                    // Build the notification message
-                    const emoji = isWinner ? '🔥 ' : '❌ ';
-                    const message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in the ${team.tournament} against ${opponentName}`;
-                    
-                    db.run(
-                      `INSERT INTO notifications (user_id, type, message, related_team_id, related_user_id, opponent_team_id) 
-                       VALUES (?, ?, ?, ?, ?, ?)`,
-                      [team.user_id, 'versus_vote', message, team.id, voterId, opponentTeam?.id],
-                      (err4) => {
-                        if (err4) {
-                          console.error('Error creating notification:', err4);
-                        }
-                      }
-                    );
-                  }
-                });
               }
             );
+            
+            // Insert loser's new ELO rating
+            db.run(
+              `INSERT INTO elo_ratings (team_id, tournament, username, elo, wins, losses) 
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [loserId, loserTeam.tournament, loserTeam.username, newRatings.loserNewElo, loserRating.wins, loserNewLosses],
+              (eloErr2) => {
+                if (eloErr2) {
+                  console.error('Error recording loser ELO rating:', eloErr2);
+                }
+              }
+            );
+            
+            // Clear cache for both teams since their stats changed
+            teamMetaCache.delete(winnerId);
+            teamMetaCache.delete(loserId);
+            
+            // Invalidate recent votes cache since new vote was added
+            widgetCache.delete('recent-votes');
+            widgetCache.delete('recent-votes-count');
+            
+            // Create detailed notifications for team owners (if voter is logged in and different from team owners)
+            if (voterId) {
+              // Get voter information
+              db.get(
+                `SELECT u.display_name
+                 FROM users u WHERE u.id = ?`,
+                [voterId],
+                (err3, voterRow) => {
+                  if (err3) {
+                    console.error('Error fetching voter info for notifications:', err3);
+                    return;
+                  }
+
+                  const voterName = voterRow?.display_name || 'Someone';
+
+                  teamRows.forEach(team => {
+                    // Only create notification if team has an owner and it's not the voter themselves
+                    if (team.user_id && team.user_id !== voterId) {
+                      const isWinner = team.id === winnerId;
+                      const opponentTeam = teamRows.find(t => t.id !== team.id);
+                      const opponentName = opponentTeam?.display_name || opponentTeam?.username || 'another user';
+                      
+                      // Build the notification message
+                      const emoji = isWinner ? '🔥 ' : '❌ ';
+                      const message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in the ${team.tournament} against ${opponentName}`;
+                      
+                      db.run(
+                        `INSERT INTO notifications (user_id, type, message, related_team_id, related_user_id, opponent_team_id) 
+                         VALUES (?, ?, ?, ?, ?, ?)`,
+                        [team.user_id, 'versus_vote', message, team.id, voterId, opponentTeam?.id],
+                        (err4) => {
+                          if (err4) {
+                            console.error('Error creating notification:', err4);
+                          }
+                        }
+                      );
+                    }
+                  });
+                }
+              );
+            }
+            
+            res.json({ status: "recorded" });
           }
         );
       }
-      
-      res.json({ status: "recorded" });
-    }
-  );
+    );
+  });
 });
 
 // Get versus stats for a team
@@ -1318,6 +1507,7 @@ app.get("/team-meta/:teamId", (req, res) => {
       t.tournament,
       u.twitter_username,
       COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = $id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
+      COALESCE((SELECT elo FROM elo_ratings er WHERE er.team_id = $id ORDER BY er.created_at DESC LIMIT 1), 1500) AS elo_rating,
       (
         SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = $id
       ) AS wins,
@@ -1344,7 +1534,9 @@ app.get("/team-meta/:teamId", (req, res) => {
         username: null, 
         twitter_username: null, 
         tournament: null, 
-        madden: 0, 
+        madden: 0,
+        elo_rating: 1500,
+        percentile: 0.5,
         wins: 0, 
         losses: 0, 
         win_pct: 0 
@@ -1355,6 +1547,7 @@ app.get("/team-meta/:teamId", (req, res) => {
         twitter_username: row.twitter_username,
         tournament: row.tournament,
         madden: Math.round(row.madden) || 0,
+        elo_rating: Math.round(row.elo_rating) || 1500,
         wins: parseInt(row.wins) || 0,
         losses: parseInt(row.losses) || 0
       };
@@ -1367,15 +1560,63 @@ app.get("/team-meta/:teamId", (req, res) => {
         win_pct = 100;
       }
       meta.win_pct = Number(win_pct.toFixed(1));
+      
+      // Calculate percentile for ELO rating
+      if (meta.elo_rating > 0) {
+        const globalEloSql = `
+          SELECT er.elo as elo_rating
+          FROM elo_ratings er
+          JOIN teams t ON t.id = er.team_id
+          LEFT JOIN (
+            SELECT vm.winner_id as team_id, COUNT(*) as wins
+            FROM versus_matches vm GROUP BY vm.winner_id
+          ) win_counts ON win_counts.team_id = er.team_id
+          LEFT JOIN (
+            SELECT vm.loser_id as team_id, COUNT(*) as losses
+            FROM versus_matches vm GROUP BY vm.loser_id
+          ) loss_counts ON loss_counts.team_id = er.team_id
+          WHERE er.id IN (
+            SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+          )
+          AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+          ORDER BY er.elo DESC
+        `;
+        
+        db.all(globalEloSql, [], (globalErr, globalRows) => {
+          if (!globalErr && globalRows.length > 0) {
+            const globalEloValues = globalRows.map(r => r.elo_rating);
+            const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+            const maxGlobalElo = globalEloValues[0];
+            
+            if (maxGlobalElo === minGlobalElo) {
+              meta.percentile = 0.5;
+            } else {
+              meta.percentile = (meta.elo_rating - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+            }
+          } else {
+            meta.percentile = 0.5;
+          }
+          
+          // Cache the result and respond
+          teamMetaCache.set(teamId, {
+            data: meta,
+            timestamp: Date.now()
+          });
+          
+          res.json(meta);
+        });
+      } else {
+        meta.percentile = 0.5;
+        
+        // Cache the result and respond
+        teamMetaCache.set(teamId, {
+          data: meta,
+          timestamp: Date.now()
+        });
+        
+        res.json(meta);
+      }
     }
-
-    // Cache the result
-    teamMetaCache.set(teamId, {
-      data: meta,
-      timestamp: Date.now()
-    });
-
-    res.json(meta);
   });
 });
 
@@ -1461,28 +1702,14 @@ function buildUserLeaderboardCache(tournament) {
       SELECT
         t.id,
         t.username,
-        COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
-        COALESCE((
-          SELECT COUNT(*) FROM versus_matches vm 
-          JOIN teams tw ON vm.winner_id = tw.id 
-          JOIN teams tl ON vm.loser_id = tl.id
-          WHERE vm.winner_id = t.id 
-          AND (? IS NULL OR (tw.tournament = ? AND tl.tournament = ?))
-        ), 0) AS wins,
-        COALESCE((
-          SELECT COUNT(*) FROM versus_matches vm 
-          JOIN teams tw ON vm.winner_id = tw.id 
-          JOIN teams tl ON vm.loser_id = tl.id
-          WHERE vm.loser_id = t.id 
-          AND (? IS NULL OR (tw.tournament = ? AND tl.tournament = ?))
-        ), 0) AS losses
+        COALESCE((SELECT ROUND(elo * 99.0 / 2000.0) FROM elo_ratings er WHERE er.team_id = t.id ORDER BY er.created_at DESC LIMIT 1), 75) AS madden,
+        COALESCE((SELECT wins FROM elo_ratings er WHERE er.team_id = t.id ORDER BY er.created_at DESC LIMIT 1), 0) AS wins,
+        COALESCE((SELECT losses FROM elo_ratings er WHERE er.team_id = t.id ORDER BY er.created_at DESC LIMIT 1), 0) AS losses
       FROM teams t
       WHERE (? IS NULL OR t.tournament = ?)
     `;
 
     db.all(sql, [
-      tournament || null, tournament || null, tournament || null, // wins subquery
-      tournament || null, tournament || null, tournament || null, // losses subquery  
       tournament || null, tournament || null                      // main WHERE clause
     ], (err, rows) => {
       if (err) return reject(err);
@@ -1674,6 +1901,216 @@ app.get("/tournaments", (req, res) => {
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: "DB error" });
     res.json(rows.map(r => r.tournament));
+  });
+});
+
+// Get Elo ratings leaderboard (team view)
+app.get("/api/leaderboard/elo", (req, res) => {
+  const tournament = req.query.tournament;
+  
+  let sql = `
+    SELECT 
+      er.team_id as id,
+      t.username,
+      t.tournament,
+      er.elo as elo_rating,
+      COALESCE(win_counts.wins, 0) as wins,
+      COALESCE(loss_counts.losses, 0) as losses,
+      ROUND((CAST(COALESCE(win_counts.wins, 0) AS REAL) / NULLIF(COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0), 0)) * 100, 1) as win_pct,
+      er.created_at
+    FROM elo_ratings er
+    JOIN teams t ON t.id = er.team_id
+    LEFT JOIN (
+      SELECT 
+        vm.winner_id as team_id,
+        tw.tournament,
+        COUNT(*) as wins
+      FROM versus_matches vm
+      JOIN teams tw ON tw.id = vm.winner_id
+      WHERE tw.tournament IS NOT NULL AND TRIM(tw.tournament) <> ''
+      GROUP BY vm.winner_id, tw.tournament
+    ) win_counts ON win_counts.team_id = er.team_id AND win_counts.tournament = t.tournament
+    LEFT JOIN (
+      SELECT 
+        vm.loser_id as team_id,
+        tl.tournament,
+        COUNT(*) as losses
+      FROM versus_matches vm
+      JOIN teams tl ON tl.id = vm.loser_id
+      WHERE tl.tournament IS NOT NULL AND TRIM(tl.tournament) <> ''
+      GROUP BY vm.loser_id, tl.tournament
+    ) loss_counts ON loss_counts.team_id = er.team_id AND loss_counts.tournament = t.tournament
+    WHERE er.id IN (
+      SELECT MAX(id) 
+      FROM elo_ratings 
+      GROUP BY team_id, tournament
+    )
+  `;
+  
+  const params = [];
+  if (tournament) {
+    sql += ` AND t.tournament = ?`;
+    params.push(tournament);
+  }
+  
+  sql += ` ORDER BY er.elo DESC`;
+  
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('Elo leaderboard query error:', err);
+      return res.status(500).json({ error: "DB error" });
+    }
+    
+    // Calculate percentiles based on ALL teams with at least one vote
+    const globalSql = `
+      SELECT er.elo as elo_rating
+      FROM elo_ratings er
+      JOIN teams t ON t.id = er.team_id
+      LEFT JOIN (
+        SELECT vm.winner_id as team_id, COUNT(*) as wins
+        FROM versus_matches vm GROUP BY vm.winner_id
+      ) win_counts ON win_counts.team_id = er.team_id
+      LEFT JOIN (
+        SELECT vm.loser_id as team_id, COUNT(*) as losses
+        FROM versus_matches vm GROUP BY vm.loser_id
+      ) loss_counts ON loss_counts.team_id = er.team_id
+      WHERE er.id IN (
+        SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+      )
+      AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+      ORDER BY er.elo DESC
+    `;
+    
+    db.all(globalSql, [], (globalErr, globalRows) => {
+      if (globalErr) {
+        console.error('Global Elo query error:', globalErr);
+        return res.status(500).json({ error: "DB error" });
+      }
+      
+      if (globalRows.length > 0) {
+        const globalEloValues = globalRows.map(r => r.elo_rating);
+        const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+        const maxGlobalElo = globalEloValues[0];        
+        // Add percentile to each row
+        rows.forEach(row => {
+          if (maxGlobalElo === minGlobalElo) {
+            row.percentile = 0.5;
+          } else {
+            row.percentile = (row.elo_rating - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+          }
+        });
+      }
+      
+      res.json(rows);
+    });
+  });
+});
+
+// Get Elo ratings leaderboard (user view)
+app.get("/api/leaderboard/elo/users", (req, res) => {
+  const tournament = req.query.tournament;
+  
+  let sql = `
+    SELECT 
+      t.username,
+      COUNT(*) as team_count,
+      AVG(er.elo) as avg_elo,
+      COALESCE(SUM(win_counts.wins), 0) as wins,
+      COALESCE(SUM(loss_counts.losses), 0) as losses,
+      ROUND((CAST(COALESCE(SUM(win_counts.wins), 0) AS REAL) / NULLIF(COALESCE(SUM(win_counts.wins), 0) + COALESCE(SUM(loss_counts.losses), 0), 0)) * 100, 1) as win_pct
+    FROM elo_ratings er
+    JOIN teams t ON t.id = er.team_id
+    LEFT JOIN (
+      SELECT 
+        vm.winner_id as team_id,
+        tw.tournament,
+        COUNT(*) as wins
+      FROM versus_matches vm
+      JOIN teams tw ON tw.id = vm.winner_id
+      WHERE tw.tournament IS NOT NULL AND TRIM(tw.tournament) <> ''
+      GROUP BY vm.winner_id, tw.tournament
+    ) win_counts ON win_counts.team_id = er.team_id AND win_counts.tournament = t.tournament
+    LEFT JOIN (
+      SELECT 
+        vm.loser_id as team_id,
+        tl.tournament,
+        COUNT(*) as losses
+      FROM versus_matches vm
+      JOIN teams tl ON tl.id = vm.loser_id
+      WHERE tl.tournament IS NOT NULL AND TRIM(tl.tournament) <> ''
+      GROUP BY vm.loser_id, tl.tournament
+    ) loss_counts ON loss_counts.team_id = er.team_id AND loss_counts.tournament = t.tournament
+    WHERE er.id IN (
+      SELECT MAX(id) 
+      FROM elo_ratings 
+      GROUP BY team_id, tournament
+    )
+  `;
+  
+  const params = [];
+  if (tournament) {
+    sql += ` AND t.tournament = ?`;
+    params.push(tournament);
+  }
+  
+  sql += ` 
+    GROUP BY t.username
+    HAVING t.username IS NOT NULL AND t.username != ''
+    ORDER BY avg_elo DESC
+  `;
+  
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('Elo user leaderboard query error:', err);
+      return res.status(500).json({ error: "DB error" });
+    }
+    
+    // Calculate percentiles based on user average elo ratings (filtered by tournament if specified)
+    const globalUserSql = `
+      SELECT AVG(er.elo) as avg_elo
+      FROM elo_ratings er
+      JOIN teams t ON t.id = er.team_id
+      LEFT JOIN (
+        SELECT vm.winner_id as team_id, COUNT(*) as wins
+        FROM versus_matches vm GROUP BY vm.winner_id
+      ) win_counts ON win_counts.team_id = er.team_id
+      LEFT JOIN (
+        SELECT vm.loser_id as team_id, COUNT(*) as losses
+        FROM versus_matches vm GROUP BY vm.loser_id
+      ) loss_counts ON loss_counts.team_id = er.team_id
+      WHERE er.id IN (
+        SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+      )
+      AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+      ${tournament ? 'AND t.tournament = ?' : ''}
+      GROUP BY t.username
+      HAVING t.username IS NOT NULL AND t.username != ''
+    `;
+    
+    db.all(globalUserSql, tournament ? [tournament] : [], (globalErr, globalRows) => {
+      if (globalErr) {
+        console.error('Global user Elo query error:', globalErr);
+        return res.status(500).json({ error: "DB error" });
+      }
+      
+      if (globalRows.length > 0) {
+        const globalAvgElos = globalRows.map(r => r.avg_elo).sort((a, b) => a - b);
+        const minGlobalAvgElo = globalAvgElos[0];
+        const maxGlobalAvgElo = globalAvgElos[globalAvgElos.length - 1];
+        
+        // Add percentile to each user row
+        rows.forEach(row => {
+          if (maxGlobalAvgElo === minGlobalAvgElo) {
+            row.percentile = 0.5;
+          } else {
+            row.percentile = (row.avg_elo - minGlobalAvgElo) / (maxGlobalAvgElo - minGlobalAvgElo);
+            console.log(row.avg_elo, minGlobalAvgElo, maxGlobalAvgElo, row.percentile);
+          }
+        });
+      }
+      
+      res.json(rows);
+    });
   });
 });
 
@@ -2290,7 +2727,8 @@ app.get('/my/profile', requireAuth, (req, res) => {
                     t.tournament,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
-                    COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
+                    COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
+                    COALESCE((SELECT elo FROM elo_ratings er WHERE er.team_id = t.id ORDER BY er.created_at DESC LIMIT 1), 0) AS elo_rating
                   FROM teams t
                   WHERE t.user_id = ?
                   LIMIT 100
@@ -2308,36 +2746,133 @@ app.get('/my/profile', requireAuth, (req, res) => {
                   const enriched = teamRows.map(r => {
                     const h2hTotal = r.wins + r.losses;
                     const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
+                    
                     return { ...r, win_pct };
                   });
 
                   response.voteResults = enriched;
 
-                  // === NEW: Pull median rating from cached user leaderboard ===
-                  const usernameKey = (response.user.display_name || response.usernames[0] || 'ANON').toUpperCase();
-                  const cacheKey = sanitizeKey(null); // ALL tournaments
+                  // Calculate global percentiles for individual team Elo ratings
+                  const globalEloSql = `
+                    SELECT er.elo as elo_rating
+                    FROM elo_ratings er
+                    JOIN teams t ON t.id = er.team_id
+                    LEFT JOIN (
+                      SELECT vm.winner_id as team_id, COUNT(*) as wins
+                      FROM versus_matches vm GROUP BY vm.winner_id
+                    ) win_counts ON win_counts.team_id = er.team_id
+                    LEFT JOIN (
+                      SELECT vm.loser_id as team_id, COUNT(*) as losses
+                      FROM versus_matches vm GROUP BY vm.loser_id
+                    ) loss_counts ON loss_counts.team_id = er.team_id
+                    WHERE er.id IN (
+                      SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+                    )
+                    AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+                    ORDER BY er.elo DESC
+                  `;
 
-                  const sendWithRating = (rating) => {
-                    response.medianMadden = rating;
-                    res.json(response);
-                  };
+                  db.all(globalEloSql, [], (globalErr, globalRows) => {
+                    if (globalErr) {
+                      console.error('Global Elo query error:', globalErr);
+                      // Continue without global percentiles
+                      return sendWithRating(0);
+                    }
 
-                  let meta = userLeaderboardCacheMeta.get(cacheKey);
-                  const maybeSend = () => {
-                    if (!meta) return sendWithRating(0);
-                    try {
-                      const data = JSON.parse(zlib.gunzipSync(fs.readFileSync(meta.filePath)).toString('utf8'));
-                      const row = data.find(r => (r.username || '').toUpperCase() === usernameKey);
-                      if (row) return sendWithRating(row.median_madden);
-                    } catch(e){ console.error('profile cache read error',e); }
-                    sendWithRating(0);
-                  };
+                    if (globalRows.length > 0) {
+                      const globalEloValues = globalRows.map(r => r.elo_rating);
+                      const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+                      const maxGlobalElo = globalEloValues[0];
 
-                  if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
-                    buildUserLeaderboardCache(null).then(()=>{ meta = userLeaderboardCacheMeta.get(cacheKey); maybeSend();}).catch(()=>maybeSend());
-                  } else {
-                    maybeSend();
-                  }
+                      // Add global percentiles to each team
+                      response.voteResults = enriched.map(row => {
+                        if (maxGlobalElo === minGlobalElo) {
+                          row.percentile = 0.5;
+                        } else if (row.elo_rating > 0) {
+                          row.percentile = (row.elo_rating - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+                        } else {
+                          row.percentile = 0.5;
+                        }
+                        return row;
+                      });
+
+                      // Calculate user's average Elo rating
+                      const userEloRatings = enriched.filter(r => r.elo_rating > 0).map(r => r.elo_rating);
+                      if (userEloRatings.length > 0) {
+                        response.eloRating = userEloRatings.reduce((a, b) => a + b, 0) / userEloRatings.length;
+                        
+                        // Get percentile by comparing against all users' average Elo ratings
+                        const userAvgEloSql = `
+                          SELECT AVG(er.elo) as avg_elo
+                          FROM elo_ratings er
+                          JOIN teams t ON t.id = er.team_id
+                          LEFT JOIN (
+                            SELECT vm.winner_id as team_id, COUNT(*) as wins
+                            FROM versus_matches vm GROUP BY vm.winner_id
+                          ) win_counts ON win_counts.team_id = er.team_id
+                          LEFT JOIN (
+                            SELECT vm.loser_id as team_id, COUNT(*) as losses
+                            FROM versus_matches vm GROUP BY vm.loser_id
+                          ) loss_counts ON loss_counts.team_id = er.team_id
+                          WHERE er.id IN (
+                            SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+                          )
+                          AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+                          GROUP BY t.username
+                          HAVING t.username IS NOT NULL AND t.username != ''
+                        `;
+
+                        db.all(userAvgEloSql, [], (userEloErr, userEloRows) => {
+                          if (!userEloErr && userEloRows.length > 0) {
+                            const allUserAvgElos = userEloRows.map(r => r.avg_elo).sort((a, b) => a - b);
+                            const minUserElo = allUserAvgElos[0];
+                            const maxUserElo = allUserAvgElos[allUserAvgElos.length - 1];
+                            
+                            if (maxUserElo !== minUserElo) {
+                              response.percentile = (response.eloRating - minUserElo) / (maxUserElo - minUserElo);
+                            } else {
+                              response.percentile = 0.5;
+                            }
+                          } else {
+                            response.percentile = 0.5;
+                          }
+
+                          // Continue with median Madden calculation
+                          proceedWithMaddenCalc();
+                        });
+                      } else {
+                        // Continue with median Madden calculation
+                        proceedWithMaddenCalc();
+                      }
+
+                      function proceedWithMaddenCalc() {
+                        // Continue with median Madden calculation
+                        const usernameKey = (response.user.display_name || response.usernames[0] || 'ANON').toUpperCase();
+                        const cacheKey = sanitizeKey(null); // ALL tournaments
+
+                        const sendWithRating = (rating) => {
+                          response.medianMadden = rating;
+                          res.json(response);
+                        };
+
+                        let meta = userLeaderboardCacheMeta.get(cacheKey);
+                        const maybeSend = () => {
+                          if (!meta) return sendWithRating(0);
+                          try {
+                            const data = JSON.parse(zlib.gunzipSync(fs.readFileSync(meta.filePath)).toString('utf8'));
+                            const row = data.find(r => (r.username || '').toUpperCase() === usernameKey);
+                            if (row) return sendWithRating(row.median_madden);
+                          } catch(e){ console.error('profile cache read error',e); }
+                          sendWithRating(0);
+                        };
+
+                        if (!meta || (Date.now() - meta.stamp > LEADER_CACHE_REFRESH_MS)) {
+                          buildUserLeaderboardCache(null).then(()=>{ meta = userLeaderboardCacheMeta.get(cacheKey); maybeSend();}).catch(()=>maybeSend());
+                        } else {
+                          maybeSend();
+                        }
+                      }
+                  }});
                 });
               });
             }
@@ -2417,7 +2952,8 @@ app.get('/profile/:username', (req, res) => {
                     t.tournament,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.winner_id = t.id), 0) AS wins,
                     COALESCE((SELECT COUNT(*) FROM versus_matches vm WHERE vm.loser_id = t.id), 0) AS losses,
-                    COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden
+                    COALESCE((SELECT madden FROM ratings_history rh WHERE rh.team_id = t.id ORDER BY rh.computed_at DESC LIMIT 1), 0) AS madden,
+                    COALESCE((SELECT elo FROM elo_ratings er WHERE er.team_id = t.id ORDER BY er.created_at DESC LIMIT 1), 0) AS elo_rating
                   FROM teams t
                   WHERE t.user_id = ?
                 )
@@ -2430,47 +2966,144 @@ app.get('/profile/:username', (req, res) => {
                   return res.status(500).json({ error: 'Database error' });
                 }
 
-                const enriched = teamRows.map(r => {
-                  const voteTotal = r.yes_votes + r.no_votes;
-                  const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
-                  const h2hTotal = r.wins + r.losses;
-                  const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
-                  return { ...r, yes_pct, win_pct };
-                });
+                                  const enriched = teamRows.map(r => {
+                    const voteTotal = r.yes_votes + r.no_votes;
+                    const yes_pct = voteTotal ? ((r.yes_votes / voteTotal) * 100).toFixed(1) : 0;
+                    const h2hTotal = r.wins + r.losses;
+                    const win_pct = h2hTotal ? ((r.wins / h2hTotal) * 100).toFixed(1) : 0;
+                    
+                    return { ...r, yes_pct, win_pct };
+                  });
 
                 response.voteResults = enriched;
 
-                // === NEW: Pull median rating from cached user leaderboard ===
-                const usernameKeyPublic = (response.user.display_name || username).toUpperCase();
-                const cacheKeyPub = sanitizeKey(null); // global leaderboard cache
+                // Calculate global percentiles for individual team Elo ratings
+                const globalEloSql = `
+                  SELECT er.elo as elo_rating
+                  FROM elo_ratings er
+                  JOIN teams t ON t.id = er.team_id
+                  LEFT JOIN (
+                    SELECT vm.winner_id as team_id, COUNT(*) as wins
+                    FROM versus_matches vm GROUP BY vm.winner_id
+                  ) win_counts ON win_counts.team_id = er.team_id
+                  LEFT JOIN (
+                    SELECT vm.loser_id as team_id, COUNT(*) as losses
+                    FROM versus_matches vm GROUP BY vm.loser_id
+                  ) loss_counts ON loss_counts.team_id = er.team_id
+                  WHERE er.id IN (
+                    SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+                  )
+                  AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+                  ORDER BY er.elo DESC
+                `;
 
-                const deliver = (ratingVal) => {
-                  response.medianMadden = ratingVal;
-                  res.json(response);
-                };
-
-                let metaPub = userLeaderboardCacheMeta.get(cacheKeyPub);
-
-                const maybeSendPub = () => {
-                  if (!metaPub) return deliver(0);
-                  try {
-                    const raw = fs.readFileSync(metaPub.filePath);
-                    const data = JSON.parse(zlib.gunzipSync(raw).toString('utf8'));
-                    const rowPub = data.find(r => (r.username || '').toUpperCase() === usernameKeyPublic);
-                    if (rowPub) return deliver(rowPub.median_madden);
-                  } catch(e) {
-                    console.error('public profile cache read error', e);
+                db.all(globalEloSql, [], (globalErr, globalRows) => {
+                  if (globalErr) {
+                    console.error('Global Elo query error:', globalErr);
+                    // Continue without global percentiles
+                    return deliver(0);
                   }
-                  deliver(0);
-                };
 
-                if (!metaPub || (Date.now() - metaPub.stamp > LEADER_CACHE_REFRESH_MS)) {
-                  buildUserLeaderboardCache(null)
-                    .then(() => { metaPub = userLeaderboardCacheMeta.get(cacheKeyPub); maybeSendPub(); })
-                    .catch(() => maybeSendPub());
-                } else {
-                  maybeSendPub();
-                }
+                  if (globalRows.length > 0) {
+                    const globalEloValues = globalRows.map(r => r.elo_rating);
+                    const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+                    const maxGlobalElo = globalEloValues[0];
+
+                    // Add global percentiles to each team
+                    response.voteResults = enriched.map(row => {
+                      if (maxGlobalElo === minGlobalElo) {
+                        row.percentile = 0.5;
+                      } else if (row.elo_rating > 0) {
+                        row.percentile = (row.elo_rating - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+                      } else {
+                        row.percentile = 0.5;
+                      }
+                      return row;
+                    });
+
+                                         // Calculate user's average Elo rating
+                     const userEloRatings = enriched.filter(r => r.elo_rating > 0).map(r => r.elo_rating);
+                     if (userEloRatings.length > 0) {
+                       response.eloRating = userEloRatings.reduce((a, b) => a + b, 0) / userEloRatings.length;
+                       
+                       // Get percentile by comparing against all users' average Elo ratings
+                       const userAvgEloSql = `
+                         SELECT AVG(er.elo) as avg_elo
+                         FROM elo_ratings er
+                         JOIN teams t ON t.id = er.team_id
+                         LEFT JOIN (
+                           SELECT vm.winner_id as team_id, COUNT(*) as wins
+                           FROM versus_matches vm GROUP BY vm.winner_id
+                         ) win_counts ON win_counts.team_id = er.team_id
+                         LEFT JOIN (
+                           SELECT vm.loser_id as team_id, COUNT(*) as losses
+                           FROM versus_matches vm GROUP BY vm.loser_id
+                         ) loss_counts ON loss_counts.team_id = er.team_id
+                         WHERE er.id IN (
+                           SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+                         )
+                         AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+                         GROUP BY t.username
+                         HAVING t.username IS NOT NULL AND t.username != ''
+                       `;
+
+                       db.all(userAvgEloSql, [], (userEloErr, userEloRows) => {
+                         if (!userEloErr && userEloRows.length > 0) {
+                           const allUserAvgElos = userEloRows.map(r => r.avg_elo).sort((a, b) => a - b);
+                           const minUserElo = allUserAvgElos[0];
+                           const maxUserElo = allUserAvgElos[allUserAvgElos.length - 1];
+                           
+                           if (maxUserElo !== minUserElo) {
+                             response.percentile = (response.eloRating - minUserElo) / (maxUserElo - minUserElo);
+                           } else {
+                             response.percentile = 0.5;
+                           }
+                         } else {
+                           response.percentile = 0.5;
+                         }
+
+                         // Continue with median Madden calculation
+                         proceedWithMaddenCalcPub();
+                       });
+                     } else {
+                       // Continue with median Madden calculation
+                       proceedWithMaddenCalcPub();
+                     }
+
+                     function proceedWithMaddenCalcPub() {
+                       // Continue with median Madden calculation
+                       const usernameKeyPublic = (response.user.display_name || username).toUpperCase();
+                       const cacheKeyPub = sanitizeKey(null); // global leaderboard cache
+
+                       const deliver = (ratingVal) => {
+                         response.medianMadden = ratingVal;
+                         res.json(response);
+                       };
+
+                       let metaPub = userLeaderboardCacheMeta.get(cacheKeyPub);
+
+                       const maybeSendPub = () => {
+                         if (!metaPub) return deliver(0);
+                         try {
+                           const raw = fs.readFileSync(metaPub.filePath);
+                           const data = JSON.parse(zlib.gunzipSync(raw).toString('utf8'));
+                           const rowPub = data.find(r => (r.username || '').toUpperCase() === usernameKeyPublic);
+                           if (rowPub) return deliver(rowPub.median_madden);
+                         } catch(e) {
+                           console.error('public profile cache read error', e);
+                         }
+                         deliver(0);
+                       };
+
+                       if (!metaPub || (Date.now() - metaPub.stamp > LEADER_CACHE_REFRESH_MS)) {
+                         buildUserLeaderboardCache(null)
+                           .then(() => { metaPub = userLeaderboardCacheMeta.get(cacheKeyPub); maybeSendPub(); })
+                           .catch(() => maybeSendPub());
+                       } else {
+                         maybeSendPub();
+                       }
+                     }
+                }});
               });
             };
 
@@ -2608,7 +3241,7 @@ app.get('/my/team-votes/:teamId', requireAuth, (req, res) => {
         return res.status(404).json({ error: 'Team not found or not owned by you' });
       }
 
-      // Get voting history for this team
+      // Get voting history for this team with Elo ratings
       const sql = `
         SELECT 
           vm.id,
@@ -2633,6 +3266,18 @@ app.get('/my/team-votes/:teamId', requireAuth, (req, res) => {
             ELSE ot_winner.username
           END as opponent_username,
           CASE 
+            WHEN vm.winner_id = ? THEN (
+              SELECT elo FROM elo_ratings er_loser 
+              WHERE er_loser.team_id = vm.loser_id 
+              ORDER BY er_loser.created_at DESC LIMIT 1
+            )
+            ELSE (
+              SELECT elo FROM elo_ratings er_winner 
+              WHERE er_winner.team_id = vm.winner_id 
+              ORDER BY er_winner.created_at DESC LIMIT 1
+            )
+          END as opponent_elo,
+          CASE 
             WHEN vm.voter_id IS NULL THEN 'Anonymous'
             ELSE COALESCE(
               NULLIF(TRIM(u.display_name), ''),
@@ -2649,8 +3294,8 @@ app.get('/my/team-votes/:teamId', requireAuth, (req, res) => {
         LIMIT 50
       `;
 
-      // Need to pass teamId 6 times for the different CASE statements and WHERE clause
-      const params = [teamId, teamId, teamId, teamId, teamId, teamId];
+      // Need to pass teamId 7 times for the different CASE statements and WHERE clause
+      const params = [teamId, teamId, teamId, teamId, teamId, teamId, teamId];
 
       db.all(sql, params, (err2, votes) => {
         if (err2) {
@@ -2658,7 +3303,55 @@ app.get('/my/team-votes/:teamId', requireAuth, (req, res) => {
           return res.status(500).json({ error: 'Database error' });
         }
 
-        res.json({ votes: votes || [] });
+        // Get global Elo data for percentile calculation
+        const globalEloSql = `
+          SELECT er.elo as elo_rating
+          FROM elo_ratings er
+          JOIN teams t ON t.id = er.team_id
+          LEFT JOIN (
+            SELECT vm.winner_id as team_id, COUNT(*) as wins
+            FROM versus_matches vm GROUP BY vm.winner_id
+          ) win_counts ON win_counts.team_id = er.team_id
+          LEFT JOIN (
+            SELECT vm.loser_id as team_id, COUNT(*) as losses
+            FROM versus_matches vm GROUP BY vm.loser_id
+          ) loss_counts ON loss_counts.team_id = er.team_id
+          WHERE er.id IN (
+            SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+          )
+          AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+          ORDER BY er.elo DESC
+        `;
+
+        db.all(globalEloSql, [], (globalErr, globalRows) => {
+          if (globalErr) {
+            console.error('Global Elo query error:', globalErr);
+            // Continue without percentiles
+            return res.json({ votes: votes || [] });
+          }
+
+          // Calculate percentiles for each vote's opponent Elo
+          if (globalRows.length > 0) {
+            const globalEloValues = globalRows.map(r => r.elo_rating);
+            const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+            const maxGlobalElo = globalEloValues[0];
+
+            // Add percentile to each vote
+            votes.forEach(vote => {
+              if (vote.opponent_elo && vote.opponent_elo > 0) {
+                if (maxGlobalElo === minGlobalElo) {
+                  vote.opponent_percentile = 0.5;
+                } else {
+                  vote.opponent_percentile = (vote.opponent_elo - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+                }
+              } else {
+                vote.opponent_percentile = 0.5;
+              }
+            });
+          }
+
+          res.json({ votes: votes || [] });
+        });
       });
     }
   );
@@ -2750,7 +3443,7 @@ app.get('/team-votes/:teamId', (req, res) => {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    // Re-use same query as private endpoint (no ownership check)
+    // Get voting history with Elo ratings
     const sql = `
       SELECT 
         vm.id,
@@ -2776,16 +3469,16 @@ app.get('/team-votes/:teamId', (req, res) => {
         END as opponent_username,
         CASE 
           WHEN vm.winner_id = ? THEN (
-            SELECT madden FROM ratings_history rh_loser 
-            WHERE rh_loser.team_id = vm.loser_id 
-            ORDER BY rh_loser.computed_at DESC LIMIT 1
+            SELECT elo FROM elo_ratings er_loser 
+            WHERE er_loser.team_id = vm.loser_id 
+            ORDER BY er_loser.created_at DESC LIMIT 1
           )
           ELSE (
-            SELECT madden FROM ratings_history rh_winner 
-            WHERE rh_winner.team_id = vm.winner_id 
-            ORDER BY rh_winner.computed_at DESC LIMIT 1
+            SELECT elo FROM elo_ratings er_winner 
+            WHERE er_winner.team_id = vm.winner_id 
+            ORDER BY er_winner.created_at DESC LIMIT 1
           )
-        END as opponent_madden,
+        END as opponent_elo,
         CASE 
           WHEN vm.voter_id IS NULL THEN 'Anonymous'
           ELSE COALESCE(
@@ -2810,7 +3503,107 @@ app.get('/team-votes/:teamId', (req, res) => {
         console.error('DB error fetching votes:', err2);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ votes: votes || [] });
+
+      // Get global Elo data for percentile calculation
+      const globalEloSql = `
+        SELECT er.elo as elo_rating
+        FROM elo_ratings er
+        JOIN teams t ON t.id = er.team_id
+        LEFT JOIN (
+          SELECT vm.winner_id as team_id, COUNT(*) as wins
+          FROM versus_matches vm GROUP BY vm.winner_id
+        ) win_counts ON win_counts.team_id = er.team_id
+        LEFT JOIN (
+          SELECT vm.loser_id as team_id, COUNT(*) as losses
+          FROM versus_matches vm GROUP BY vm.loser_id
+        ) loss_counts ON loss_counts.team_id = er.team_id
+        WHERE er.id IN (
+          SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+        )
+        AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+        ORDER BY er.elo DESC
+      `;
+
+      db.all(globalEloSql, [], (globalErr, globalRows) => {
+        if (globalErr) {
+          console.error('Global Elo query error:', globalErr);
+          // Continue without percentiles
+          return res.json({ votes: votes || [] });
+        }
+
+        // Calculate percentiles for each vote's opponent Elo
+        if (globalRows.length > 0) {
+          const globalEloValues = globalRows.map(r => r.elo_rating);
+          const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+          const maxGlobalElo = globalEloValues[0];
+
+          // Add percentile to each vote
+          votes.forEach(vote => {
+            if (vote.opponent_elo && vote.opponent_elo > 0) {
+              if (maxGlobalElo === minGlobalElo) {
+                vote.opponent_percentile = 0.5;
+              } else {
+                vote.opponent_percentile = (vote.opponent_elo - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+              }
+            } else {
+              vote.opponent_percentile = 0.5;
+            }
+          });
+        }
+
+        res.json({ votes: votes || [] });
+      });
+    });
+  });
+});
+
+// === NEW: Get Elo history for a team ===
+app.get('/team-elo-history/:teamId', (req, res) => {
+  const { teamId } = req.params;
+
+  // Verify the team exists
+  db.get('SELECT id FROM teams WHERE id = ?', [teamId], (err, team) => {
+    if (err) {
+      console.error('DB error verifying team:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!team) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    // Get all Elo rating changes for this team in chronological order
+    const sql = `
+      SELECT 
+        er.elo,
+        er.created_at,
+        ROW_NUMBER() OVER (ORDER BY er.created_at) as vote_number
+      FROM elo_ratings er
+      WHERE er.team_id = ?
+      ORDER BY er.created_at ASC
+    `;
+
+    db.all(sql, [teamId], (err2, eloHistory) => {
+      if (err2) {
+        console.error('DB error fetching Elo history:', err2);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      // Add starting point if we have data
+      let history = [];
+      if (eloHistory.length > 0) {
+        // Add the initial 1500 rating as vote 0
+        history.push({
+          vote_number: 0,
+          elo: 1500,
+          created_at: null
+        });
+        
+        // Add all the actual Elo changes
+        history = history.concat(eloHistory);
+      }
+
+      res.json({ history });
     });
   });
 });
@@ -3024,12 +3817,12 @@ app.listen(PORT, () => {
 });
 
 // === NEW: Top 10 Drafters Widget Endpoint ===
-app.get('/api/widgets/top-drafters', async (req, res) => {
+app.get('/api/widgets/top-drafters', (req, res) => {
   const startTime = Date.now();
   const tournament = req.query.tournament || null;
   const cacheKey = `top-drafters-${tournament || 'all'}`;
   
-  // Check widget cache first with longer TTL for this expensive operation
+  // Check widget cache first
   const cached = getCachedWidget(cacheKey);
   if (cached) {
     res.setHeader('X-Cache', 'HIT');
@@ -3037,59 +3830,61 @@ app.get('/api/widgets/top-drafters', async (req, res) => {
     return res.json(cached);
   }
 
-  try {
-    const key = sanitizeKey(tournament);
-    let meta = userLeaderboardCacheMeta.get(key);
-    
-    // If cache is still reasonably fresh (within 30 minutes), use it to avoid file I/O
-    const cacheAge = meta ? Date.now() - meta.stamp : Infinity;
-    const maxCacheAge = 30 * 60 * 1000; // 30 minutes
-    
-    if (!meta || cacheAge > maxCacheAge) {
-      await buildUserLeaderboardCache(tournament);
-      meta = userLeaderboardCacheMeta.get(key);
+    // Single query: get ALL users' average ELO ratings
+  const sql = `
+    SELECT 
+      username,
+      COUNT(*) as team_count,
+      AVG(elo) as avg_elo
+    FROM elo_ratings er1
+    WHERE er1.created_at = (
+      SELECT MAX(er2.created_at) 
+      FROM elo_ratings er2 
+      WHERE er2.team_id = er1.team_id
+    )
+    AND (er1.wins + er1.losses) > 0
+    AND username IS NOT NULL AND username != ''
+    GROUP BY username
+    ORDER BY avg_elo DESC
+  `;
+  
+  db.all(sql, (err, rows) => {
+    if (err) {
+      console.error('Error fetching top drafters:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
-
-    // Async file operations to avoid blocking the event loop
-    const readFileAsync = () => {
-      return new Promise((resolve, reject) => {
-        fs.readFile(meta.filePath, (err, buf) => {
-          if (err) return reject(err);
-          try {
-            const jsonStr = zlib.gunzipSync(buf).toString('utf8');
-            const data = JSON.parse(jsonStr);
-            resolve(data);
-          } catch (parseErr) {
-            reject(parseErr);
-          }
-        });
-      });
-    };
-
-    const data = await readFileAsync();
-
-    const top10 = data
-      .sort((a, b) => b.median_madden - a.median_madden)
-      .slice(0, 10)
-      .map(u => ({
-        username: u.username,
-        wins: u.wins,
-        losses: u.losses,
-        median_rating: u.median_madden,
-        win_pct: u.win_pct
-      }));
-
-    // Cache the result for longer since this is expensive to compute
-    setCachedWidget(cacheKey, top10, 10 * 60 * 1000); // 10 minutes widget cache
     
-    res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes browser cache
-    logWidgetPerformance('top-drafters', startTime, false);
-    res.json(top10);
-  } catch (e) {
-    console.error('Error building top drafters widget:', e);
-    res.status(500).json({ error: 'Server error' });
-  }
+    if (rows.length > 0) {
+      // Calculate percentiles from all users
+      const allAvgElos = rows.map(r => r.avg_elo).sort((a, b) => a - b);
+      const minAvgElo = allAvgElos[0];
+      const maxAvgElo = allAvgElos[allAvgElos.length - 1];
+      
+      // Add percentile to each user
+      rows.forEach(row => {
+        if (maxAvgElo === minAvgElo) {
+          row.percentile = 0.5;
+        } else {
+          row.percentile = (row.avg_elo - minAvgElo) / (maxAvgElo - minAvgElo);
+        }
+      });
+      
+      // Take top 10 after percentile calculation
+      const top10 = rows.slice(0, 10);
+      
+      // Cache the result
+      setCachedWidget(cacheKey, top10);
+      
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes cache
+      logWidgetPerformance('top-drafters', startTime, false);
+      res.json(top10);
+    } else {
+      // No data available
+      setCachedWidget(cacheKey, []);
+      res.json([]);
+    }
+  });
 });
 
 // === NEW: Top 10 Teams Widget Endpoint ===
@@ -3105,38 +3900,22 @@ app.get('/api/widgets/top-teams', (req, res) => {
     return res.json(cached);
   }
 
-  // Optimized query using JOINs instead of subqueries for better performance
+  // Updated query to use ELO ratings instead of ratings_history
   const sql = `
     SELECT 
-      t.id,
-      t.username,
-      t.tournament,
-      COALESCE(rh.madden, 0) AS madden,
-      COALESCE(wins_count.wins, 0) AS wins,
-      COALESCE(losses_count.losses, 0) AS losses,
-      COALESCE(wins_count.wins, 0) + COALESCE(losses_count.losses, 0) as total_votes
-    FROM teams t
-    LEFT JOIN (
-      SELECT team_id, madden
-      FROM ratings_history rh1
-      WHERE rh1.computed_at = (
-        SELECT MAX(rh2.computed_at) 
-        FROM ratings_history rh2 
-        WHERE rh2.team_id = rh1.team_id
-      )
-    ) rh ON t.id = rh.team_id
-    LEFT JOIN (
-      SELECT winner_id, COUNT(*) as wins
-      FROM versus_matches
-      GROUP BY winner_id
-    ) wins_count ON t.id = wins_count.winner_id
-    LEFT JOIN (
-      SELECT loser_id, COUNT(*) as losses
-      FROM versus_matches
-      GROUP BY loser_id
-    ) losses_count ON t.id = losses_count.loser_id
-    WHERE (COALESCE(wins_count.wins, 0) + COALESCE(losses_count.losses, 0)) > 0
-    ORDER BY COALESCE(rh.madden, 0) DESC
+      team_id as id,
+      username,
+      tournament,
+      elo,
+      wins + losses as total_votes
+    FROM elo_ratings er1
+    WHERE er1.created_at = (
+      SELECT MAX(er2.created_at) 
+      FROM elo_ratings er2 
+      WHERE er2.team_id = er1.team_id
+    )
+    AND (wins + losses) > 0
+    ORDER BY elo DESC
     LIMIT 10
   `;
 
@@ -3146,13 +3925,53 @@ app.get('/api/widgets/top-teams', (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
     
-    // Cache the result for longer since this data doesn't change frequently
-    setCachedWidget(cacheKey, rows);
+    // Calculate percentiles based on ALL teams with at least one vote
+    const globalSql = `
+      SELECT er.elo as elo_rating
+      FROM elo_ratings er
+      WHERE er.created_at = (
+        SELECT MAX(er2.created_at) 
+        FROM elo_ratings er2 
+        WHERE er2.team_id = er.team_id
+      )
+      AND (er.wins + er.losses) > 0
+      ORDER BY er.elo DESC
+    `;
     
-    res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes cache
-    logWidgetPerformance('top-teams', startTime, false);
-    res.json(rows);
+    db.all(globalSql, [], (globalErr, globalRows) => {
+      if (globalErr) {
+        console.error('Global Elo query error:', globalErr);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (globalRows.length > 0) {
+        const globalEloValues = globalRows.map(r => r.elo_rating);
+        const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+        const maxGlobalElo = globalEloValues[0];
+        
+        // Add percentile to each row
+        rows.forEach(row => {
+          if (maxGlobalElo === minGlobalElo) {
+            row.percentile = 0.5;
+          } else {
+            row.percentile = (row.elo - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+          }
+        });
+      } else {
+        // No global data available, set default percentiles
+        rows.forEach(row => {
+          row.percentile = 0.5;
+        });
+      }
+      
+      // Cache the result for longer since this data doesn't change frequently
+      setCachedWidget(cacheKey, rows);
+      
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('Cache-Control', 'public, max-age=600'); // 10 minutes cache
+      logWidgetPerformance('top-teams', startTime, false);
+      res.json(rows);
+    });
   });
 });
 

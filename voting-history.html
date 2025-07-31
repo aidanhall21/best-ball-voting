@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <script defer src="header.js"></script>
   <script defer src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="icon" type="image/x-icon" href="favicon_io/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="favicon_io/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon_io/favicon-32x32.png">
@@ -149,7 +150,7 @@
     /* Column widths for better space utilization */
     .votes-history-table td:nth-child(1) { width: 90px; }  /* Result */
     .votes-history-table td:nth-child(2) { min-width: 140px; max-width: 220px; } /* Opponent */
-    .votes-history-table td:nth-child(3) { width: 80px; text-align: center; }  /* Draftr Rating */
+    .votes-history-table td:nth-child(3) { width: 80px; text-align: center; }  /* Elo Rating */
     .votes-history-table th:nth-child(3) { text-align: center; white-space: nowrap; min-width: 100px; }  /* Center header and keep on one line */
     .votes-history-table td:nth-child(4) { width: 70px; }  /* View */
     .votes-history-table td:nth-child(5) { min-width: 140px; max-width: 200px; } /* Voter */
@@ -202,6 +203,24 @@
       background-color: #2563eb;
       color: #ffffff;
       border-color: #1d4ed8;
+    }
+
+    .rating-box.tier-bottom {
+      background-color: #991b1b;
+      color: #ffffff;
+      border-color: #7f1d1d;
+    }
+
+    .rating-box.tier-below-avg {
+      background-color: #f97316;
+      color: #ffffff;
+      border-color: #ea580c;
+    }
+
+    .rating-box.tier-above-avg {
+      background-color: #22c55e;
+      color: #ffffff;
+      border-color: #16a34a;
     }
 
     .win-result {
@@ -321,7 +340,7 @@
 
       /* Adjust column widths for mobile */
       .votes-history-table td:nth-child(2) { min-width: 100px; max-width: 150px; } /* Opponent */
-      .votes-history-table td:nth-child(3) { width: 60px; } /* Rating column mobile width */
+      .votes-history-table td:nth-child(3) { width: 60px; } /* Elo Rating column mobile width */
       .votes-history-table td:nth-child(5) { min-width: 100px; max-width: 140px; } /* Voter */
 
       /* Make rating boxes slightly smaller on mobile - match profile.html */
@@ -400,6 +419,64 @@
 
 
     /* Make the roster counts stick to top and list scroll */
+
+    /* Chart styles */
+    .chart-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .chart-header h3 {
+      color: #c9d1d9;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .chart-subtitle {
+      color: #8b949e;
+      font-size: 14px;
+      margin: 5px 0 0 0;
+    }
+
+    .chart-wrapper {
+      background: #161b22;
+      border-radius: 6px;
+      padding: 20px;
+      border: 1px solid #30363d;
+    }
+
+    .chart-wrapper canvas {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Mobile chart styles */
+    @media (max-width: 768px) {
+      .chart-wrapper {
+        padding: 10px;
+        margin: 0 -20px; /* Extend to edges of container */
+        border-radius: 0;
+        background: #161b22;
+        border-left: none;
+        border-right: none;
+      }
+      
+      .chart-header h3 {
+        font-size: 20px;
+      }
+      
+      .chart-wrapper canvas {
+        width: 100% !important;
+        height: 40vh !important; /* Make chart appropriately sized on mobile */
+        min-height: 250px;
+      }
+      
+      #eloChartContainer {
+        margin-left: -20px;
+        margin-right: -20px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -419,14 +496,25 @@
   </div>
 
   <div class="voting-history-container">
+
     <div class="voting-history-header">
       <div class="team-info">
-        <p class="team-subtitle" id="teamSubtitle">Recent Voting History</p>
         <button id="viewTeamBtn" class="view-team-btn" style="margin-top: 10px;">View Team</button>
       </div>
     </div>
-
+    
     <div class="voting-history-content">
+      <!-- Elo History Chart -->
+      <div id="eloChartContainer" style="display: none; margin-bottom: 30px;">
+        <div class="chart-header">
+          <h3>Elo Rating History</h3>
+          <p class="chart-subtitle">Track this team's Elo rating changes over time</p>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="eloChart" width="800" height="400"></canvas>
+        </div>
+      </div>
+      
       <div id="loadingIndicator" class="loading-indicator">
         Loading voting history...
       </div>
@@ -759,8 +847,9 @@
         updateNotificationCount();
         startNotificationPolling();
         
-        // After auth check, load voting history
+        // After auth check, load voting history and chart
         loadVotingHistory();
+        loadEloChart();
       } else {
         showLoginRequired();
       }
@@ -774,11 +863,13 @@
         setTimeout(() => {
           if (typeof currentUserId !== 'undefined' && currentUserId) {
             loadVotingHistory();
+            loadEloChart();
           } else {
             // Try to get user info from header elements
             const userLabel = document.getElementById('userLabel');
             if (userLabel && userLabel.textContent) {
               loadVotingHistory();
+              loadEloChart();
             } else {
               showLoginRequired();
             }
@@ -992,21 +1083,33 @@
       }
     }
 
-    // Helper to determine rating tier and return appropriate CSS class
-    function getRatingTierClass(rating) {
-      if (!rating || rating === 0) return 'tier-none';
-      if (rating < 60) return 'tier-low';      // 0-59: Red
-      if (rating < 70) return 'tier-below';    // 60-69: Orange  
-      if (rating < 80) return 'tier-average';  // 70-79: Yellow
-      if (rating < 90) return 'tier-good';     // 80-89: Green
-      return 'tier-elite';                     // 90-99: Blue
+
+
+    // Helper to determine color tier from percentile
+    function getPercentileTierClass(percentile) {
+      if (percentile < 0.10) {
+        return 'tier-bottom';   // 0-10%: Dark Red
+      } else if (percentile < 0.30) {
+        return 'tier-low';      // 10-30%: Red
+      } else if (percentile < 0.50) {
+        return 'tier-below';    // 30-50%: Orange
+      } else if (percentile < 0.70) {
+        return 'tier-average';  // 50-70%: Yellow
+      } else if (percentile < 0.90) {
+        return 'tier-good';     // 70-90%: Green
+      } else {
+        return 'tier-elite';    // 90-100%: Blue
+      }
     }
 
-    // Helper to format rating in a colored box
-    function formatRatingBox(rating) {
-      if (!rating || rating === 0) return '<span class="rating-box tier-none">-</span>';
-      const tierClass = getRatingTierClass(rating);
-      return `<span class="rating-box ${tierClass}">${Math.round(rating)}</span>`;
+    // Helper to format Elo rating with percentile-based coloring
+    function formatEloRatingBox(eloRating, percentile) {
+      if (!eloRating || eloRating === 0) return '<span class="rating-box tier-none">-</span>';
+      
+      // Use percentile directly to determine color tier
+      const tierClass = getPercentileTierClass(percentile);
+      
+      return `<span class="rating-box ${tierClass}">${Math.round(eloRating)}</span>`;
     }
 
     // Global team data for tournament information
@@ -1042,7 +1145,7 @@
               <tr>
                 <th>Result</th>
                 <th>Opponent</th>
-                <th>Draftr Rating</th>
+                <th>Elo Rating</th>
                 <th>View</th>
                 <th>Voter</th>
                 <th>Date</th>
@@ -1055,7 +1158,7 @@
           const date = new Date(vote.created_at).toLocaleDateString();
           const result = vote.result === 'win' ? '✅ Win' : '❌ Loss';
           const resultClass = vote.result === 'win' ? 'win-result' : 'loss-result';
-          const ratingBox = formatRatingBox(vote.opponent_madden);
+          const ratingBox = formatEloRatingBox(vote.opponent_elo, vote.opponent_percentile);
           
           tableHtml += `
             <tr>
@@ -1128,7 +1231,150 @@
       }
     }
 
-
+    // Load and display Elo history chart
+    async function loadEloChart() {
+      try {
+        const response = await fetch(`/team-elo-history/${teamId}`);
+        const data = await response.json();
+        
+        if (!data.history || data.history.length === 0) {
+          console.log('No Elo history data available');
+          return;
+        }
+        
+        // Show the chart container
+        document.getElementById('eloChartContainer').style.display = 'block';
+        
+        // Prepare chart data
+        const labels = data.history.map(point => point.vote_number);
+        const eloValues = data.history.map(point => point.elo);
+        
+        const ctx = document.getElementById('eloChart').getContext('2d');
+        
+        // Check if mobile device
+        const isMobile = window.innerWidth <= 768;
+        
+        // Create the chart
+        const chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Elo Rating',
+              data: eloValues,
+              borderColor: '#58a6ff',
+              backgroundColor: 'rgba(88, 166, 255, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.1,
+              pointBackgroundColor: '#58a6ff',
+              pointBorderColor: '#ffffff',
+              pointBorderWidth: 1,
+              pointRadius: isMobile ? 3 : 4,
+              pointHoverRadius: isMobile ? 5 : 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                backgroundColor: '#161b22',
+                titleColor: '#c9d1d9',
+                bodyColor: '#c9d1d9',
+                borderColor: '#30363d',
+                borderWidth: 1,
+                displayColors: false,
+                callbacks: {
+                  title: function(context) {
+                    return `Vote #${context[0].label}`;
+                  },
+                  label: function(context) {
+                    return `Elo: ${Math.round(context.parsed.y)}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: {
+                  display: !isMobile, // Hide axis title on mobile
+                  text: 'Vote Number',
+                  color: '#8b949e',
+                  font: {
+                    size: 14,
+                    weight: 'bold'
+                  }
+                },
+                ticks: {
+                  color: '#8b949e',
+                  display: !isMobile // Hide tick labels on mobile
+                },
+                grid: {
+                  color: '#30363d',
+                  display: !isMobile // Hide grid lines on mobile
+                }
+              },
+              y: {
+                title: {
+                  display: !isMobile, // Hide axis title on mobile
+                  text: 'Elo Rating',
+                  color: '#8b949e',
+                  font: {
+                    size: 14,
+                    weight: 'bold'
+                  }
+                },
+                ticks: {
+                  color: '#8b949e',
+                  display: !isMobile // Hide tick labels on mobile
+                },
+                grid: {
+                  color: '#30363d',
+                  display: !isMobile // Hide grid lines on mobile
+                },
+                // Fixed Y-axis range from 1000 to 2000 with 1500 as midpoint
+                min: 1000,
+                max: 2000
+              }
+            },
+            elements: {
+              point: {
+                hoverBorderWidth: 2
+              }
+            }
+          },
+          plugins: [{
+            // Add a horizontal line at 1500 (starting Elo)
+            afterDraw: function(chart) {
+              const ctx = chart.ctx;
+              const yAxis = chart.scales.y;
+              const xAxis = chart.scales.x;
+              
+              const y1500 = yAxis.getPixelForValue(1500);
+              
+              if (y1500 >= yAxis.top && y1500 <= yAxis.bottom) {
+                ctx.save();
+                ctx.strokeStyle = '#f85149';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(xAxis.left, y1500);
+                ctx.lineTo(xAxis.right, y1500);
+                ctx.stroke();
+                ctx.restore();
+              }
+            }
+          }]
+        });
+        
+      } catch (error) {
+        console.error('Failed to load Elo chart:', error);
+      }
+    }
 
     // ---- Mobile Notification Functions ----
     
