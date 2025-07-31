@@ -585,6 +585,12 @@ app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {
             }
 
             const tournament = row["Tournament Title"];
+            
+            // Skip rows with blank/empty tournament
+            if (!tournament || tournament.trim() === '') {
+              return;
+            }
+            
             const fullName = `${row["First Name"]} ${row["Last Name"]}`;
             let position = row["Position"];
             if ((tournament || '').trim().toLowerCase() === 'rookies and sophomores' && String(position).trim().toUpperCase() === 'TE') {
@@ -1390,7 +1396,7 @@ app.post("/versus", verifyCaptcha, (req, res) => {
                       
                       // Build the notification message
                       const emoji = isWinner ? '🔥 ' : '❌ ';
-                      const message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in the ${team.tournament} against ${opponentName}`;
+                      const message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in ${team.tournament} against ${opponentName}`;
                       
                       db.run(
                         `INSERT INTO notifications (user_id, type, message, related_team_id, related_user_id, opponent_team_id) 

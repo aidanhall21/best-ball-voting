@@ -18,7 +18,7 @@ const STARTING_ELO = 1500.0;
 const BASE_K_FACTOR = 128.0;
 
 // Database path from environment or default
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-30-1250.db";
+const DB_PATH = process.env.DB_PATH || "../teams-2025-07-31-1529.db";
 console.log('DB_PATH', DB_PATH);
 
 /**
