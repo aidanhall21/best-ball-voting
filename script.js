@@ -17,6 +17,7 @@ let teams = [];
 let currentIndex = 0;
 let userVotes = {};
 let teamTournaments = {};
+let teamStrategies = {};
 let currentMode = "upload"; // 'upload' | 'versus' | 'leaderboard'
 let leaderboardType = "team"; // 'team' or 'user'
 let leaderboardData = [];
@@ -1344,6 +1345,7 @@ function fetchTeams(force = false) {
     .then(data => {
       teams = shuffle(data.teams);
       teamTournaments = data.tournaments || {};
+      teamStrategies = data.strategies || {};
       
       // Pre-compute tournament groups for performance  
       window.cachedTourGroups = {};
@@ -1396,6 +1398,12 @@ function fetchTeams(force = false) {
                 )
               );
             }
+            if (data.stackFilters.team1Strategy) {
+              matchesTeam1 = matchesTeam1 && (
+                (metadata && metadata.matchesTeam1Strategy) ||
+                (teamStrategies[teamId] && teamStrategies[teamId][data.stackFilters.team1Strategy] === 1)
+              );
+            }
             
             // Check team2 requirements (stack and/or player)
             let matchesTeam2 = true;
@@ -1415,7 +1423,12 @@ function fetchTeams(force = false) {
                 )
               );
             }
-            
+            if (data.stackFilters.team2Strategy) {
+              matchesTeam2 = matchesTeam2 && (
+                (metadata && metadata.matchesTeam2Strategy) ||
+                (teamStrategies[teamId] && teamStrategies[teamId][data.stackFilters.team2Strategy] === 1)
+              );
+            }
             
             // Categorize teams
             if (hasTeam1Filters && matchesTeam1) {
@@ -1677,9 +1690,9 @@ async function renderVersus() {
   // Helper: pick a bucket according to weights
   const pickRandomBucket = () => {
     const r = Math.random();
-    if (r < 0.40) return "ZERO";             // 35%
-    if (r < 0.75) return "ONE_FIVE";         // next 35%
-    if (r < 0.95) return "SIX_TEN";          // next 20%
+    if (r < 0.30) return "ZERO";             // 35%
+    if (r < 0.60) return "ONE_FIVE";         // next 35%
+    if (r < 0.85) return "SIX_TEN";          // next 20%
     return "OVER_TEN";                        // 5% (0.90–0.95); any value ≥0.95 falls through later
   };
 
@@ -3737,3 +3750,15 @@ function showSimplePopup(content = "This is a popup") {
   // Append to <html> instead of <body> to avoid transforms on body affecting fixed positioning
   (document.documentElement || document.body).appendChild(overlay);
 }
+
+// Fix for special banner link - ensure it works despite document-level event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const specialBannerLink = document.getElementById('specialBannerLink');
+  if (specialBannerLink) {
+    specialBannerLink.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      window.location.href = '/draftorpass';
+    });
+  }
+});

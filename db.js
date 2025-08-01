@@ -121,6 +121,21 @@ db.serialize(() => {
     )
   `);
 
+  // Tournament nominations table for storing nominated teams
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tournament_nominations (
+      id TEXT NOT NULL,
+      tournament TEXT NOT NULL,
+      username TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      nominated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, tournament),
+      FOREIGN KEY (id) REFERENCES teams(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
   // Add new player columns if they don't exist
   db.run(`ALTER TABLE matchup_settings ADD COLUMN team1_player TEXT`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
@@ -169,6 +184,11 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)`);
+  
+  // Tournament nominations indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_nominations_user ON tournament_nominations(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_nominations_tournament ON tournament_nominations(tournament)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_nominations_user_tournament ON tournament_nominations(user_id, tournament)`);
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -2160,7 +2160,6 @@ app.get("/api/leaderboard/elo/users", (req, res) => {
             row.percentile = 0.5;
           } else {
             row.percentile = (row.avg_elo - minGlobalAvgElo) / (maxGlobalAvgElo - minGlobalAvgElo);
-            console.log(row.avg_elo, minGlobalAvgElo, maxGlobalAvgElo, row.percentile);
           }
         });
       }
@@ -2944,8 +2943,6 @@ app.get('/my/tournament-teams', requireAuth, (req, res) => {
   const userId = req.user.id;
   const tournament = req.query.tournament;
 
-  console.log('tournament', tournament);
-
   if (!tournament) {
     return res.status(400).json({ error: 'Tournament parameter required' });
   }
@@ -3569,6 +3566,179 @@ app.post('/my/update-display-name', requireAuth, express.json(), (req, res) => {
         }
       }
     );
+  });
+});
+
+// === NEW: Tournament nomination endpoints ===
+app.post('/my/nominate-team', requireAuth, express.json(), (req, res) => {
+  const { teamId, tournament } = req.body;
+  const userId = req.user.id;
+
+  if (!teamId || !tournament) {
+    return res.status(400).json({ error: 'Team ID and tournament required' });
+  }
+
+  // Check if nominations deadline has passed
+  const deadline = new Date('2025-08-04T09:00:00-04:00'); // EDT (Eastern Daylight Time)
+  const now = new Date();
+  if (now >= deadline) {
+    return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
+  }
+
+  // First verify the team exists and belongs to the user
+  db.get(
+    'SELECT id, tournament, username, draft_id, user_id FROM teams WHERE id = ? AND user_id = ?',
+    [teamId, userId],
+    (err, team) => {
+      if (err) {
+        console.error('DB error verifying team:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (!team) {
+        return res.status(404).json({ error: 'Team not found or not owned by user' });
+      }
+
+      // Check if user already has 5 nominations for this tournament
+      db.get(
+        'SELECT COUNT(*) as count FROM tournament_nominations WHERE user_id = ? AND tournament = ?',
+        [userId, tournament],
+        (err2, userCount) => {
+          if (err2) {
+            console.error('DB error checking user nominations:', err2);
+            return res.status(500).json({ error: 'Database error' });
+          }
+
+          if (userCount.count >= 5) {
+            return res.status(400).json({ error: 'You can only nominate up to 5 teams per tournament' });
+          }
+
+          // Check if tournament already has 256 nominations
+          db.get(
+            'SELECT COUNT(*) as count FROM tournament_nominations WHERE tournament = ?',
+            [tournament],
+            (err3, totalCount) => {
+              if (err3) {
+                console.error('DB error checking total nominations:', err3);
+                return res.status(500).json({ error: 'Database error' });
+              }
+
+              if (totalCount.count >= 256) {
+                return res.status(400).json({ error: 'Tournament nominations are full (256 teams maximum)' });
+              }
+
+              // Check if team is already nominated
+              db.get(
+                'SELECT id FROM tournament_nominations WHERE id = ? AND tournament = ?',
+                [teamId, tournament],
+                (err4, existing) => {
+                  if (err4) {
+                    console.error('DB error checking existing nomination:', err4);
+                    return res.status(500).json({ error: 'Database error' });
+                  }
+
+                  if (existing) {
+                    return res.status(400).json({ error: 'Team is already nominated for this tournament' });
+                  }
+
+                  // Insert the nomination
+                  db.run(
+                    'INSERT INTO tournament_nominations (id, tournament, username, draft_id, user_id) VALUES (?, ?, ?, ?, ?)',
+                    [team.id, tournament, team.username, team.draft_id, team.user_id],
+                    function(err5) {
+                      if (err5) {
+                        console.error('DB error inserting nomination:', err5);
+                        return res.status(500).json({ error: 'Failed to nominate team' });
+                      }
+
+                      res.json({ 
+                        message: 'Team nominated successfully',
+                        teamId: team.id,
+                        tournament: tournament
+                      });
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+app.post('/my/unnominate-team', requireAuth, express.json(), (req, res) => {
+  const { teamId, tournament } = req.body;
+  const userId = req.user.id;
+
+  if (!teamId || !tournament) {
+    return res.status(400).json({ error: 'Team ID and tournament required' });
+  }
+
+  // Check if nominations deadline has passed
+  const deadline = new Date('2025-08-04T09:00:00-04:00'); // EDT (Eastern Daylight Time)
+  const now = new Date();
+  if (now >= deadline) {
+    return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
+  }
+
+  // Remove the nomination (only if it belongs to the user)
+  db.run(
+    'DELETE FROM tournament_nominations WHERE id = ? AND tournament = ? AND user_id = ?',
+    [teamId, tournament, userId],
+    function(err) {
+      if (err) {
+        console.error('DB error removing nomination:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Nomination not found or not owned by user' });
+      }
+
+      res.json({ 
+        message: 'Team nomination removed successfully',
+        teamId: teamId,
+        tournament: tournament
+      });
+    }
+  );
+});
+
+app.get('/my/nominations', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const tournament = req.query.tournament;
+
+  if (!tournament) {
+    return res.status(400).json({ error: 'Tournament parameter required' });
+  }
+
+  db.all(
+    'SELECT id, tournament, username, draft_id, nominated_at FROM tournament_nominations WHERE user_id = ? AND tournament = ?',
+    [userId, tournament],
+    (err, nominations) => {
+      if (err) {
+        console.error('DB error fetching nominations:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      res.json({ nominations: nominations || [] });
+    }
+  );
+});
+
+app.get('/tournament/deadline-status', (req, res) => {
+  const deadline = new Date('2025-08-04T09:00:00-04:00'); // EDT (Eastern Daylight Time)
+  const now = new Date();
+  const hasDeadlinePassed = now >= deadline;
+  const timeRemaining = hasDeadlinePassed ? 0 : deadline - now;
+
+  res.json({
+    deadline: deadline.toISOString(),
+    hasDeadlinePassed: hasDeadlinePassed,
+    timeRemaining: timeRemaining,
+    currentTime: now.toISOString()
   });
 });
 
