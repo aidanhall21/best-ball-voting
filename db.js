@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-07-31-1529.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-07-30-1250.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-08-01-0853.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-01-0853.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 

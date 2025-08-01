@@ -1345,6 +1345,15 @@ function fetchTeams(force = false) {
       teams = shuffle(data.teams);
       teamTournaments = data.tournaments || {};
       
+      // Pre-compute tournament groups for performance  
+      window.cachedTourGroups = {};
+      teams.forEach(([tid]) => {
+        const tour = teamTournaments[tid];
+        if (!tour) return;
+        if (!window.cachedTourGroups[tour]) window.cachedTourGroups[tour] = [];
+        window.cachedTourGroups[tour].push(tid);
+      });
+      
       // NEW: Handle stack filtering metadata and pre-compute candidates
       if (data.stackFilters) {
         window.stackFilters = data.stackFilters;
@@ -1357,8 +1366,17 @@ function fetchTeams(force = false) {
         };
         
         if (data.stackFilters.team1Stack || data.stackFilters.team2Stack || data.stackFilters.team1Player || data.stackFilters.team2Player || data.stackFilters.team1Strategy || data.stackFilters.team2Strategy) {
+          let totalTeams = 0;
+          let team1Matches = 0;
+          let team2Matches = 0;
+          let generalMatches = 0;
+          
+          const hasTeam1Filters = data.stackFilters.team1Stack || data.stackFilters.team1Player || data.stackFilters.team1Strategy;
+          const hasTeam2Filters = data.stackFilters.team2Stack || data.stackFilters.team2Player || data.stackFilters.team2Strategy;
+          
           teams.forEach(teamEntry => {
             const [teamId, playersArray, metadata] = teamEntry;
+            totalTeams++;
             
             // Check team1 requirements (stack and/or player)
             let matchesTeam1 = true;
@@ -1398,19 +1416,19 @@ function fetchTeams(force = false) {
               );
             }
             
-            // Only consider teams as matches if they have the relevant filters
-                    const hasTeam1Filters = data.stackFilters.team1Stack || data.stackFilters.team1Player || data.stackFilters.team1Strategy;
-        const hasTeam2Filters = data.stackFilters.team2Stack || data.stackFilters.team2Player || data.stackFilters.team2Strategy;
             
             // Categorize teams
             if (hasTeam1Filters && matchesTeam1) {
               window.precomputedCandidates.team1.push(teamEntry);
+              team1Matches++;
             }
             if (hasTeam2Filters && matchesTeam2) {
               window.precomputedCandidates.team2.push(teamEntry);
+              team2Matches++;
             }
             if ((!hasTeam1Filters || !matchesTeam1) && (!hasTeam2Filters || !matchesTeam2)) {
               window.precomputedCandidates.general.push(teamEntry);
+              generalMatches++;
             }
           });
           
@@ -1557,6 +1575,9 @@ function buildTeamCard(teamId, players) {
 
 // Draft-vs-Draft matchup renderer (now async so we can look up team-meta on demand)
 async function renderVersus() {
+  const renderStart = performance.now();
+  console.log('🔄 Starting renderVersus...');
+  
   const container = document.getElementById("teamsContainer");
   container.innerHTML = "";
 
@@ -1593,14 +1614,23 @@ async function renderVersus() {
   const versusWrapper = document.createElement("div");
   versusWrapper.className = "versus-container";
 
-  // Build tournament -> teamIds map
-  const tourGroups = {};
-  teams.forEach(([tid]) => {
-    const tour = teamTournaments[tid];
-    if (!tour) return;
-    if (!tourGroups[tour]) tourGroups[tour] = [];
-    tourGroups[tour].push(tid);
-  });
+  // Use cached tournament groups for performance, with fallback
+  const startTime = performance.now();
+  let tourGroups = window.cachedTourGroups;
+  if (!tourGroups) {
+    console.log('Building tourGroups from scratch (cache miss)');
+    // Fallback: build tourGroups if not cached (shouldn't happen often)
+    tourGroups = {};
+    teams.forEach(([tid]) => {
+      const tour = teamTournaments[tid];
+      if (!tour) return;
+      if (!tourGroups[tour]) tourGroups[tour] = [];
+      tourGroups[tour].push(tid);
+    });
+  } else {
+    console.log('Using cached tourGroups');
+  }
+  console.log(`TourGroups setup took: ${performance.now() - startTime}ms`);
 
   // Helper to get random element
   const randElem = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -1621,6 +1651,9 @@ async function renderVersus() {
   };
 
   let teamId1, teamId2;
+  
+  const teamSelectionStart = performance.now();
+  console.log('🎯 Starting team selection...');
 
   /*
    * ===== Weighted vote-bucket selection (after "include my team" check) =====
@@ -1675,37 +1708,57 @@ async function renderVersus() {
 
   // Helper: pick a team *from a provided list* that matches a bucket
   const pickTeamInBucketFromList = async (bucketName, idList) => {
+    console.log(`🔧 pickTeamInBucketFromList: searching ${idList.length} teams for bucket ${bucketName}`);
+    const funcStart = performance.now();
+    let apiCalls = 0;
+    let teamsChecked = 0;
+    
+    const shuffleStart = performance.now();
     const shuffled = shuffle([...idList]);
+    console.log(`🔧 Shuffling ${idList.length} teams took ${performance.now() - shuffleStart}ms`);
     for (const tid of shuffled) {
+      teamsChecked++;
       try {
         let totalVotes;
         if (teamVoteTotals[tid] !== undefined) {
           totalVotes = teamVoteTotals[tid];
         } else {
+          apiCalls++;
+          const metaStart = performance.now();
           const meta = await fetchTeamMeta(tid);
+          console.log(`🔧 fetchTeamMeta #${apiCalls} took ${performance.now() - metaStart}ms`);
           totalVotes = (meta.wins || 0) + (meta.losses || 0);
           teamVoteTotals[tid] = totalVotes;
         }
         if (getBucket(totalVotes) === bucketName) {
+          console.log(`🔧 Found match after checking ${teamsChecked} teams, ${apiCalls} API calls in ${performance.now() - funcStart}ms`);
           return tid;
         }
       } catch (_) { /* skip */ }
     }
+    console.log(`🔧 No match found after checking ${teamsChecked} teams, ${apiCalls} API calls in ${performance.now() - funcStart}ms`);
     return null;
   };
 
     // ===== NEW: Stack/Player-based team selection (optimized with pre-computed candidates) =====
   // If filters are active, use pre-computed candidates for fast selection
   if (window.precomputedCandidates && (window.stackFilters.team1Stack || window.stackFilters.team2Stack || window.stackFilters.team1Player || window.stackFilters.team2Player || window.stackFilters.team1Strategy || window.stackFilters.team2Strategy)) {
+    console.log('🔍 Using filtered team selection...');
     
     // Try to find team1 with required filters
     if ((window.stackFilters.team1Stack || window.stackFilters.team1Player || window.stackFilters.team1Strategy) && !teamId1 && window.precomputedCandidates.team1.length > 0) {
+      const team1Start = performance.now();
+      console.log(`🔍 Selecting team1 from ${window.precomputedCandidates.team1.length} candidates...`);
       const targetBucket = pickRandomBucket();
+      let metaFetches = 0;
       for (const [tid, teamData] of shuffle(window.precomputedCandidates.team1)) {
         try {
           let totalVotes = teamVoteTotals[tid];
           if (totalVotes === undefined) {
+            metaFetches++;
+            const metaStart = performance.now();
             const meta = await fetchTeamMeta(tid);
+            console.log(`📊 fetchTeamMeta took ${performance.now() - metaStart}ms`);
             totalVotes = (meta.wins || 0) + (meta.losses || 0);
             teamVoteTotals[tid] = totalVotes;
           }
@@ -1719,6 +1772,7 @@ async function renderVersus() {
       if (!teamId1) {
         teamId1 = randElem(window.precomputedCandidates.team1)[0];
       }
+      console.log(`🔍 Team1 selection completed in ${performance.now() - team1Start}ms (${metaFetches} API calls)`);
     }
   }
 
@@ -1733,13 +1787,52 @@ async function renderVersus() {
   // the existing tournament / different-user rules.  Otherwise fall through
   // to the legacy random-tournament logic below.
   if (teamId1 && !teamId2 && !window.stackFilters?.team2Stack && !window.stackFilters?.team2Player && !window.stackFilters?.team2Strategy) {
+    const team2Start = performance.now();
+    console.log('🔍 Starting team2 selection...');
     const tour = teamTournaments[teamId1];
-    const list = (tour && tourGroups[tour]) ? tourGroups[tour] : [];
-    const differentUserTeams = list.filter(id => id !== teamId1 && (teamUserIds[id] || null) !== (teamUserIds[teamId1] || null));
+    let list = (tour && tourGroups[tour]) ? tourGroups[tour] : [];
+    
+    // If team1 was selected via filters and we have precomputed candidates, 
+    // restrict team2 selection to the general pool (teams that don't match team1 filters)
+    if (window.precomputedCandidates && (window.stackFilters?.team1Stack || window.stackFilters?.team1Player || window.stackFilters?.team1Strategy)) {
+      // Convert to Set for O(1) lookups instead of O(n) - MAJOR PERFORMANCE OPTIMIZATION
+      const generalTeamIds = window.precomputedCandidates.general.map(([tid]) => tid);
+      const generalTeamSet = new Set(generalTeamIds);
+      const filteredList = list.filter(id => generalTeamSet.has(id));
+      // Only use filtered list if it's not empty, otherwise fall back to original list
+      if (filteredList.length > 0) {
+        list = filteredList;
+      }
+    }
+    
+    const filterStart = performance.now();
+    const team1UserId = teamUserIds[teamId1] || null;
+    const differentUserTeams = list.filter(id => id !== teamId1 && (teamUserIds[id] || null) !== team1UserId);
+    console.log(`🔍 Filtering ${list.length} teams took ${performance.now() - filterStart}ms`);
+    console.log(`🔍 Found ${differentUserTeams.length} different-user teams for team2`);
     if (differentUserTeams.length) {
       const bucket2 = pickRandomBucket();
-      teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
+      const bucketStart = performance.now();
+      console.log(`🔍 Calling pickTeamInBucketFromList with bucket: ${bucket2}`);
+      
+      // For large team lists, skip bucket matching to avoid performance issues
+      if (differentUserTeams.length > 5000) {
+        console.log('🚀 Using fast selection for large team list');
+        const randStart = performance.now();
+        teamId2 = randElem(differentUserTeams);
+        const randEnd = performance.now();
+        console.log(`🚀 randElem took ${randEnd - randStart}ms`);
+        const logStart = performance.now();
+        console.log(`🚀 console.log delay check: ${performance.now() - logStart}ms`);
+      } else {
+        teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
+      }
+      console.log(`🔍 pickTeamInBucketFromList took ${performance.now() - bucketStart}ms`);
     }
+    const finalStart = performance.now();
+    console.log(`🔍 About to log completion time...`);
+    console.log(`🔍 Team2 selection completed in ${performance.now() - team2Start}ms`);
+    console.log(`🔍 Final console.log took ${performance.now() - finalStart}ms`);
   }
 
   // ---- Fallback to original random selection if we didn't get valid ids ----
@@ -1761,7 +1854,18 @@ async function renderVersus() {
       // Only set teamId2 if not already set by filter logic and no team2 filters required
       if (!teamId2 && !window.stackFilters?.team2Stack && !window.stackFilters?.team2Player && !window.stackFilters?.team2Strategy && teamId1) {
         const user1 = teamUsernames[teamId1] || "__anon__";
-        const differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
+        let differentUserTeams = list.filter(id => id !== teamId1 && (teamUsernames[id] || "__anon__") !== user1);
+        
+        // If team1 was selected via filters, restrict team2 to general pool
+        if (window.precomputedCandidates && (window.stackFilters?.team1Stack || window.stackFilters?.team1Player || window.stackFilters?.team1Strategy)) {
+          const generalTeamIds = window.precomputedCandidates.general.map(([tid]) => tid);
+          const filteredTeams = differentUserTeams.filter(id => generalTeamIds.includes(id));
+          // Only use filtered teams if we have some, otherwise fall back to original list
+          if (filteredTeams.length > 0) {
+            differentUserTeams = filteredTeams;
+          }
+        }
+        
         if (differentUserTeams.length) {
           const bucket2 = pickRandomBucket();
           teamId2 = await pickTeamInBucketFromList(bucket2, differentUserTeams) || randElem(differentUserTeams);
@@ -1826,12 +1930,33 @@ async function renderVersus() {
 
   // Final debug for the matchup that will be displayed
 
-  // Retrieve players arrays
-  const players1 = teams.find(([id]) => id === teamId1)[1];
-  const players2 = teams.find(([id]) => id === teamId2)[1];
+  console.log(`🎯 Team selection completed in ${performance.now() - teamSelectionStart}ms`);
+  
+  // Check if we have valid team IDs
+  if (!teamId1 || !teamId2) {
+    console.error(`Invalid team selection: teamId1=${teamId1}, teamId2=${teamId2}`);
+    showError('Failed to find two teams for matchup. Please refresh and try again.');
+    return;
+  }
 
+  // Retrieve players arrays
+  const team1Entry = teams.find(([id]) => id === teamId1);
+  const team2Entry = teams.find(([id]) => id === teamId2);
+  
+  if (!team1Entry || !team2Entry) {
+    console.error(`Could not find team data: team1Entry=${!!team1Entry}, team2Entry=${!!team2Entry}`);
+    showError('Failed to load team data. Please refresh and try again.');
+    return;
+  }
+  
+  const players1 = team1Entry[1];
+  const players2 = team2Entry[1];
+
+  const cardBuildStart = performance.now();
+  console.log('🃏 Building team cards...');
   const card1 = buildTeamCard(teamId1, players1);
   const card2 = buildTeamCard(teamId2, players2);
+  console.log(`🃏 Team cards built in ${performance.now() - cardBuildStart}ms`);
 
   // === NEW: centered category header for the matchup -----
   const tournamentName1 = teamTournaments[teamId1] || "";
@@ -2136,17 +2261,47 @@ async function renderVersus() {
   outerContainer.appendChild(versusWrapper);
   
   // Create "Next Matchup" button but only show it on the main draftorpass page
+  console.log('Current pathname:', window.location.pathname); // Debug
   if (!window.location.pathname.endsWith('/')) {
     nextButton = document.createElement("button");
     nextButton.textContent = "Next Matchup →";
     nextButton.className = "next-button";
     nextButton.style.display = "none"; // initially hidden
-    nextButton.onclick = () => renderVersus();
+    nextButton.onclick = async (e) => {
+      console.log('🔘 Next Matchup button clicked');
+      const clickStart = performance.now();
+      
+      // Show loading state
+      const originalText = nextButton.textContent;
+      nextButton.textContent = "Loading next matchup...";
+      nextButton.disabled = true;
+      console.log('🔄 Loading state applied');
+      
+      try {
+        await renderVersus();
+        console.log(`🔘 Button click completed in ${performance.now() - clickStart}ms`);
+      } catch (error) {
+        console.error('Error loading next matchup:', error);
+        // Restore button if there's an error
+        nextButton.textContent = originalText;
+        nextButton.disabled = false;
+      }
+    };
     outerContainer.appendChild(nextButton);
   }
   
   // Add outer container to main container
   container.appendChild(outerContainer);
+  
+  // Reset loading state on next button if it exists (from previous matchup)
+  const existingNextButton = document.querySelector('.next-button');
+  if (existingNextButton) {
+    existingNextButton.textContent = "Next Matchup →";
+    existingNextButton.disabled = false;
+    existingNextButton.style.display = 'none'; // Hide until after voting
+  }
+  
+  console.log(`✅ renderVersus completed in ${performance.now() - renderStart}ms`);
 }
 
 // fetchLeaderboard

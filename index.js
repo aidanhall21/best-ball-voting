@@ -408,6 +408,14 @@ app.get('/leaderboard', (req, res) => {
   res.send(html);
 });
 
+// Serve tournament page
+app.get('/tournament', (req, res) => {
+  const htmlPath = path.join(__dirname, 'tournament.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // Serve matchup settings page
 app.get('/matchup-settings', requireAdmin, (req, res) => {
   const htmlPath = path.join(__dirname, 'matchup-settings.html');
@@ -958,8 +966,50 @@ app.get('/teams', async (req, res) => {
   const filterTeam1Strategy = matchupSettings?.team1_strategy;
   const filterTeam2Strategy = matchupSettings?.team2_strategy;
   
-  // If no filters at all, serve the full cached file
-  if (!filterTournament && !filterTeam1Stack && !filterTeam2Stack && !filterTeam1Player && !filterTeam2Player && !filterTeam1Strategy && !filterTeam2Strategy) {
+  // If no filters at all OR only one team has filters (let frontend handle categorization), serve the full cached file
+  const hasTeam1Filters = filterTeam1Stack || filterTeam1Player || filterTeam1Strategy;
+  const hasTeam2Filters = filterTeam2Stack || filterTeam2Player || filterTeam2Strategy;
+  const onlyOneTeamHasFilters = (hasTeam1Filters && !hasTeam2Filters) || (!hasTeam1Filters && hasTeam2Filters);
+  
+  if ((!filterTournament && !hasTeam1Filters && !hasTeam2Filters) || onlyOneTeamHasFilters) {
+    // For cases where we need to add stackFilters metadata but serve full dataset
+    if (onlyOneTeamHasFilters) {
+      try {
+        // Read and decompress the cache file, add stackFilters, and serve
+        const gzippedData = fs.readFileSync(CACHE_FILE_PATH);
+        const jsonStr = zlib.gunzipSync(gzippedData).toString('utf8');
+        const fullData = JSON.parse(jsonStr);
+        
+        // Add stackFilters metadata
+        fullData.stackFilters = {
+          team1Stack: filterTeam1Stack,
+          team2Stack: filterTeam2Stack,
+          team1Player: filterTeam1Player,
+          team2Player: filterTeam2Player,
+          team1Strategy: filterTeam1Strategy,
+          team2Strategy: filterTeam2Strategy,
+          team1Candidates: 0, // Will be calculated by frontend
+          team2Candidates: 0  // Will be calculated by frontend
+        };
+        
+        const modifiedJsonStr = JSON.stringify(fullData);
+        const modifiedEtag = crypto.createHash('md5').update(modifiedJsonStr).digest('hex');
+        
+        if (req.headers['if-none-match'] === modifiedEtag) {
+          return res.status(304).end();
+        }
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('ETag', modifiedEtag);
+        return res.json(fullData);
+      } catch (error) {
+        console.error('Error serving full data with filters:', error);
+        return res.status(500).json({ error: 'Failed to serve teams data' });
+      }
+    }
+    
+    // No filters at all - serve cached file directly
     if (req.headers['if-none-match'] === teamsCacheMeta.etag) {
       return res.status(304).end();
     }
@@ -2887,6 +2937,94 @@ app.get('/my/profile', requireAuth, (req, res) => {
       );
     }
   );
+});
+
+// === NEW: Get tournament teams for the logged-in user ===
+app.get('/my/tournament-teams', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const tournament = req.query.tournament;
+
+  console.log('tournament', tournament);
+
+  if (!tournament) {
+    return res.status(400).json({ error: 'Tournament parameter required' });
+  }
+
+  const sql = `
+    SELECT 
+      t.id,
+      t.tournament,
+      t.username,
+      t.user_id,
+      COALESCE(er.elo, 0) as elo_rating
+    FROM teams t
+    LEFT JOIN (
+      SELECT 
+        team_id,
+        elo,
+        ROW_NUMBER() OVER (PARTITION BY team_id ORDER BY created_at DESC) as rn
+      FROM elo_ratings
+    ) er ON t.id = er.team_id AND er.rn = 1
+    WHERE t.user_id = ? AND t.tournament = ?
+    ORDER BY COALESCE(er.elo, 0) DESC
+  `;
+
+  db.all(sql, [userId, tournament], (err, teams) => {
+    if (err) {
+      console.error('Error fetching tournament teams:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    // Get global elo ratings for percentile calculation
+    const globalEloSql = `
+      SELECT er.elo as elo_rating
+      FROM elo_ratings er
+      JOIN teams t ON t.id = er.team_id
+      LEFT JOIN (
+        SELECT vm.winner_id as team_id, COUNT(*) as wins
+        FROM versus_matches vm GROUP BY vm.winner_id
+      ) win_counts ON win_counts.team_id = er.team_id
+      LEFT JOIN (
+        SELECT vm.loser_id as team_id, COUNT(*) as losses
+        FROM versus_matches vm GROUP BY vm.loser_id
+      ) loss_counts ON loss_counts.team_id = er.team_id
+      WHERE er.id IN (
+        SELECT MAX(id) FROM elo_ratings GROUP BY team_id, tournament
+      )
+      AND (COALESCE(win_counts.wins, 0) + COALESCE(loss_counts.losses, 0)) > 0
+      ORDER BY er.elo DESC
+    `;
+
+    db.all(globalEloSql, [], (globalErr, globalRows) => {
+      if (globalErr) {
+        console.error('Global Elo query error:', globalErr);
+        // Continue without percentiles
+        return res.json({ teams: teams || [] });
+      }
+
+      if (globalRows.length > 0) {
+        const globalEloValues = globalRows.map(r => r.elo_rating);
+        const minGlobalElo = globalEloValues[globalEloValues.length - 1];
+        const maxGlobalElo = globalEloValues[0];
+
+        // Add percentiles to each team
+        const teamsWithPercentiles = teams.map(team => {
+          if (maxGlobalElo === minGlobalElo) {
+            team.percentile = 0.5;
+          } else if (team.elo_rating > 0) {
+            team.percentile = (team.elo_rating - minGlobalElo) / (maxGlobalElo - minGlobalElo);
+          } else {
+            team.percentile = 0.5;
+          }
+          return team;
+        });
+
+        res.json({ teams: teamsWithPercentiles || [] });
+      } else {
+        res.json({ teams: teams || [] });
+      }
+    });
+  });
 });
 
 // === NEW: Get public profile for any user by username ===
