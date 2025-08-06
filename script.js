@@ -3758,7 +3758,7 @@ document.addEventListener('DOMContentLoaded', () => {
     specialBannerLink.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      window.location.href = '/draftorpass';
+      window.location.href = '/tournament';
     });
   }
 });
