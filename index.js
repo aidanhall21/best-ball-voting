@@ -14,6 +14,13 @@ const multer = require("multer");
 const morgan = require('morgan');
 const Papa = require("papaparse");
 const { db, analyticsDb } = require("./db");
+const {
+    getCurrentTournamentMatchup,
+    castTournamentVote,
+    getTournamentBracket,
+    initializeTournament,
+    activateNextTournamentMatchup
+} = require('./scripts/tournament_api');
 const crypto = require("crypto");
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
@@ -411,6 +418,18 @@ app.get('/leaderboard', (req, res) => {
 // Serve tournament page
 app.get('/tournament', (req, res) => {
   const htmlPath = path.join(__dirname, 'tournament.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  const tokenScript = `\n<script>\n    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';\n  </script>\n`;
+  html = html.replace('</head>', tokenScript + '</head>');
+  // Inject cache-busting query string
+  html = html.replace('tournament.js"', `tournament.js?v=${ASSET_VERSION}"`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Serve tournament admin page
+app.get('/tournament-admin', requireAdmin, (req, res) => {
+  const htmlPath = path.join(__dirname, 'tournament-admin.html');
   let html = fs.readFileSync(htmlPath, 'utf8');
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
@@ -1832,6 +1851,254 @@ function buildUserLeaderboardCache(tournament) {
     });
   });
 }
+
+// ---- Tournament API Endpoints ----
+
+// Get current tournament matchup for voting
+app.get('/api/tournament/current-matchup/:tournamentId', (req, res) => {
+    const { tournamentId } = req.params;
+    const userId = req.user?.id || null;
+    
+    getCurrentTournamentMatchup(db, tournamentId, userId, (err, result) => {
+        if (err) {
+            console.error('Error getting current matchup:', err);
+            return res.status(500).json({ error: 'Failed to get current matchup' });
+        }
+        
+        if (!result) {
+            return res.json({ 
+                matchup: null, 
+                requiresLogin: true,
+                message: 'You must be logged in to vote in the tournament' 
+            });
+        }
+        
+        if (result.allVoted) {
+            return res.json({ 
+                matchup: null, 
+                allVoted: true,
+                message: result.message 
+            });
+        }
+        
+        if (result.noMatchups) {
+            return res.json({ 
+                matchup: null, 
+                message: result.message 
+            });
+        }
+        
+        res.json({ matchup: result });
+    });
+});
+
+// Cast vote in tournament matchup
+app.post('/api/tournament/vote', voteRateLimiter, (req, res) => {
+    const { matchupId, teamId } = req.body;
+    const voterId = req.user?.id || req.voterId; // Use authenticated user or visitor ID
+    
+    if (!matchupId || !teamId) {
+        return res.status(400).json({ error: 'Missing matchupId or teamId' });
+    }
+    
+    castTournamentVote(db, matchupId, teamId, voterId, (err, result) => {
+        if (err) {
+            console.error('Error casting vote:', err);
+            return res.status(400).json({ error: err.message });
+        }
+        
+        res.json({ 
+            success: true, 
+            ...result,
+            message: 'Vote cast successfully' 
+        });
+    });
+});
+
+// Get tournament bracket
+app.get('/api/tournament/bracket/:tournamentId', (req, res) => {
+    const { tournamentId } = req.params;
+    
+    getTournamentBracket(db, tournamentId, (err, bracket) => {
+        if (err) {
+            console.error('Error getting tournament bracket:', err);
+            return res.status(500).json({ error: 'Failed to get tournament bracket' });
+        }
+        
+        res.json({ bracket });
+    });
+});
+
+// Initialize tournament (admin endpoint)
+app.post('/api/tournament/initialize/:tournamentId', requireAdmin, (req, res) => {
+    const { tournamentId } = req.params;
+    
+    // Add admin check here if needed
+    // if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin required' });
+    
+    initializeTournament(db, tournamentId, (err, firstMatchup) => {
+        if (err) {
+            console.error('Error initializing tournament:', err);
+            return res.status(500).json({ error: 'Failed to initialize tournament' });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Tournament initialized',
+            firstMatchup 
+        });
+    });
+});
+
+// Manually activate next matchup (admin endpoint)
+app.post('/api/tournament/activate-next/:tournamentId', requireAdmin, (req, res) => {
+    const { tournamentId } = req.params;
+    
+    // Add admin check here if needed
+    // if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin required' });
+    
+    activateNextTournamentMatchup(db, tournamentId, (err, nextMatchup) => {
+        if (err) {
+            console.error('Error activating next matchup:', err);
+            return res.status(500).json({ error: 'Failed to activate next matchup' });
+        }
+        
+        if (nextMatchup) {
+            res.json({ 
+                success: true, 
+                message: 'Next matchup activated',
+                matchup: nextMatchup 
+            });
+        } else {
+            res.json({ 
+                success: false, 
+                message: 'No matchups available to activate' 
+            });
+        }
+    });
+});
+
+// Get tournament info
+app.get('/api/tournament/info/:tournamentId', (req, res) => {
+    const { tournamentId } = req.params;
+    
+    db.get('SELECT * FROM tournaments WHERE id = ?', [tournamentId], (err, tournament) => {
+        if (err) {
+            console.error('Error getting tournament info:', err);
+            return res.status(500).json({ error: 'Failed to get tournament info' });
+        }
+        
+        if (!tournament) {
+            return res.status(404).json({ error: 'Tournament not found' });
+        }
+        
+        // Get tournament stats
+        db.get(`
+            SELECT 
+                COUNT(*) as total_matchups,
+                COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_matchups,
+                COUNT(CASE WHEN status = 'active' THEN 1 END) as active_matchups,
+                COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_matchups
+            FROM tournament_matchups 
+            WHERE tournament_id = ?
+        `, [tournamentId], (err, stats) => {
+            if (err) {
+                console.error('Error getting tournament stats:', err);
+                return res.status(500).json({ error: 'Failed to get tournament stats' });
+            }
+            
+            res.json({ 
+                tournament: {
+                    ...tournament,
+                    stats
+                }
+            });
+        });
+    });
+});
+
+// Create tournament bracket (admin endpoint)
+app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
+    const { tournamentId, tournamentName } = req.body;
+    
+    if (!tournamentId || !tournamentName) {
+        return res.status(400).json({ error: 'Tournament ID and name are required' });
+    }
+    
+    // Execute the bracket creation script programmatically
+    const { spawn } = require('child_process');
+    const scriptPath = path.join(__dirname, 'scripts', 'create_tournament_bracket.js');
+    
+    // Set environment variables for the script
+    const env = { ...process.env };
+    env.TOURNAMENT_ID = tournamentId;
+    env.TOURNAMENT_NAME = tournamentName;
+    
+    const child = spawn('node', [scriptPath], { env });
+    
+    let output = '';
+    let errorOutput = '';
+    
+    child.stdout.on('data', (data) => {
+        output += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+    });
+    
+    child.on('close', (code) => {
+        if (code === 0) {
+            // Extract matchup count from output
+            const matchupMatch = output.match(/Created (\d+) first round matchups/);
+            const matchupsCreated = matchupMatch ? parseInt(matchupMatch[1]) : 0;
+            
+            res.json({ 
+                success: true, 
+                message: 'Tournament bracket created successfully',
+                matchupsCreated,
+                output: output
+            });
+        } else {
+            console.error('Bracket creation failed:', errorOutput);
+            res.status(500).json({ 
+                error: 'Failed to create tournament bracket',
+                details: errorOutput || output
+            });
+        }
+    });
+});
+
+// Reset tournament (admin endpoint)
+app.delete('/api/tournament/reset/:tournamentId', requireAdmin, (req, res) => {
+    const { tournamentId } = req.params;
+    
+    // Add admin check here if needed
+    // if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin required' });
+    
+    db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        
+        // Delete in order to respect foreign key constraints
+        db.run('DELETE FROM tournament_votes WHERE matchup_id IN (SELECT id FROM tournament_matchups WHERE tournament_id = ?)', [tournamentId]);
+        db.run('DELETE FROM tournament_results WHERE tournament_id = ?', [tournamentId]);
+        db.run('DELETE FROM tournament_matchups WHERE tournament_id = ?', [tournamentId]);
+        db.run('DELETE FROM tournaments WHERE id = ?', [tournamentId], function(err) {
+            if (err) {
+                console.error('Error resetting tournament:', err);
+                db.run('ROLLBACK TRANSACTION');
+                return res.status(500).json({ error: 'Failed to reset tournament' });
+            }
+            
+            db.run('COMMIT TRANSACTION');
+            res.json({ 
+                success: true, 
+                message: 'Tournament reset successfully',
+                deletedRows: this.changes 
+            });
+        });
+    });
+});
 
 app.get('/api/leaderboard', async (req, res) => {
   const tournament = req.query.tournament || null;
@@ -3579,7 +3846,7 @@ app.post('/my/nominate-team', requireAuth, express.json(), (req, res) => {
   }
 
   // Check if nominations deadline has passed
-  const deadline = new Date('2025-08-04T09:00:00-04:00'); // EDT (Eastern Daylight Time)
+  const deadline = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
   const now = new Date();
   if (now >= deadline) {
     return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
@@ -3609,8 +3876,8 @@ app.post('/my/nominate-team', requireAuth, express.json(), (req, res) => {
             return res.status(500).json({ error: 'Database error' });
           }
 
-          if (userCount.count >= 5) {
-            return res.status(400).json({ error: 'You can only nominate up to 5 teams per tournament' });
+          if (userCount.count >= 4) {
+            return res.status(400).json({ error: 'You can only nominate up to 4 teams per tournament' });
           }
 
           // Check if tournament already has 256 nominations
@@ -3677,7 +3944,7 @@ app.post('/my/unnominate-team', requireAuth, express.json(), (req, res) => {
   }
 
   // Check if nominations deadline has passed
-  const deadline = new Date('2025-08-04T09:00:00-04:00'); // EDT (Eastern Daylight Time)
+  const deadline = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
   const now = new Date();
   if (now >= deadline) {
     return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
@@ -3729,7 +3996,7 @@ app.get('/my/nominations', requireAuth, (req, res) => {
 });
 
 app.get('/tournament/deadline-status', (req, res) => {
-  const deadline = new Date('2025-08-04T09:00:00-04:00'); // EDT (Eastern Daylight Time)
+  const deadline = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
   const now = new Date();
   const hasDeadlinePassed = now >= deadline;
   const timeRemaining = hasDeadlinePassed ? 0 : deadline - now;

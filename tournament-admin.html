@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Draft or Pass – Tournament Admin</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      font-family: 'Söhne', 'Inter', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f9fafb;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    body.content-visible {
+      opacity: 1;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .settings-container {
+      width: 90%;
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .settings-group {
+      margin-bottom: 30px;
+    }
+    .settings-group h2 {
+      margin-bottom: 20px;
+      color: #111;
+    }
+    .settings-row {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    .settings-label {
+      min-width: 150px;
+      font-weight: 500;
+    }
+    select, input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      max-width: 400px;
+    }
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .action-button {
+      border: none;
+      padding: 15px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 500;
+      transition: all 0.2s;
+      width: 100%;
+      position: relative;
+    }
+    .action-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .create-bracket-button {
+      background: #10b981;
+      color: white;
+    }
+    .create-bracket-button:hover:not(:disabled) {
+      background: #059669;
+    }
+    .initialize-tournament-button {
+      background: #3b82f6;
+      color: white;
+    }
+    .initialize-tournament-button:hover:not(:disabled) {
+      background: #2563eb;
+    }
+    .activate-next-button {
+      background: #f59e0b;
+      color: white;
+    }
+    .activate-next-button:hover:not(:disabled) {
+      background: #d97706;
+    }
+    .danger-button {
+      background: #ef4444;
+      color: white;
+    }
+    .danger-button:hover:not(:disabled) {
+      background: #dc2626;
+    }
+    .status-message {
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    .status-message.success {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    .status-message.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+    .status-message.info {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+    }
+    .tournament-info {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    .tournament-info h3 {
+      margin: 0 0 10px 0;
+      color: #374151;
+    }
+    .tournament-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .stat-item {
+      text-align: center;
+      padding: 8px;
+      background: white;
+      border-radius: 4px;
+      border: 1px solid #e5e7eb;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #3b82f6;
+    }
+    .stat-label {
+      font-size: 0.875rem;
+      color: #6b7280;
+    }
+    .loading-spinner {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #ffffff;
+      border-top: 2px solid transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .button-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    /* Mobile styles */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+      .settings-container {
+        width: 100%;
+        padding: 15px;
+      }
+      .settings-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+      .settings-label {
+        min-width: unset;
+      }
+      select, input {
+        max-width: unset;
+      }
+      .tournament-stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+  <!-- Cloudflare Web Analytics -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
+  <!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+  <h1>Tournament Admin</h1>
+  
+  <div class="settings-container">
+    <div class="settings-group">
+      <h2>Tournament Configuration</h2>
+      <div class="settings-row">
+        <div class="settings-label">Tournament ID:</div>
+        <input type="text" id="tournamentId" value="the-puppy" placeholder="Enter tournament ID">
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">Tournament Name:</div>
+        <input type="text" id="tournamentName" value="The Puppy" placeholder="Enter tournament name">
+      </div>
+    </div>
+
+    <div id="tournamentInfo" class="tournament-info" style="display: none;">
+      <h3>Current Tournament Status</h3>
+      <div id="tournamentDetails"></div>
+      <div id="tournamentStats" class="tournament-stats"></div>
+    </div>
+
+    <div class="settings-group">
+      <h2>Tournament Management</h2>
+      <div class="button-group">
+        <button id="createBracket" class="action-button create-bracket-button">
+          <div class="button-loading">
+            <div class="loading-spinner"></div>
+            <span>Create Tournament Bracket</span>
+          </div>
+        </button>
+        
+        <button id="initializeTournament" class="action-button initialize-tournament-button">
+          <div class="button-loading">
+            <div class="loading-spinner"></div>
+            <span>Initialize Tournament (Start Voting)</span>
+          </div>
+        </button>
+        
+        <button id="activateNext" class="action-button activate-next-button">
+          <div class="button-loading">
+            <div class="loading-spinner"></div>
+            <span>Activate Next Matchup</span>
+          </div>
+        </button>
+        
+        <button id="refreshInfo" class="action-button" style="background: #6b7280; color: white;">
+          <div class="button-loading">
+            <div class="loading-spinner"></div>
+            <span>Refresh Tournament Info</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h2>Danger Zone</h2>
+      <div class="button-group">
+        <button id="resetTournament" class="action-button danger-button">
+          <div class="button-loading">
+            <div class="loading-spinner"></div>
+            <span>Reset Tournament (Delete All Data)</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div id="statusMessage" class="status-message"></div>
+  </div>
+
+  <script>
+    // Check if user is admin before loading page
+    async function checkAdminAccess() {
+      try {
+        console.log('Checking admin access...');
+        const res = await fetch('/api/admin/check');
+        console.log('Admin check response:', res.status);
+        if (!res.ok) {
+          console.log('Not admin, redirecting...');
+          window.location.href = '/'; // Redirect to home if not admin
+          return false;
+        }
+        console.log('Admin access confirmed');
+        return true;
+      } catch (err) {
+        console.error('Admin check failed:', err);
+        window.location.href = '/';
+        return false;
+      }
+    }
+
+    // Show status message
+    function showStatus(message, type = 'info') {
+      const statusEl = document.getElementById('statusMessage');
+      statusEl.textContent = message;
+      statusEl.className = 'status-message ' + type;
+      statusEl.style.display = 'block';
+      
+      // Hide after 5 seconds unless it's an error
+      if (type !== 'error') {
+        setTimeout(() => {
+          statusEl.style.display = 'none';
+        }, 5000);
+      }
+    }
+
+    // Show loading state on button
+    function setButtonLoading(buttonId, loading) {
+      const button = document.getElementById(buttonId);
+      const spinner = button.querySelector('.loading-spinner');
+      
+      if (loading) {
+        button.disabled = true;
+        spinner.style.display = 'block';
+      } else {
+        button.disabled = false;
+        spinner.style.display = 'none';
+      }
+    }
+
+    // Load tournament information
+    async function loadTournamentInfo() {
+      const tournamentId = document.getElementById('tournamentId').value;
+      if (!tournamentId) {
+        document.getElementById('tournamentInfo').style.display = 'none';
+        return;
+      }
+
+      try {
+        console.log('Loading tournament info for:', tournamentId);
+        const res = await fetch(`/api/tournament/info/${tournamentId}`);
+        const data = await res.json();
+        console.log('Tournament info response:', data);
+        
+        if (res.ok && data.tournament) {
+          displayTournamentInfo(data.tournament);
+        } else {
+          document.getElementById('tournamentInfo').style.display = 'none';
+          if (!res.ok) {
+            console.log('Tournament not found or error:', data);
+            // Don't show error for 404 - just means tournament doesn't exist yet
+            if (res.status !== 404) {
+              showStatus(data.error || 'Error loading tournament info', 'error');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load tournament info:', err);
+        document.getElementById('tournamentInfo').style.display = 'none';
+      }
+    }
+
+    // Display tournament information
+    function displayTournamentInfo(tournament) {
+      const infoEl = document.getElementById('tournamentInfo');
+      const detailsEl = document.getElementById('tournamentDetails');
+      const statsEl = document.getElementById('tournamentStats');
+
+      detailsEl.innerHTML = `
+        <p><strong>Name:</strong> ${tournament.name}</p>
+        <p><strong>Status:</strong> <span style="color: ${getStatusColor(tournament.status)}">${tournament.status.toUpperCase()}</span></p>
+        <p><strong>Created:</strong> ${new Date(tournament.created_at).toLocaleString()}</p>
+        ${tournament.start_date ? `<p><strong>Started:</strong> ${new Date(tournament.start_date).toLocaleString()}</p>` : ''}
+        ${tournament.end_date ? `<p><strong>Ended:</strong> ${new Date(tournament.end_date).toLocaleString()}</p>` : ''}
+      `;
+
+      if (tournament.stats) {
+        statsEl.innerHTML = `
+          <div class="stat-item">
+            <div class="stat-value">${tournament.stats.total_matchups}</div>
+            <div class="stat-label">Total Matchups</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value">${tournament.stats.completed_matchups}</div>
+            <div class="stat-label">Completed</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value">${tournament.stats.active_matchups}</div>
+            <div class="stat-label">Active</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value">${tournament.stats.pending_matchups}</div>
+            <div class="stat-label">Pending</div>
+          </div>
+        `;
+      }
+
+      infoEl.style.display = 'block';
+    }
+
+    // Get status color
+    function getStatusColor(status) {
+      switch (status) {
+        case 'setup': return '#6b7280';
+        case 'active': return '#10b981';
+        case 'completed': return '#3b82f6';
+        default: return '#6b7280';
+      }
+    }
+
+    // Create tournament bracket
+    async function createBracket() {
+      const tournamentId = document.getElementById('tournamentId').value;
+      const tournamentName = document.getElementById('tournamentName').value;
+      
+      if (!tournamentId || !tournamentName) {
+        showStatus('Please enter both Tournament ID and Tournament Name', 'error');
+        return;
+      }
+
+      setButtonLoading('createBracket', true);
+      showStatus('Creating tournament bracket...', 'info');
+
+      try {
+        const res = await fetch('/api/tournament/create-bracket', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tournamentId,
+            tournamentName
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showStatus(`Tournament bracket created successfully! ${data.matchupsCreated} matchups created.`, 'success');
+          await loadTournamentInfo(); // Refresh tournament info
+        } else {
+          showStatus(data.error || 'Failed to create tournament bracket', 'error');
+        }
+      } catch (err) {
+        console.error('Failed to create bracket:', err);
+        showStatus('Network error - failed to create tournament bracket', 'error');
+      } finally {
+        setButtonLoading('createBracket', false);
+      }
+    }
+
+    // Initialize tournament
+    async function initializeTournament() {
+      const tournamentId = document.getElementById('tournamentId').value;
+      
+      if (!tournamentId) {
+        showStatus('Please enter Tournament ID', 'error');
+        return;
+      }
+
+      setButtonLoading('initializeTournament', true);
+      showStatus('Initializing tournament...', 'info');
+
+      try {
+        const res = await fetch(`/api/tournament/initialize/${tournamentId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showStatus('Tournament initialized successfully! Voting has started.', 'success');
+          await loadTournamentInfo(); // Refresh tournament info
+        } else {
+          showStatus(data.error || 'Failed to initialize tournament', 'error');
+        }
+      } catch (err) {
+        console.error('Failed to initialize tournament:', err);
+        showStatus('Network error - failed to initialize tournament', 'error');
+      } finally {
+        setButtonLoading('initializeTournament', false);
+      }
+    }
+
+    // Activate next matchup
+    async function activateNextMatchup() {
+      const tournamentId = document.getElementById('tournamentId').value;
+      
+      if (!tournamentId) {
+        showStatus('Please enter Tournament ID', 'error');
+        return;
+      }
+
+      setButtonLoading('activateNext', true);
+      showStatus('Activating next matchup...', 'info');
+
+      try {
+        const res = await fetch(`/api/tournament/activate-next/${tournamentId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          if (data.success) {
+            showStatus('Next matchup activated successfully!', 'success');
+          } else {
+            showStatus(data.message || 'No matchups available to activate', 'info');
+          }
+          await loadTournamentInfo(); // Refresh tournament info
+        } else {
+          showStatus(data.error || 'Failed to activate next matchup', 'error');
+        }
+      } catch (err) {
+        console.error('Failed to activate next matchup:', err);
+        showStatus('Network error - failed to activate next matchup', 'error');
+      } finally {
+        setButtonLoading('activateNext', false);
+      }
+    }
+
+    // Reset tournament (danger zone)
+    async function resetTournament() {
+      const tournamentId = document.getElementById('tournamentId').value;
+      
+      if (!tournamentId) {
+        showStatus('Please enter Tournament ID', 'error');
+        return;
+      }
+
+      const confirmed = confirm(`Are you sure you want to COMPLETELY DELETE all data for tournament "${tournamentId}"? This action cannot be undone!`);
+      if (!confirmed) return;
+
+      const doubleConfirmed = confirm('This will delete ALL matchups, votes, and results. Type the tournament ID in the next prompt to confirm.');
+      if (!doubleConfirmed) return;
+
+      const typedId = prompt(`Type "${tournamentId}" to confirm deletion:`);
+      if (typedId !== tournamentId) {
+        showStatus('Tournament ID did not match. Reset cancelled.', 'info');
+        return;
+      }
+
+      setButtonLoading('resetTournament', true);
+      showStatus('Resetting tournament...', 'info');
+
+      try {
+        const res = await fetch(`/api/tournament/reset/${tournamentId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showStatus('Tournament reset successfully! All data has been deleted.', 'success');
+          await loadTournamentInfo(); // Refresh tournament info
+        } else {
+          showStatus(data.error || 'Failed to reset tournament', 'error');
+        }
+      } catch (err) {
+        console.error('Failed to reset tournament:', err);
+        showStatus('Network error - failed to reset tournament', 'error');
+      } finally {
+        setButtonLoading('resetTournament', false);
+      }
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', async () => {
+      console.log('DOM loaded, initializing...');
+      
+      try {
+        // First check admin access
+        const hasAccess = await checkAdminAccess();
+        if (!hasAccess) {
+          return; // Will redirect
+        }
+        
+        console.log('Loading tournament info...');
+        // Load initial tournament info
+        await loadTournamentInfo();
+
+        console.log('Setting up event handlers...');
+        // Add button handlers
+        document.getElementById('createBracket').addEventListener('click', createBracket);
+        document.getElementById('initializeTournament').addEventListener('click', initializeTournament);
+        document.getElementById('activateNext').addEventListener('click', activateNextMatchup);
+        document.getElementById('refreshInfo').addEventListener('click', () => {
+          setButtonLoading('refreshInfo', true);
+          loadTournamentInfo().finally(() => setButtonLoading('refreshInfo', false));
+        });
+        document.getElementById('resetTournament').addEventListener('click', resetTournament);
+
+        // Add input handlers to refresh tournament info when ID changes
+        document.getElementById('tournamentId').addEventListener('input', () => {
+          clearTimeout(window.infoTimeout);
+          window.infoTimeout = setTimeout(loadTournamentInfo, 500);
+        });
+        
+        console.log('Page initialization complete, showing content...');
+        // Show content
+        document.body.classList.add('content-visible');
+        
+      } catch (err) {
+        console.error('Page initialization error:', err);
+        // Show content anyway in case of error
+        document.body.classList.add('content-visible');
+        showStatus('Error initializing page: ' + err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>

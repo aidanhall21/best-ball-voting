@@ -1,0 +1,1807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tournament - Draft or Pass</title>
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="header.js"></script>
+  <script defer src="script.js"></script>
+  <script defer src="analytics.js"></script>
+  <!-- Favicons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/favicon_io/site.webmanifest">
+  <link rel="shortcut icon" href="/favicon_io/favicon.ico">
+
+  <!-- Social share metadata -->
+  <meta property="og:title" content="Tournament - Draft or Pass">
+  <meta property="og:description" content="Join the first Draft or Pass tournament!">
+  <meta property="og:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://draftrpass.com/tournament" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tournament - Draft or Pass">
+  <meta name="twitter:description" content="Join the first Draft or Pass tournament!">
+  <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta name="twitter:image:alt" content="Draft or Pass Tournament preview">
+  
+  <!-- Cloudflare Web Analytics -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "059f1f1236dc4f709c203129c35b24c2"}'></script>
+  
+  <!-- Cloudflare Turnstile for bot protection -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+
+  <style>
+    /* Tournament page specific responsive improvements */
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+
+    .main-content {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex: 1;
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+      box-sizing: border-box;
+    }
+
+    .tournament-container {
+      max-width: 1000px; /* Increased from 800px for better desktop use */
+      margin: 0 auto;
+      padding: 1.5rem 1rem; /* Reduced from 2rem */
+      width: 100%;
+    }
+
+    /* Desktop optimizations */
+    @media (min-width: 1024px) {
+      .tournament-container {
+        max-width: 1100px; /* Even wider on large desktop */
+        padding: 1.5rem 2rem; /* More horizontal padding, less vertical */
+      }
+    }
+
+    /* Large desktop optimization */
+    @media (min-width: 1200px) {
+      .tournament-container {
+        max-width: 1200px; /* Use even more space on very large screens */
+        padding: 1.5rem 3rem;
+      }
+    }
+
+    /* Tablet adjustments */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      .tournament-container {
+        max-width: 900px;
+        padding: 1.75rem 1.5rem;
+      }
+    }
+
+    /* Mobile optimization - keep existing mobile-friendly padding */
+    @media (max-width: 767px) {
+      .main-content {
+        padding: 15px 0px !important;
+      }
+      
+      .tournament-container {
+        max-width: 100%;
+        padding: 1rem 0.75rem;
+        margin: 0;
+      }
+    }
+
+    .tournament-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .tournament-title {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #f0f6fc;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #58a6ff, #79c0ff, #a5f3fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .countdown-container {
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 2rem 0;
+    }
+
+    /* Countdown responsive improvements */
+    @media (min-width: 1024px) {
+      .countdown-container {
+        padding: 2.5rem 3rem; /* More spacious on desktop */
+        margin: 2.5rem 0;
+      }
+      
+      .countdown-display {
+        gap: 3rem; /* Increased gap between countdown units */
+      }
+      
+      .countdown-unit {
+        min-width: 100px; /* Wider units on desktop */
+        padding: 1.5rem 1rem;
+      }
+    }
+
+    .countdown-display {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+
+    .countdown-unit {
+      background: rgba(240, 246, 252, 0.05);
+      border-radius: 8px;
+      padding: 1rem;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .countdown-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #58a6ff;
+      display: block;
+    }
+
+    .countdown-label {
+      font-size: 0.875rem;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 0.5rem;
+    }
+
+    .tournament-info {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 2rem 0;
+      text-align: left;
+    }
+
+    /* Tournament info responsive improvements */
+    @media (min-width: 1024px) {
+      .tournament-info {
+        padding: 2.5rem 3rem; /* More generous padding on desktop */
+        margin: 3rem 0;
+      }
+      
+      .tournament-info p {
+        font-size: 18px; /* Slightly larger text on desktop */
+        line-height: 1.6;
+        margin-bottom: 1.25rem;
+      }
+    }
+
+    @media (max-width: 767px) {
+      .tournament-info {
+        padding: 1.5rem 1rem; /* More compact on mobile */
+        margin: 1.5rem 0;
+      }
+    }
+
+    .tournament-info h3 {
+      color: #f0f6fc;
+      margin-bottom: 1rem;
+      font-size: 1.25rem;
+    }
+
+    .tournament-info p {
+      color: #8b949e;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .select-teams-button {
+      background: linear-gradient(135deg, #58a6ff, #79c0ff);
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 1.5rem;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: pointer;
+    }
+
+    .select-teams-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(88, 166, 255, 0.3);
+      text-decoration: none;
+      color: white;
+    }
+
+    .select-teams-button:active {
+      transform: translateY(0);
+    }
+
+    @media (max-width: 768px) {
+      .tournament-title {
+        font-size: 2rem;
+      }
+
+      .countdown-display {
+        gap: 1rem;
+      }
+
+      .countdown-unit {
+        min-width: 60px;
+        padding: 0.75rem;
+      }
+
+      .countdown-number {
+        font-size: 1.5rem;
+      }
+
+      .tournament-container {
+        padding: 1rem;
+      }
+    }
+
+    /* Tournament View Styles */
+    .tournament-view {
+      margin-top: 0rem;
+    }
+
+    .tournament-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid rgba(240, 246, 252, 0.1);
+    }
+
+    /* Tournament tabs responsive improvements */
+    @media (min-width: 1024px) {
+      .tournament-tabs {
+        margin-bottom: 3rem;
+        justify-content: center; /* Center tabs on desktop */
+      }
+      
+      .tournament-tab {
+        padding: 1.25rem 2rem; /* More generous padding */
+        font-size: 1.1rem;
+      }
+    }
+
+    .tournament-tab {
+      background: transparent;
+      border: none;
+      padding: 1rem 1.5rem;
+      color: #8b949e;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tournament-tab:hover {
+      color: #f0f6fc;
+      background: rgba(240, 246, 252, 0.05);
+    }
+
+    .tournament-tab.active {
+      color: #58a6ff;
+      border-bottom-color: #58a6ff;
+    }
+
+    .tournament-tab-content {
+      display: none;
+    }
+
+    .tournament-tab-content.active {
+      display: block;
+    }
+
+    .bracket-container {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 12px;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+
+    .bracket-placeholder h3 {
+      color: #f0f6fc;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+    }
+
+    .bracket-placeholder p {
+      color: #8b949e;
+      font-size: 1rem;
+    }
+
+    /* Hide countdown container when tournament view is active */
+    .tournament-active .tournament-header {
+      display: none;
+    }
+
+    .tournament-active .tournament-info {
+      display: none;
+    }
+
+    /* Tournament Voting Styles */
+    .tournament-matchup {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 12px;
+      padding: 0;
+      margin-bottom: 0;
+      width: 100%;
+    }
+
+    /* Tournament matchup responsive improvements */
+    @media (min-width: 1024px) {
+      .tournament-matchup {
+        padding: 0;
+        margin-bottom: 0;
+      }
+      
+      .teams-grid {
+        gap: 3rem; /* Increased gap between teams */
+      }
+    }
+
+    @media (max-width: 767px) {
+      .tournament-matchup {
+        padding: 0;
+        margin-bottom: 0;
+      }
+      
+      .teams-grid {
+        grid-template-columns: 1fr; /* Stack teams vertically on mobile */
+        grid-template-rows: auto auto auto;
+        gap: 1.5rem;
+        text-align: center;
+      }
+    }
+
+    .matchup-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .matchup-header h3 {
+      color: #f0f6fc;
+      margin-bottom: 0.5rem;
+      font-size: 1.5rem;
+    }
+
+    .matchup-subtitle {
+      color: #8b949e;
+      font-size: 1rem;
+    }
+
+    .teams-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      align-items: center;
+      width: 100%;
+      padding: 0 2rem;
+      box-sizing: border-box;
+    }
+
+    /* Tournament-specific team card styles */
+    .tournament-team {
+      background: rgba(240, 246, 252, 0.05);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Tournament-specific player bubble styles */
+    .tournament-team .player-bubble {
+      width: 100%;
+      margin: 0.5rem 0;
+      box-sizing: border-box;
+    }
+
+    /* Ensure team cards fit within tournament-tab-content */
+    .tournament-tab-content {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .teams-container {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .tournament-team {
+      background: rgba(240, 246, 252, 0.05);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .team-header h4 {
+      color: #f0f6fc;
+      margin-bottom: 0.5rem;
+      font-size: 1.2rem;
+    }
+
+    .betting-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      align-items: center;
+    }
+
+    .betting-odds {
+      color: #58a6ff;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .implied-probability {
+      color: #8b949e;
+      font-size: 0.8rem;
+    }
+
+    /* Vote Results Styling */
+    .vote-results-display {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .vote-success {
+      margin-bottom: 2rem;
+    }
+
+    .vote-success h3 {
+      color: #3fb950;
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 2rem;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+
+    .team-result {
+      background: rgba(240, 246, 252, 0.05);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .team-result.chosen {
+      border-color: #3fb950;
+      box-shadow: 0 0 0 1px rgba(63, 185, 80, 0.4);
+    }
+
+    .team-result h4 {
+      color: #f0f6fc;
+      margin-bottom: 1rem;
+      font-size: 1.2rem;
+    }
+
+    .result-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .vote-count-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .vote-number {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #58a6ff;
+    }
+
+    .vote-label {
+      color: #8b949e;
+      font-size: 0.9rem;
+    }
+
+    .elo-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .elo-rating {
+      color: #f0f6fc;
+      font-size: 0.9rem;
+    }
+
+    .elo-change {
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .elo-change.positive {
+      color: #3fb950;
+    }
+
+    .elo-change.negative {
+      color: #f85149;
+    }
+
+    .results-vs {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      color: #8b949e;
+    }
+
+    .results-vs span {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+
+    .total-votes {
+      font-size: 0.8rem;
+      color: #8b949e;
+    }
+
+    .next-actions {
+      margin-top: 2rem;
+    }
+
+    .next-matchup-btn {
+      padding: 12px 24px;
+      font-size: 16px;
+      background: #0969da;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .next-matchup-btn:hover {
+      filter: brightness(1.1);
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .results-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+
+      .results-vs {
+        order: 2;
+      }
+
+      .team-result:last-child {
+        order: 3;
+      }
+    }
+
+    .vote-section {
+      margin-top: 1rem;
+    }
+
+    .vote-count {
+      margin-bottom: 1rem;
+    }
+
+    .vote-count .votes {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #58a6ff;
+    }
+
+    .votes-label {
+      color: #8b949e;
+      font-size: 0.9rem;
+      margin-left: 0.5rem;
+    }
+
+    .votes-needed {
+      color: #8b949e;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+
+    .vote-btn {
+      background: linear-gradient(135deg, #58a6ff, #1f6feb);
+      color: white;
+      border: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .vote-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1f6feb, #0969da);
+      transform: translateY(-1px);
+    }
+
+    .vote-btn:disabled {
+      background: #21262d;
+      color: #6e7681;
+      cursor: not-allowed;
+    }
+
+    .matchup-vs {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #8b949e;
+      text-align: center;
+    }
+
+    .vote-feedback {
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .vote-feedback.success {
+      background: rgba(46, 160, 67, 0.15);
+      color: #3fb950;
+      border: 1px solid rgba(46, 160, 67, 0.4);
+    }
+
+    .vote-feedback.error {
+      background: rgba(248, 81, 73, 0.15);
+      color: #f85149;
+      border: 1px solid rgba(248, 81, 73, 0.4);
+    }
+
+    .no-matchup, .error-message {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 12px;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+
+    .no-matchup h3, .error-message h3 {
+      color: #f0f6fc;
+      margin-bottom: 1rem;
+    }
+
+    .no-matchup p, .error-message p {
+      color: #8b949e;
+      margin-bottom: 1rem;
+    }
+
+    /* Bracket Styles */
+    .bracket-grid {
+      display: flex;
+      gap: 2rem;
+      overflow-x: auto;
+      padding: 1rem 0;
+    }
+
+    .bracket-round {
+      min-width: 200px;
+      flex-shrink: 0;
+    }
+
+    .round-title {
+      color: #f0f6fc;
+      text-align: center;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .round-matchups {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .bracket-matchup {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .bracket-matchup.active {
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.4);
+    }
+
+    .bracket-team {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.25rem;
+    }
+
+    .bracket-team.winner {
+      background: rgba(46, 160, 67, 0.15);
+      color: #3fb950;
+    }
+
+    .bracket-team.active {
+      background: rgba(88, 166, 255, 0.15);
+      color: #58a6ff;
+    }
+
+    .bracket-team.empty {
+      color: #6e7681;
+      font-style: italic;
+    }
+
+    .team-name {
+      font-weight: 500;
+    }
+
+    .team-votes {
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+
+    .bracket-vs {
+      text-align: center;
+      color: #8b949e;
+      font-size: 0.8rem;
+      margin: 0.25rem 0;
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+      .teams-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+
+      .matchup-vs {
+        order: 2;
+      }
+
+      .bracket-grid {
+        gap: 1rem;
+      }
+
+      .bracket-round {
+        min-width: 160px;
+      }
+    }
+    /* Owner info styles (matching draftorpass.html) */
+    .owner-info {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin: 8px 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .owner-info.winner {
+      background: rgba(40, 167, 69, 0.2);
+      border-color: rgba(40, 167, 69, 0.4);
+      box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    }
+
+    .owner-info.loser {
+      background: rgba(220, 53, 69, 0.2);
+      border-color: rgba(220, 53, 69, 0.4);
+      box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    }
+
+    .owner-stats {
+      font-size: 12px;
+      color: #ccc;
+      line-height: 1.4;
+      word-wrap: break-word;
+      margin-bottom: 6px;
+    }
+    
+    .votes-needed {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      text-align: center;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .owner-info.winner .owner-stats {
+      color: #d4edda;
+    }
+
+    .owner-info.loser .owner-stats {
+      color: #f8d7da;
+    }
+
+    /* Next button styles (matching draftorpass.html) */
+    .next-button {
+      background: linear-gradient(45deg, #28a745, #20c997);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 16px auto;
+      display: block;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .next-button:hover {
+      background: linear-gradient(45deg, #218838, #17a2b8);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+    }
+
+    .next-button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Hidden Turnstile container -->
+  <div id="cf-container" style="display:none;"></div>
+
+  <main class="main-content">
+    <div class="tournament-container">
+      <div class="tournament-header">
+        <h1 class="tournament-title">The Puppy Tournament Starts In</h1>
+        
+        <div class="countdown-container">
+          <div class="countdown-display" id="countdown">
+            <div class="countdown-unit">
+              <span class="countdown-number" id="days">--</span>
+              <span class="countdown-label">Days</span>
+            </div>
+            <div class="countdown-unit">
+              <span class="countdown-number" id="hours">--</span>
+              <span class="countdown-label">Hours</span>
+            </div>
+            <div class="countdown-unit">
+              <span class="countdown-number" id="minutes">--</span>
+              <span class="countdown-label">Minutes</span>
+            </div>
+            <div class="countdown-unit">
+              <span class="countdown-number" id="seconds">--</span>
+              <span class="countdown-label">Seconds</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tournament-info">
+        <h3>Tournament Details</h3>
+        <p>DraftrPass is proud to present our first ever elimination tournament! 256 teams will enter and one winner will be crowned the best team drafted in The Puppy. Think your teams stack up? Select up to four of your best teams for submission into the contest, then check back on Friday, August 8th when voting begins.</p>
+        <p><strong>Start Time:</strong> Friday, August 8th, 2025 at 12:00 PM ET</p>
+        <p><strong>Format:</strong> 256 teams going 8 rounds in a single elimination bracket. Each matchup is a best of 7.</p>
+        
+        <a href="/profile.html" class="select-teams-button">Select Your Teams</a>
+      </div>
+
+      <!-- Tournament View (hidden initially) -->
+      <div id="tournamentView" class="tournament-view" style="display: none;">
+        <div class="tournament-tabs">
+          <button class="tournament-tab active" data-tab="voting">Draft or Pass</button>
+          <button class="tournament-tab" data-tab="bracket">Bracket View</button>
+        </div>
+        
+        <div id="votingTab" class="tournament-tab-content active">
+          <div id="teamsContainer" class="teams-container">
+            <div class="loading-indicator">Loading tournament teams…</div>
+          </div>
+        </div>
+        
+        <div id="bracketTab" class="tournament-tab-content">
+          <div class="bracket-container">
+            <div class="bracket-placeholder">
+              <h3>Tournament Bracket</h3>
+              <p>Bracket view coming soon...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // === TOURNAMENT CONFIGURATION ===
+    // 
+    // FOR FUTURE TOURNAMENTS:
+    // 1. Set FORCE_COUNTDOWN_MODE = true to show countdown
+    // 2. Update tournamentStart date to the new tournament start time
+    // 3. Update tournament details in the HTML below
+    // 4. When tournament begins, set FORCE_COUNTDOWN_MODE = false
+    //
+    const FORCE_COUNTDOWN_MODE = true;
+    
+    // Tournament start time: Monday, August 4, 2025 at 9:00 AM ET
+    const tournamentStart = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
+
+    let tournamentViewShown = false;
+    let countdownInterval;
+
+    function updateCountdown() {
+      const now = new Date();
+      const timeDiff = tournamentStart - now;
+
+      if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE && !tournamentViewShown) {
+        // Tournament has started - switch to tournament view (only once)
+        tournamentViewShown = true;
+        clearInterval(countdownInterval); // Stop the countdown
+        showTournamentView();
+        return;
+      }
+
+      const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+
+      document.getElementById('days').textContent = days.toString().padStart(2, '0');
+      document.getElementById('hours').textContent = hours.toString().padStart(2, '0');
+      document.getElementById('minutes').textContent = minutes.toString().padStart(2, '0');
+      document.getElementById('seconds').textContent = seconds.toString().padStart(2, '0');
+    }
+
+    // Tournament view functions
+    function showTournamentView() {
+      // Hide countdown elements and show tournament view
+      document.querySelector('.tournament-container').classList.add('tournament-active');
+      document.getElementById('tournamentView').style.display = 'block';
+      
+      // Update page title
+      document.querySelector('.tournament-title').textContent = 'Tournament Live';
+
+      console.log('Tournament view shown, calling tournament functions directly...');
+      
+      // Setup tab switching
+      setupTournamentTabs();
+
+      console.log('Tournament tabs setup');
+      
+      // Initialize tournament system manually
+      console.log('Tournament view shown, calling tournament functions directly...');
+      
+      // Call tournament functions directly
+      console.log('Making tournament API calls...');
+      
+      // Load current matchup
+      fetch('/api/tournament/current-matchup/the-puppy')
+          .then(response => response.json())
+          .then(data => {
+            console.log('Current matchup response:', data);
+            const container = document.getElementById('teamsContainer');
+            
+            // Handle special cases first
+            if (data.requiresLogin) {
+              container.innerHTML = `
+                <div class="no-matchup">
+                  <h3>Authentication Required</h3>
+                  <p>You must be <a href="/upload.html" style="color: #58a6ff; text-decoration: underline;">logged in</a> to vote in the tournament</p>
+                </div>
+              `;
+              return;
+            }
+            
+            if (data.allVoted) {
+              container.innerHTML = `
+                <div class="no-matchup">
+                  <h3>Round Complete</h3>
+                  <p>${data.message}</p>
+                </div>
+              `;
+              return;
+            }
+            
+            if (data.matchup) {
+              // Display matchup directly
+              const matchup = data.matchup;
+              const team1VotesNeeded = (matchup.votes_needed || 4) - matchup.team1_votes;
+              const team2VotesNeeded = (matchup.votes_needed || 4) - matchup.team2_votes;
+              
+              // Generate roster HTML for each team
+              const generateRosterHTML = (roster) => {
+                if (!roster || !roster.length) return '<div class="no-roster">No roster data available</div>';
+                
+                // Count positions for roster construction
+                const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+                roster.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+                
+                const rosterConstructionHTML = `
+                  <div class="roster-construction">
+                    <div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>
+                  </div>
+                `;
+                
+                // Generate player list HTML
+                const playerListHTML = roster.map(player => {
+                  const stackStar = player.stack ? `<span class="stack-star ${player.stack}">★</span>` : '';
+                  const pickHTML = (player.pick || player.pick === 0) ? `<span class="pick-num">#${player.pick}</span>` : '';
+                  const infoHTML = `<span class="player-info">${player.name}${player.team ? ` - ${player.team}` : ''}</span>`;
+                  
+                  return `
+                    <div class="player-row">
+                      <div class="player-bubble" style="border: 2px solid ${getBorderColor(player.position)}">
+                        ${pickHTML}${infoHTML}${stackStar}
+                      </div>
+                    </div>
+                  `;
+                }).join('');
+                
+                return `
+                  ${rosterConstructionHTML}
+                  <div class="player-list">
+                    ${playerListHTML}
+                  </div>
+                `;
+              };
+              
+              // Function to get border color for positions (matching main interface colors)
+              const getBorderColor = (position) => {
+                const colors = {
+                  QB: '#a855f7', // Purple (matching CSS)
+                  RB: '#22c55e', // Green (matching CSS)
+                  WR: '#facc15', // Yellow (matching CSS)
+                  TE: '#3b82f6'  // Blue (matching CSS)
+                };
+                return colors[position] || '#999999';
+              };
+
+              container.innerHTML = `
+                <div class="tournament-matchup">
+                  <div class="matchup-header">
+                    <h3>Round ${matchup.round_number} - Match ${matchup.bracket_position}</h3>
+                    <p class="matchup-subtitle">First to ${matchup.votes_needed || 4} votes wins!</p>
+                  </div>
+                  
+                  <div class="teams-grid">
+                    <div class="team-card tournament-team" data-team-id="${matchup.team1_id}">
+                      <div class="team-header">
+                        <h4>${matchup.team1_username}</h4>
+                        <div class="betting-info">
+                          <span class="betting-odds">${matchup.team1_odds > 0 ? '+' : ''}${matchup.team1_odds}</span>
+                          <span class="implied-probability">${matchup.team1_probability}% implied</span>
+                        </div>
+                      </div>
+                      
+                      ${generateRosterHTML(matchup.team1_roster)}
+                      
+                      <div class="vote-section">
+                        <button class="choose-button" onclick="castTournamentVote(${matchup.id}, '${matchup.team1_id}')" 
+                                ${team1VotesNeeded <= 0 || team2VotesNeeded <= 0 ? 'disabled' : ''}>
+                          <span>⬅️</span> Choose
+                        </button>
+                      </div>
+                    </div>
+                                        
+                    <div class="team-card tournament-team" data-team-id="${matchup.team2_id}">
+                      <div class="team-header">
+                        <h4>${matchup.team2_username}</h4>
+                        <div class="betting-info">
+                          <span class="betting-odds">${matchup.team2_odds > 0 ? '+' : ''}${matchup.team2_odds}</span>
+                          <span class="implied-probability">${matchup.team2_probability}% implied</span>
+                        </div>
+                      </div>
+                      
+                      ${generateRosterHTML(matchup.team2_roster)}
+                      
+                      <div class="vote-section">
+                        <button class="choose-button" onclick="castTournamentVote(${matchup.id}, '${matchup.team2_id}')"
+                                ${team2VotesNeeded <= 0 || team1VotesNeeded <= 0 ? 'disabled' : ''}>
+                          Choose <span>➡️</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `;
+            } else {
+              container.innerHTML = `
+                <div class="no-matchup">
+                  <h3>Tournament Status</h3>
+                  <p>${data.message || 'No active matchup at this time.'}</p>
+                </div>
+              `;
+            }
+          })
+          .catch(error => {
+            console.error('Error loading matchup:', error);
+            document.getElementById('teamsContainer').innerHTML = `
+              <div class="error-message">
+                <h3>Error</h3>
+                <p>Failed to load current matchup</p>
+              </div>
+            `;
+          });
+        
+      // Load tournament bracket  
+      fetch('/api/tournament/bracket/the-puppy')
+          .then(response => response.json())
+          .then(data => {
+            console.log('Bracket response:', data);
+            const bracketContainer = document.querySelector('.bracket-container');
+            if (data.bracket && Object.keys(data.bracket).length > 0) {
+              const rounds = Object.keys(data.bracket).sort((a, b) => parseInt(a) - parseInt(b));
+              let bracketHTML = '<div class="bracket-grid">';
+              
+              rounds.forEach(round => {
+                const roundNumber = parseInt(round);
+                const totalRounds = rounds.length;
+                const roundsFromEnd = totalRounds - roundNumber + 1;
+                
+                let roundName;
+                switch (roundsFromEnd) {
+                  case 1: roundName = 'Final'; break;
+                  case 2: roundName = 'Semifinals'; break;
+                  case 3: roundName = 'Quarterfinals'; break;
+                  default: roundName = `Round ${roundNumber}`;
+                }
+                
+                const matchups = data.bracket[round];
+                bracketHTML += `
+                  <div class="bracket-round">
+                    <h4 class="round-title">${roundName}</h4>
+                    <div class="round-matchups">
+                `;
+                
+                matchups.forEach(matchup => {
+                  const team1Status = matchup.winner_id === matchup.team1_id ? 'winner' : 
+                                     (matchup.status === 'active' ? 'active' : 'pending');
+                  const team2Status = matchup.winner_id === matchup.team2_id ? 'winner' : 
+                                     (matchup.status === 'active' ? 'active' : 'pending');
+                  
+                  bracketHTML += `
+                    <div class="bracket-matchup ${matchup.status}">
+                      <div class="bracket-team ${team1Status}">
+                        <span class="team-name">${matchup.team1_username || 'TBD'}</span>
+                        <span class="team-votes">${matchup.team1_votes || 0}</span>
+                      </div>
+                      <div class="bracket-vs">vs</div>
+                      <div class="bracket-team ${team2Status}">
+                        <span class="team-name">${matchup.team2_username || 'TBD'}</span>
+                        <span class="team-votes">${matchup.team2_votes || 0}</span>
+                      </div>
+                    </div>
+                  `;
+                });
+                
+                bracketHTML += '</div></div>';
+              });
+              
+              bracketHTML += '</div>';
+              bracketContainer.innerHTML = bracketHTML;
+            } else {
+              bracketContainer.innerHTML = `
+                <div class="bracket-placeholder">
+                  <h3>Tournament Bracket</h3>
+                  <p>No bracket data available.</p>
+                </div>
+              `;
+            }
+          })
+          .catch(error => {
+            console.error('Error loading bracket:', error);
+          });
+    }
+    
+    // Cast tournament vote (exactly like draftorpass.html)
+    window.castTournamentVote = async function(matchupId, teamId) {
+      console.log('Casting tournament vote:', matchupId, teamId);
+      
+      // Get matchup data to determine winner/loser
+      const currentMatchup = document.querySelector('.tournament-matchup');
+      if (!currentMatchup) {
+        console.error('No active matchup found');
+        return;
+      }
+      
+      // Get team IDs and cards from the DOM
+      const team1Card = currentMatchup.querySelector('.team-card[data-team-id]:first-of-type');
+      const team2Card = currentMatchup.querySelector('.team-card[data-team-id]:last-of-type');
+      const team1Id = team1Card?.dataset.teamId;
+      const team2Id = team2Card?.dataset.teamId;
+      
+      if (!team1Id || !team2Id) {
+        console.error('Could not determine team IDs');
+        return;
+      }
+      
+      // Determine winner and loser for /versus call
+      const winnerId = teamId;
+      const loserId = teamId === team1Id ? team2Id : team1Id;
+      const isTeam1Winner = winnerId === team1Id;
+      
+      console.log('Winner:', winnerId, 'Loser:', loserId);
+      
+      // Get choose buttons
+      const chooseBtn1 = team1Card.querySelector('.choose-button');
+      const chooseBtn2 = team2Card.querySelector('.choose-button');
+      
+      // Disable both buttons immediately to prevent double-clicks
+      chooseBtn1.disabled = true;
+      chooseBtn2.disabled = true;
+      
+      // Show immediate winner/loser state (like draftorpass.html)
+      if (isTeam1Winner) {
+        chooseBtn1.innerHTML = "<span>⬅️</span> Winner!";
+        chooseBtn2.innerHTML = "Loser";
+      } else {
+        chooseBtn2.innerHTML = "Winner! <span>➡️</span>";
+        chooseBtn1.innerHTML = "<span>⬅️</span> Loser";
+      }
+      
+      // Create owner info sections if they don't exist (like draftorpass.html)
+      let ownerInfo1 = team1Card.querySelector('.owner-info');
+      let ownerInfo2 = team2Card.querySelector('.owner-info');
+      
+      if (!ownerInfo1) {
+        ownerInfo1 = document.createElement('div');
+        ownerInfo1.className = 'owner-info';
+        // Insert before the vote-section div (which contains the choose button)
+        const voteSection1 = team1Card.querySelector('.vote-section');
+        if (voteSection1) {
+          team1Card.insertBefore(ownerInfo1, voteSection1);
+        } else {
+          team1Card.appendChild(ownerInfo1);
+        }
+      }
+      if (!ownerInfo2) {
+        ownerInfo2 = document.createElement('div');
+        ownerInfo2.className = 'owner-info';
+        // Insert before the vote-section div (which contains the choose button)
+        const voteSection2 = team2Card.querySelector('.vote-section');
+        if (voteSection2) {
+          team2Card.insertBefore(ownerInfo2, voteSection2);
+        } else {
+          team2Card.appendChild(ownerInfo2);
+        }
+      }
+      
+      // Clear any existing highlight classes
+      ownerInfo1.classList.remove('winner', 'loser');
+      ownerInfo2.classList.remove('winner', 'loser');
+      
+      // Add winner/loser classes
+      if (isTeam1Winner) {
+        ownerInfo1.classList.add('winner');
+        ownerInfo2.classList.add('loser');
+      } else {
+        ownerInfo2.classList.add('winner');
+        ownerInfo1.classList.add('loser');
+      }
+      
+      // Show loading state while voting completes
+      ownerInfo1.innerHTML = `<div class="owner-stats">Voting...</div>`;
+      ownerInfo2.innerHTML = `<div class="owner-stats">Voting...</div>`;
+      
+      // Background network calls (like draftorpass.html)
+      console.log('🚀 Starting background network calls...');
+      (async () => {
+        try {
+          // Step 1: Call /versus first
+          console.log('🔄 Background: Calling /versus...', { winnerId, loserId });
+          let captchaToken;
+          try {
+            captchaToken = await getCaptchaToken();
+            console.log('✅ Captcha token obtained:', captchaToken ? 'SUCCESS' : 'FAILED');
+          } catch (err) {
+            console.error('❌ Unable to obtain Turnstile token:', err);
+            return;
+          }
+          
+          console.log('📡 Making /versus request...');
+          const versusResponse = await fetch('/versus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              winnerId: winnerId,
+              loserId: loserId,
+              captcha: captchaToken
+            })
+          });
+          
+          console.log('📥 /versus response status:', versusResponse.status);
+          
+          if (!versusResponse.ok) {
+            const errorText = await versusResponse.text();
+            console.error(`❌ Versus vote failed (${versusResponse.status}): ${errorText}`);
+            return;
+          }
+          
+          console.log('✅ Background: /versus call successful');
+          
+          // Step 2: If /versus succeeded, log to tournament system
+          console.log('🔄 Background: Calling /api/tournament/vote...');
+          const tournamentResponse = await fetch('/api/tournament/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              matchupId: parseInt(matchupId),
+              teamId: teamId
+            })
+          });
+          
+          console.log('📥 Tournament vote response status:', tournamentResponse.status);
+          const tournamentData = await tournamentResponse.json();
+          console.log('📊 Tournament data:', tournamentData);
+          
+          if (tournamentData.success) {
+            console.log('✅ Background: Tournament vote logged successfully');
+            
+            // Use the vote count data from the tournament vote response
+            console.log('📊 Tournament vote data:', tournamentData);
+            
+            // Handle both response structures: 
+            // - Ongoing matchup: votes directly on tournamentData
+            // - Completed matchup: votes under tournamentData.voteCount
+            let team1Votes, team2Votes, votesNeeded;
+            
+            if (tournamentData.voteCount) {
+              // Completed matchup structure
+              team1Votes = tournamentData.voteCount.team1_votes || 0;
+              team2Votes = tournamentData.voteCount.team2_votes || 0;
+              votesNeeded = tournamentData.voteCount.votes_needed || 4;
+            } else if (tournamentData.team1_votes !== undefined && tournamentData.team2_votes !== undefined) {
+              // Ongoing matchup structure
+              team1Votes = tournamentData.team1_votes || 0;
+              team2Votes = tournamentData.team2_votes || 0;
+              votesNeeded = tournamentData.votes_needed || 4;
+            }
+            
+            if (team1Votes !== undefined && team2Votes !== undefined) {
+              const team1VotesNeeded = Math.max(0, votesNeeded - team1Votes);
+              const team2VotesNeeded = Math.max(0, votesNeeded - team2Votes);
+              
+              // Display updated vote counts in owner-info sections
+              ownerInfo1.innerHTML = `
+                <div class="votes-needed">
+                  <strong>${team1Votes}</strong> votes | ${team1VotesNeeded > 0 ? `${team1VotesNeeded} more needed` : 'WINNER!'}
+                </div>
+              `;
+              
+              ownerInfo2.innerHTML = `
+                <div class="votes-needed">
+                  <strong>${team2Votes}</strong> votes | ${team2VotesNeeded > 0 ? `${team2VotesNeeded} more needed` : 'WINNER!'}
+                </div>
+              `;
+              
+              // Show next matchup button
+              showNextMatchupButton();
+            } else {
+              console.error('No vote count data in tournament response');
+              showNextMatchupButton();
+            }
+              
+          } else {
+            console.error('❌ Tournament vote failed:', tournamentData.error);
+            // Still show next button even if tournament vote failed
+            showNextMatchupButton();
+          }
+          
+        } catch (error) {
+          console.error('💥 Background vote processing failed:', error);
+          console.error('Error stack:', error.stack);
+          // Still show next button even if something failed
+          showNextMatchupButton();
+        }
+      })().then(() => {
+        console.log('🏁 Background network calls completed');
+      }).catch(err => {
+        console.error('🚨 Background network calls promise rejected:', err);
+        // Fallback: show next button
+        showNextMatchupButton();
+      });
+    };
+    
+    // Turnstile widget management (matching main script.js)
+    let tournamentWidgetId = null;
+    let pendingChallenges = 0;
+    
+    // Add captcha token function (exactly matching main script.js implementation)
+    function getCaptchaToken() {
+      return new Promise((resolve, reject) => {
+        if (!turnstile || typeof turnstile.render !== 'function') {
+          return reject(new Error('Turnstile not loaded'));
+        }
+
+        // Strict limit to prevent Cloudflare errors - only allow 1 concurrent challenge
+        if (pendingChallenges > 0) {
+          return reject(new Error('Too many concurrent challenges'));
+        }
+
+        pendingChallenges++;
+
+        // Always reset the widget if it exists before executing
+        if (tournamentWidgetId) {
+          try {
+            turnstile.reset(tournamentWidgetId);
+          } catch (e) {
+            console.warn('Failed to reset widget, removing and recreating:', e);
+            try { 
+              turnstile.remove(tournamentWidgetId); 
+            } catch (removeErr) { 
+              console.warn('Failed to remove widget:', removeErr);
+            }
+            tournamentWidgetId = null;
+          }
+        }
+
+        // Create new widget if needed
+        if (!tournamentWidgetId) {
+          const container = document.getElementById('cf-container');
+          if (!container) {
+            pendingChallenges--;
+            return reject(new Error('Turnstile container not found'));
+          }
+          
+          try {
+            tournamentWidgetId = turnstile.render(container, {
+              sitekey: window.TURNSTILE_SITE_KEY,
+              action: 'vote', // Identifier for analytics
+              execution: 'execute', // Only execute when explicitly called
+              size: 'invisible', // Keep it invisible
+              theme: 'auto', // Respect user's theme preference
+              retry: 'auto', // Auto-retry on failure
+              'retry-interval': 8000, // 8 second retry interval
+              'refresh-expired': 'auto', // Auto-refresh expired tokens
+              callback: () => {}, // Empty callback - we'll use execute's callback
+              'expired-callback': () => {
+                console.log('Turnstile token expired');
+              },
+              'error-callback': (error) => {
+                console.error('Turnstile widget error:', error);
+              },
+              'timeout-callback': () => {
+                console.warn('Turnstile challenge timed out');
+              },
+              'before-interactive-callback': () => {
+                console.log('Turnstile entering interactive mode');
+              },
+              'after-interactive-callback': () => {
+                console.log('Turnstile left interactive mode');
+              },
+              'unsupported-callback': () => {
+                console.error('Turnstile not supported in this browser');
+              }
+            });
+          } catch (e) {
+            pendingChallenges--;
+            return reject(new Error('Failed to create Turnstile widget: ' + e.message));
+          }
+        }
+
+        // Minimal delay for faster voting while ensuring widget stability
+        setTimeout(() => {
+          try {
+            turnstile.execute(tournamentWidgetId, {
+              callback: (token) => {
+                pendingChallenges--;
+                if (!token) {
+                  return reject(new Error('Empty Turnstile token'));
+                }
+                
+                // Validate token length (max 2048 characters)
+                if (token.length > 2048) {
+                  console.warn('Token too long:', token.length);
+                  return reject(new Error('Invalid token format'));
+                }
+                
+                resolve(token);
+              },
+              'error-callback': (error) => {
+                pendingChallenges--;
+                console.error('Turnstile execution error:', error);
+                reject(new Error('Turnstile execution error: ' + error));
+              }
+            });
+          } catch (e) {
+            pendingChallenges--;
+            console.error('Failed to execute Turnstile:', e);
+            reject(new Error('Failed to execute Turnstile: ' + e.message));
+          }
+        }, 100); // Reduced from 250ms to 100ms for faster processing
+      });
+    }
+
+    // Show simple next matchup button (like draftorpass.html)
+    function showNextMatchupButton() {
+      const container = document.getElementById('teamsContainer');
+      
+      // Check if button already exists
+      let nextButton = container.querySelector('.next-button');
+      if (nextButton) {
+        nextButton.style.display = 'block';
+        return;
+      }
+      
+      // Create next matchup button (like draftorpass.html)
+      nextButton = document.createElement("button");
+      nextButton.textContent = "Next Matchup →";
+      nextButton.className = "next-button";
+      nextButton.onclick = async (e) => {
+        console.log('🔘 Next Matchup button clicked');
+        
+        // Show loading state
+        const originalText = nextButton.textContent;
+        nextButton.textContent = "Loading next matchup...";
+        nextButton.disabled = true;
+        
+        try {
+          await loadNextMatchup();
+        } catch (error) {
+          console.error('Error loading next matchup:', error);
+          // Restore button if there's an error
+          nextButton.textContent = originalText;
+          nextButton.disabled = false;
+        }
+      };
+      
+      container.appendChild(nextButton);
+    }
+    
+    // Function to load next matchup without page reload
+    function loadNextMatchup() {
+      const nextBtn = document.querySelector('.next-matchup-btn');
+      if (nextBtn) {
+        nextBtn.disabled = true;
+        nextBtn.textContent = 'Loading...';
+      }
+      
+      // Reload current matchup data
+      fetch('/api/tournament/current-matchup/the-puppy')
+        .then(response => response.json())
+        .then(data => {
+          console.log('Next matchup response:', data);
+          const container = document.getElementById('teamsContainer');
+          
+          // Handle special cases first
+          if (data.requiresLogin) {
+            container.innerHTML = `
+              <div class="no-matchup">
+                <h3>Authentication Required</h3>
+                <p>You must be <a href="/upload.html" style="color: #58a6ff; text-decoration: underline;">logged in</a> to vote in the tournament</p>
+              </div>
+            `;
+            return;
+          }
+          
+          if (data.allVoted) {
+            container.innerHTML = `
+              <div class="no-matchup">
+                <h3>Round Complete</h3>
+                <p>${data.message}</p>
+              </div>
+            `;
+            return;
+          }
+          
+          if (data.matchup) {
+            // Display the new matchup
+            displayMatchup(data.matchup);
+          } else {
+            container.innerHTML = `
+              <div class="no-matchup">
+                <h3>Tournament Status</h3>
+                <p>${data.message || 'No active matchup at this time.'}</p>
+              </div>
+            `;
+          }
+        })
+        .catch(error => {
+          console.error('Error loading next matchup:', error);
+          alert('Failed to load next matchup');
+          if (nextBtn) {
+            nextBtn.disabled = false;
+            nextBtn.textContent = 'Retry';
+          }
+        });
+    }
+    
+    // Extract matchup display logic into reusable function
+    function displayMatchup(matchup) {
+      const container = document.getElementById('teamsContainer');
+      const team1VotesNeeded = (matchup.votes_needed || 4) - matchup.team1_votes;
+      const team2VotesNeeded = (matchup.votes_needed || 4) - matchup.team2_votes;
+      
+      // Generate roster HTML for each team (reuse existing function)
+      const generateRosterHTML = (roster) => {
+        if (!roster || !roster.length) return '<div class="no-roster">No roster data available</div>';
+        
+        const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+        roster.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+        
+        const rosterConstructionHTML = `
+          <div class="roster-construction">
+            <div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>
+          </div>
+        `;
+        
+        const playerListHTML = roster.map(player => {
+          const stackStar = player.stack ? `<span class="stack-star ${player.stack}">★</span>` : '';
+          const pickHTML = (player.pick || player.pick === 0) ? `<span class="pick-num">#${player.pick}</span>` : '';
+          const infoHTML = `<span class="player-info">${player.name}${player.team ? ` - ${player.team}` : ''}</span>`;
+          
+          return `
+            <div class="player-row">
+              <div class="player-bubble" style="border: 2px solid ${getBorderColor(player.position)}">
+                ${pickHTML}${infoHTML}${stackStar}
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+        return `${rosterConstructionHTML}<div class="player-list">${playerListHTML}</div>`;
+      };
+      
+      const getBorderColor = (position) => {
+        const colors = {
+          QB: '#a855f7', RB: '#22c55e', WR: '#facc15', TE: '#3b82f6'
+        };
+        return colors[position] || '#999999';
+      };
+
+      container.innerHTML = `
+        <div class="tournament-matchup">
+          <div class="matchup-header">
+            <h3>Round ${matchup.round_number} - Match ${matchup.bracket_position}</h3>
+            <p class="matchup-subtitle">First to ${matchup.votes_needed || 4} votes wins!</p>
+          </div>
+          
+          <div class="teams-grid">
+            <div class="team-card tournament-team" data-team-id="${matchup.team1_id}">
+              <div class="team-header">
+                <h4>${matchup.team1_username}</h4>
+                <div class="betting-info">
+                  <span class="betting-odds">${matchup.team1_odds > 0 ? '+' : ''}${matchup.team1_odds}</span>
+                  <span class="implied-probability">${matchup.team1_probability}% implied</span>
+                </div>
+              </div>
+              
+              ${generateRosterHTML(matchup.team1_roster)}
+              
+              <div class="vote-section">
+                <button class="choose-button" onclick="castTournamentVote(${matchup.id}, '${matchup.team1_id}')" 
+                        ${team1VotesNeeded <= 0 || team2VotesNeeded <= 0 ? 'disabled' : ''}>
+                  <span>⬅️</span> Choose
+                </button>
+              </div>
+            </div>
+            
+            <div class="matchup-vs"><span>VS</span></div>
+            
+            <div class="team-card tournament-team" data-team-id="${matchup.team2_id}">
+              <div class="team-header">
+                <h4>${matchup.team2_username}</h4>
+                <div class="betting-info">
+                  <span class="betting-odds">${matchup.team2_odds > 0 ? '+' : ''}${matchup.team2_odds}</span>
+                  <span class="implied-probability">${matchup.team2_probability}% implied</span>
+                </div>
+              </div>
+              
+              ${generateRosterHTML(matchup.team2_roster)}
+              
+              <div class="vote-section">
+                <button class="choose-button" onclick="castTournamentVote(${matchup.id}, '${matchup.team2_id}')"
+                        ${team2VotesNeeded <= 0 || team1VotesNeeded <= 0 ? 'disabled' : ''}>
+                  Choose <span>➡️</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function setupTournamentTabs() {
+      const tabs = document.querySelectorAll('.tournament-tab');
+      const tabContents = document.querySelectorAll('.tournament-tab-content');
+      
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const targetTab = tab.dataset.tab;
+          
+          // Remove active class from all tabs and contents
+          tabs.forEach(t => t.classList.remove('active'));
+          tabContents.forEach(content => content.classList.remove('active'));
+          
+          // Add active class to clicked tab and corresponding content
+          tab.classList.add('active');
+          document.getElementById(targetTab + 'Tab').classList.add('active');
+        });
+      });
+    }
+
+    // Update countdown immediately and then every second
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 1000);
+
+    // Check if tournament should be active on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      const now = new Date();
+      const timeDiff = tournamentStart - now;
+      
+      // Refresh auth state if available
+      if (typeof refreshAuth === 'function') {
+        refreshAuth().then(() => {
+          console.log('Auth refreshed for tournament');
+        });
+      }
+
+      if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE && !tournamentViewShown) {
+        // Tournament should be active immediately
+        tournamentViewShown = true;
+        clearInterval(countdownInterval); // Stop the countdown
+        showTournamentView();
+      }
+    });
+  </script>
+  <footer class="legal-footer">
+    <div class="footer-content">
+      <div class="social-links">
+        <a href="https://x.com/DraftrPass" target="_blank" rel="noopener noreferrer" title="Follow us on X">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+        <a href="https://discord.gg/Y7hyQsfDQx" target="_blank" rel="noopener noreferrer" title="Join our Discord">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.246.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
+          </svg>
+        </a>
+      </div>
+      <div class="legal-links">
+        <a href="privacy.html" target="_blank">Privacy Policy</a>
+        <a href="terms.html" target="_blank">Terms of Service</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

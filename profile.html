@@ -401,9 +401,10 @@
         max-width: 100px;
       }
 
-      /* Make View Team and View Votes buttons smaller and fit on one line */
+      /* Make View Team, View Votes, and Select Team buttons smaller and fit on one line */
       .view-team-btn, 
-      .view-votes-btn {
+      .view-votes-btn,
+      .select-team-btn {
         padding: 2px 4px;
         font-size: 10px;
         margin-right: 2px;
@@ -413,7 +414,8 @@
       }
 
       /* Remove right margin from last button */
-      .view-votes-btn {
+      .view-votes-btn,
+      .select-team-btn {
         margin-right: 0;
       }
 
@@ -437,11 +439,68 @@
       font-size: 12px;
       margin-right: 4px;
       transition: background 0.2s;
+      display: inline-block;
+      white-space: nowrap;
     }
 
     .view-team-btn:hover, .view-votes-btn:hover {
       background: #58a6ff;
       color: #fff;
+    }
+
+    /* Styling for Select Team button */
+    .select-team-btn {
+      background: #238636;
+      color: #fff;
+      border: 1px solid #1f883d;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 4px;
+      transition: background 0.2s;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .select-team-btn:hover {
+      background: #2ea043;
+      color: #fff;
+    }
+
+    /* Nominated state styling */
+    .select-team-btn.nominated {
+      background: #da3633;
+      border-color: #f85149;
+    }
+
+    .select-team-btn.nominated:hover {
+      background: #f85149;
+      color: #fff;
+    }
+
+    /* Disabled state styling for when nominations are closed */
+    .select-team-btn:disabled,
+    .select-team-btn.disabled {
+      background: #6e7681 !important;
+      border-color: #545d68 !important;
+      color: #8b949e !important;
+      cursor: not-allowed !important;
+      opacity: 0.6;
+    }
+
+    .select-team-btn:disabled:hover,
+    .select-team-btn.disabled:hover {
+      background: #6e7681 !important;
+      color: #8b949e !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Ensure buttons appear side by side in tournament teams table */
+    .uploads-table.vote-results-table td:first-child {
+      white-space: nowrap;
+      min-width: 150px;
     }
 
 
@@ -943,6 +1002,25 @@
       color: #ffffff;
       border-color: #16a34a;
     }
+
+    /* Tournament table specific column widths */
+    #tournamentsContent .vote-results-table th:first-child,
+    #tournamentsContent .vote-results-table td:first-child {
+      width: 120px;
+      min-width: 120px;
+    }
+
+    #tournamentsContent .vote-results-table th:nth-child(2),
+    #tournamentsContent .vote-results-table td:nth-child(2) {
+      width: 100px;
+      min-width: 100px;
+    }
+
+    #tournamentsContent .vote-results-table th:nth-child(3),
+    #tournamentsContent .vote-results-table td:nth-child(3) {
+      width: auto;
+      min-width: 0;
+    }
   </style>
 </head>
 <body>
@@ -1013,13 +1091,15 @@
       </div>
     </div>
 
-    <!-- Uploads & Vote Results tabs -->
+    <!-- Tournaments, Uploads & Vote Results tabs -->
     <div class="uploads-section">
       <div class="tab-header">
-        <button id="tabUploads" class="tab-btn active">Uploads</button>
+        <button id="tabTournaments" class="tab-btn active">Tournaments</button>
+        <button id="tabUploads" class="tab-btn">Uploads</button>
         <button id="tabResults" class="tab-btn">Vote Results</button>
       </div>
-      <div id="uploadsSummary" class="tab-content"></div>
+      <div id="tournamentsContent" class="tab-content"></div>
+      <div id="uploadsSummary" class="tab-content" style="display:none;"></div>
       <div id="voteResultsContent" class="tab-content" style="display:none;"></div>
       <button id="mainLogoutBtn" class="logout-btn">Logout</button>
     </div>
@@ -1148,8 +1228,6 @@
           })
           .then(data => {
             if (!data) return;
-
-            console.log(data);
 
             const { user, uploads, voteResults, isOwnProfile, viewerLoggedIn } = data;
             const infoDiv = document.getElementById('profileInfo');
@@ -1352,6 +1430,11 @@
 
             renderVoteResultsTable();
 
+            // ---- Load Tournament Teams ----
+            if (isOwnProfile) {
+              loadTournamentTeams();
+            }
+
             // Store usernames globally for the edit function (only for own profile)
             if (isOwnProfile && data.usernames) {
               window.availableUsernames = data.usernames;
@@ -1372,15 +1455,18 @@
             const mainLogoutBtn = document.getElementById('mainLogoutBtn');
 
             if (isOwnProfile) {
-              // Own profile: show both tabs, default to uploads
+              // Own profile: show all tabs, default to tournaments
+              tabTournamentsBtn.style.display = '';
               tabUploadsBtn.style.display = '';
               tabResultsBtn.style.display = '';
               if (mainLogoutBtn) mainLogoutBtn.style.display = '';
-              setActive('uploads');
+              setActive('tournaments');
             } else {
-              // Other profile: hide uploads tab, show only vote results, hide logout
+              // Other profile: hide tournaments and uploads tabs, show only vote results, hide logout
+              tabTournamentsBtn.style.display = 'none';
               tabUploadsBtn.style.display = 'none';
               tabResultsBtn.style.display = 'none'; // Hide tab header entirely
+              tournamentsContent.style.display = 'none';
               uploadsContent.style.display = 'none';
               resultsContent.style.display = '';
               if (mainLogoutBtn) mainLogoutBtn.style.display = 'none';
@@ -1392,6 +1478,288 @@
             console.error('Failed to load profile:', err);
             alert('Failed to load profile information.');
           });
+      }
+
+      // Load nominations data and deadline status, then cache them
+      async function loadNominationsData() {
+        const tournament = 'The Puppy';
+        
+        try {
+          // Check deadline status and load nominations in parallel
+          const [nominationsRes, deadlineRes] = await Promise.all([
+            fetch('/my/nominations?tournament=' + encodeURIComponent(tournament)),
+            fetch('/tournament/deadline-status')
+          ]);
+          
+          if (!nominationsRes.ok) {
+            console.error('Failed to load nominations');
+            return;
+          }
+          
+          const nominationsData = await nominationsRes.json();
+          const nominations = nominationsData.nominations || [];
+          window.nominatedTeamIds = new Set(nominations.map(n => n.id));
+          
+          // Handle deadline status
+          if (deadlineRes.ok) {
+            const deadlineData = await deadlineRes.json();
+            window.nominationsDeadlinePassed = deadlineData.hasDeadlinePassed;
+            console.log('Nominations deadline passed:', window.nominationsDeadlinePassed);
+          } else {
+            window.nominationsDeadlinePassed = false; // fallback to allow nominations
+          }
+          
+        } catch (err) {
+          console.error('Failed to load nominations:', err);
+          window.nominatedTeamIds = new Set(); // fallback to empty set
+          window.nominationsDeadlinePassed = false; // fallback to allow nominations
+        }
+      }
+
+      // Update button states based on cached nominations
+      function updateButtonStates() {
+        const nominatedTeamIds = window.nominatedTeamIds || new Set();
+        const deadlinePassed = window.nominationsDeadlinePassed || false;
+        
+        // Update button states based on nominations
+        document.querySelectorAll('.select-team-btn').forEach(btn => {
+          const teamId = btn.getAttribute('data-id');
+          
+          if (deadlinePassed) {
+            // Deadline passed - disable all nomination buttons
+            btn.disabled = true;
+            btn.classList.add('disabled');
+            if (nominatedTeamIds.has(teamId)) {
+              btn.textContent = 'Nominated';
+              btn.classList.add('nominated');
+            } else {
+              btn.textContent = 'Closed';
+              btn.classList.remove('nominated');
+            }
+          } else {
+            // Deadline not passed - normal functionality
+            btn.disabled = false;
+            btn.classList.remove('disabled');
+            if (nominatedTeamIds.has(teamId)) {
+              btn.classList.add('nominated');
+              btn.textContent = 'Nominated';
+            } else {
+              btn.classList.remove('nominated');
+              btn.textContent = 'Select';
+            }
+          }
+        });
+      }
+
+      // Add event listeners for nomination buttons
+      function attachNominationListeners() {
+        const tournament = 'The Puppy';
+        
+        document.querySelectorAll('.select-team-btn').forEach(btn => {
+          // Remove any existing listeners by cloning the element
+          const newBtn = btn.cloneNode(true);
+          btn.parentNode.replaceChild(newBtn, btn);
+          
+          // Add event listener for nomination toggle
+          newBtn.addEventListener('click', async (e) => {
+            const clickedTeamId = e.target.getAttribute('data-id');
+            
+            if (!clickedTeamId) return;
+            
+            // Check if deadline has passed
+            const deadlinePassed = window.nominationsDeadlinePassed || false;
+            if (deadlinePassed) {
+              showSimplePopup('Tournament nominations are now closed. The deadline has passed.');
+              return;
+            }
+            
+            // Check if button is disabled
+            if (e.target.disabled || e.target.classList.contains('disabled')) {
+              return;
+            }
+            
+            try {
+              const isNominated = e.target.classList.contains('nominated');
+              const endpoint = isNominated ? '/my/unnominate-team' : '/my/nominate-team';
+              
+              const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  teamId: clickedTeamId,
+                  tournament: tournament
+                })
+              });
+              
+              const result = await response.json();
+              
+              if (response.ok) {
+                // Update cached data
+                if (isNominated) {
+                  window.nominatedTeamIds.delete(clickedTeamId);
+                  e.target.classList.remove('nominated');
+                  e.target.textContent = 'Select';
+                } else {
+                  window.nominatedTeamIds.add(clickedTeamId);
+                  e.target.classList.add('nominated');
+                  e.target.textContent = 'Nominated';
+                }
+              } else {
+                // Show error message
+                showSimplePopup(`${result.error || 'Failed to update nomination'}`);
+              }
+            } catch (err) {
+              console.error('Failed to update nomination:', err);
+              showSimplePopup('Failed to update nomination. Please try again.');
+            }
+          });
+        });
+      }
+
+      // Load tournament teams for The Puppy tournament
+      async function loadTournamentTeams() {
+        const tournamentsDiv = document.getElementById('tournamentsContent');
+        if (!tournamentsDiv) return;
+
+        tournamentsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">Loading tournament teams...</div>';
+
+        try {
+          const res = await fetch('/my/tournament-teams?tournament=' + encodeURIComponent('The Puppy'));
+          if (!res.ok) {
+            throw new Error('Failed to load tournament teams');
+          }
+
+          const data = await res.json();
+          const teams = data.teams || [];
+
+          if (teams.length === 0) {
+            tournamentsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">No teams found for The Puppy tournament. Upload some teams to get started!</div>';
+            return;
+          }
+
+          // Store teams data and sorting state
+          window.tournamentTeamsData = teams;
+          window.tournamentSortKey = 'elo_rating';
+          window.tournamentSortDir = 'desc';
+          
+          // Load nominations once and cache them
+          await loadNominationsData();
+
+          // Show deadline message if nominations are closed
+          if (window.nominationsDeadlinePassed) {
+            const deadlineMessage = document.createElement('div');
+            deadlineMessage.className = 'deadline-message';
+            deadlineMessage.style.cssText = `
+              background: rgba(218, 54, 51, 0.1);
+              border: 1px solid rgba(248, 81, 73, 0.3);
+              border-radius: 8px;
+              padding: 1rem;
+              margin-bottom: 1rem;
+              text-align: center;
+              color: #f85149;
+              font-weight: 600;
+            `;
+            deadlineMessage.innerHTML = '⏰ Tournament nominations are now closed. The deadline has passed.';
+            tournamentsDiv.insertBefore(deadlineMessage, tournamentsDiv.firstChild);
+          }
+
+          function sortTournamentData() {
+            const key = window.tournamentSortKey;
+            const dir = window.tournamentSortDir;
+            const mul = dir === 'asc' ? 1 : -1;
+            return [...window.tournamentTeamsData].sort((a,b) => {
+              if (key === 'elo_rating') {
+                const ae = parseFloat(a.elo_rating || 0);
+                const be = parseFloat(b.elo_rating || 0);
+                if (ae !== be) return (be - ae) * (dir === 'desc' ? 1 : -1);
+                return 0;
+              }
+              if (key === 'tournament') {
+                const ta = (b.tournament || '').localeCompare(a.tournament || '');
+                return ta * (dir === 'desc' ? 1 : -1);
+              }
+              return 0;
+            });
+          }
+
+          async function renderTournamentTable() {
+            const sorted = sortTournamentData();
+            let tableHtml = `
+              <table class="uploads-table vote-results-table">
+                <thead>
+                  <tr>
+                    <th>Team</th>
+                    <th class="sortable" data-key="elo_rating">Draftr Rating</th>
+                    <th class="sortable" data-key="tournament">Contest</th>
+                  </tr>
+                </thead>
+                <tbody>
+            `;
+
+            sorted.forEach(team => {
+              const eloRatingDisplay = team.elo_rating ? formatEloRatingBox(team.elo_rating, team.percentile) : '<span class="rating-box tier-none">-</span>';
+              
+              tableHtml += `
+                <tr>
+                  <td>
+                    <button class="view-team-btn" data-id="${team.id}">View Team</button>
+                    <button class="select-team-btn" data-id="${team.id}">Select</button>
+                  </td>
+                  <td>${eloRatingDisplay}</td>
+                  <td>${team.tournament || '-'}</td>
+                </tr>
+              `;
+            });
+
+            tableHtml += '</tbody></table>';
+            tournamentsDiv.innerHTML = tableHtml;
+
+                        // Attach header click listeners for sorting
+            tournamentsDiv.querySelectorAll('th.sortable').forEach(th => {
+              th.onclick = () => {
+                const key = th.getAttribute('data-key');
+                if (window.tournamentSortKey === key) {
+                  window.tournamentSortDir = window.tournamentSortDir === 'desc' ? 'asc' : 'desc';
+                } else {
+                  window.tournamentSortKey = key;
+                  window.tournamentSortDir = 'desc';
+                }
+                renderTournamentTable();
+              };
+            });
+
+            // Attach view team button listeners
+            tournamentsDiv.querySelectorAll('.view-team-btn').forEach(btn => {
+              btn.addEventListener('click', async (e) => {
+                const id = e.target.getAttribute('data-id');
+                if (!id || typeof showSimplePopup !== 'function') return;
+                try {
+                  const res = await fetch(`/team/${id}`);
+                  if (!res.ok) throw new Error('Failed');
+                  const players = await res.json();
+                  const card = buildTeamCard(id, players);
+                  const list = card.querySelector('.player-list');
+                  if (list) showSimplePopup(list.cloneNode(true));
+                } catch (err) {
+                  console.error('Failed to load team:', err);
+                }
+              });
+            });
+
+            // Update button states and attach listeners (no API call)
+            updateButtonStates();
+            attachNominationListeners();
+          }
+
+          // Initial render of the table
+          await renderTournamentTable();
+
+        } catch (err) {
+          console.error('Failed to load tournament teams:', err);
+          tournamentsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#f85149;">Failed to load tournament teams. Please try again.</div>';
+        }
       }
 
       // Ensure gear button highlights correctly once header is injected
@@ -1452,25 +1820,38 @@
       // Logout functionality handled below in header navigation setup
 
       // === Tab switching logic ===
+      const tabTournamentsBtn = document.getElementById('tabTournaments');
       const tabUploadsBtn = document.getElementById('tabUploads');
       const tabResultsBtn = document.getElementById('tabResults');
+      const tournamentsContent = document.getElementById('tournamentsContent');
       const uploadsContent = document.getElementById('uploadsSummary');
       const resultsContent = document.getElementById('voteResultsContent');
 
       function setActive(tab) {
-        if (tab === 'uploads') {
+        // Remove active class from all buttons
+        tabTournamentsBtn.classList.remove('active');
+        tabUploadsBtn.classList.remove('active');
+        tabResultsBtn.classList.remove('active');
+        
+        // Hide all content
+        tournamentsContent.style.display = 'none';
+        uploadsContent.style.display = 'none';
+        resultsContent.style.display = 'none';
+        
+        // Show selected tab
+        if (tab === 'tournaments') {
+          tabTournamentsBtn.classList.add('active');
+          tournamentsContent.style.display = '';
+        } else if (tab === 'uploads') {
           tabUploadsBtn.classList.add('active');
-          tabResultsBtn.classList.remove('active');
           uploadsContent.style.display = '';
-          resultsContent.style.display = 'none';
-        } else {
-          tabUploadsBtn.classList.remove('active');
+        } else if (tab === 'results') {
           tabResultsBtn.classList.add('active');
-          uploadsContent.style.display = 'none';
           resultsContent.style.display = '';
         }
       }
 
+      tabTournamentsBtn.addEventListener('click', () => setActive('tournaments'));
       tabUploadsBtn.addEventListener('click', () => setActive('uploads'));
       tabResultsBtn.addEventListener('click', () => setActive('results'));
 

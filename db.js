@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-08-01-0853.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-01-0853.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-08-06-1410.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-06-1410.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -189,6 +189,81 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_nominations_user ON tournament_nominations(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_nominations_tournament ON tournament_nominations(tournament)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_nominations_user_tournament ON tournament_nominations(user_id, tournament)`);
+
+  // Tournament system tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tournaments (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      start_date DATETIME,
+      end_date DATETIME,
+      status TEXT DEFAULT 'setup',
+      bracket_type TEXT DEFAULT 'single_elimination',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tournament_matchups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tournament_id TEXT NOT NULL,
+      round_number INTEGER NOT NULL,
+      bracket_position INTEGER NOT NULL,
+      team1_id TEXT,
+      team2_id TEXT,
+      winner_id TEXT,
+      status TEXT DEFAULT 'pending',
+      votes_needed INTEGER DEFAULT 4,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME,
+      parent_matchup_id INTEGER,
+      parent_position INTEGER,
+      FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+      FOREIGN KEY (team1_id) REFERENCES teams(id),
+      FOREIGN KEY (team2_id) REFERENCES teams(id),
+      FOREIGN KEY (winner_id) REFERENCES teams(id),
+      FOREIGN KEY (parent_matchup_id) REFERENCES tournament_matchups(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tournament_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      matchup_id INTEGER NOT NULL,
+      team_id TEXT NOT NULL,
+      voter_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (matchup_id) REFERENCES tournament_matchups(id),
+      FOREIGN KEY (team_id) REFERENCES teams(id),
+      UNIQUE(matchup_id, voter_id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tournament_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tournament_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      final_position INTEGER,
+      rounds_won INTEGER DEFAULT 0,
+      total_votes_received INTEGER DEFAULT 0,
+      total_votes_against INTEGER DEFAULT 0,
+      elimination_round INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+      FOREIGN KEY (team_id) REFERENCES teams(id)
+    )
+  `);
+
+  // Tournament indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_matchups_tournament ON tournament_matchups(tournament_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_matchups_round ON tournament_matchups(tournament_id, round_number)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_matchups_status ON tournament_matchups(status)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_votes_matchup ON tournament_votes(matchup_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_votes_team ON tournament_votes(team_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_results_tournament ON tournament_results(tournament_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_results_position ON tournament_results(tournament_id, final_position)`);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

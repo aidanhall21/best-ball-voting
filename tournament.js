@@ -1,0 +1,309 @@
+// Tournament frontend functionality
+// This file handles the tournament voting interface and bracket display
+
+let currentMatchup = null;
+let tournamentId = 'the-puppy'; // Updated to match your bracket script
+let pollInterval = null;
+
+// Initialize tournament functionality
+function initializeTournament() {
+    console.log('Initializing tournament system...');
+    loadCurrentMatchup();
+    loadTournamentBracket();
+    
+    // Poll for updates every 10 seconds
+    pollInterval = setInterval(() => {
+        loadCurrentMatchup();
+        loadTournamentBracket();
+    }, 10000);
+    
+    console.log('Tournament system initialized');
+}
+
+// Load current active matchup for voting
+async function loadCurrentMatchup() {
+    try {
+        console.log('Loading current matchup for tournament:', tournamentId);
+        const response = await fetch(`/api/tournament/current-matchup/${tournamentId}`);
+        const data = await response.json();
+        console.log('Current matchup response:', data);
+        
+        if (data.matchup) {
+            currentMatchup = data.matchup;
+            console.log('Displaying matchup:', data.matchup);
+            displayTournamentMatchup(data.matchup);
+        } else {
+            console.log('No active matchup:', data.message);
+            displayNoActiveMatchup(data.message);
+        }
+    } catch (error) {
+        console.error('Error loading current matchup:', error);
+        displayError('Failed to load current matchup');
+    }
+}
+
+// Display the current tournament matchup for voting
+function displayTournamentMatchup(matchup) {
+    const container = document.getElementById('teamsContainer');
+    if (!container) return;
+    
+    const team1VotesNeeded = (matchup.votes_needed || 4) - matchup.team1_votes;
+    const team2VotesNeeded = (matchup.votes_needed || 4) - matchup.team2_votes;
+    
+    container.innerHTML = `
+        <div class="tournament-matchup">
+            <div class="matchup-header">
+                <h3>Round ${matchup.round_number} - Match ${matchup.bracket_position}</h3>
+                <p class="matchup-subtitle">First to ${matchup.votes_needed || 4} votes wins!</p>
+            </div>
+            
+            <div class="teams-grid">
+                <div class="team-card tournament-team" data-team-id="${matchup.team1_id}">
+                    <div class="team-header">
+                        <h4>${matchup.team1_username}</h4>
+                        <span class="draft-id">${matchup.team1_draft_id}</span>
+                    </div>
+                    
+                    <div class="vote-section">
+                        <div class="vote-count">
+                            <span class="votes">${matchup.team1_votes}</span>
+                            <span class="votes-label">votes</span>
+                        </div>
+                        <div class="votes-needed">
+                            ${team1VotesNeeded > 0 ? `${team1VotesNeeded} more needed` : 'WINNER!'}
+                        </div>
+                        <button class="vote-btn team1-vote" onclick="castTournamentVote('${matchup.id}', '${matchup.team1_id}')" 
+                                ${team1VotesNeeded <= 0 || team2VotesNeeded <= 0 ? 'disabled' : ''}>
+                            Vote for ${matchup.team1_username}
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="matchup-vs">
+                    <span>VS</span>
+                </div>
+                
+                <div class="team-card tournament-team" data-team-id="${matchup.team2_id}">
+                    <div class="team-header">
+                        <h4>${matchup.team2_username}</h4>
+                        <span class="draft-id">${matchup.team2_draft_id}</span>
+                    </div>
+                    
+                    <div class="vote-section">
+                        <div class="vote-count">
+                            <span class="votes">${matchup.team2_votes}</span>
+                            <span class="votes-label">votes</span>
+                        </div>
+                        <div class="votes-needed">
+                            ${team2VotesNeeded > 0 ? `${team2VotesNeeded} more needed` : 'WINNER!'}
+                        </div>
+                        <button class="vote-btn team2-vote" onclick="castTournamentVote('${matchup.id}', '${matchup.team2_id}')"
+                                ${team2VotesNeeded <= 0 || team1VotesNeeded <= 0 ? 'disabled' : ''}>
+                            Vote for ${matchup.team2_username}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Display message when no active matchup
+function displayNoActiveMatchup(message) {
+    const container = document.getElementById('teamsContainer');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="no-matchup">
+            <h3>Tournament Status</h3>
+            <p>${message || 'No active matchup at this time.'}</p>
+            <p>Check back soon for the next round!</p>
+        </div>
+    `;
+}
+
+// Display error message
+function displayError(message) {
+    const container = document.getElementById('teamsContainer');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="error-message">
+            <h3>Error</h3>
+            <p>${message}</p>
+            <button onclick="loadCurrentMatchup()">Try Again</button>
+        </div>
+    `;
+}
+
+// Cast vote for a team in tournament matchup
+async function castTournamentVote(matchupId, teamId) {
+    try {
+        const response = await fetch('/api/tournament/vote', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                matchupId: parseInt(matchupId),
+                teamId: teamId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show success feedback
+            showVoteFeedback('Vote cast successfully!', 'success');
+            
+            // Immediately reload the matchup to show updated vote counts
+            setTimeout(() => {
+                loadCurrentMatchup();
+                if (data.completed) {
+                    // If matchup completed, also reload bracket
+                    loadTournamentBracket();
+                }
+            }, 500);
+        } else {
+            showVoteFeedback(data.error || 'Failed to cast vote', 'error');
+        }
+    } catch (error) {
+        console.error('Error casting vote:', error);
+        showVoteFeedback('Network error - please try again', 'error');
+    }
+}
+
+// Show vote feedback message
+function showVoteFeedback(message, type) {
+    // Remove existing feedback
+    const existing = document.querySelector('.vote-feedback');
+    if (existing) existing.remove();
+    
+    const feedback = document.createElement('div');
+    feedback.className = `vote-feedback ${type}`;
+    feedback.textContent = message;
+    
+    // Add to top of teams container
+    const container = document.getElementById('teamsContainer');
+    if (container) {
+        container.insertBefore(feedback, container.firstChild);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            feedback.remove();
+        }, 3000);
+    }
+}
+
+// Load and display tournament bracket
+async function loadTournamentBracket() {
+    try {
+        console.log('Loading tournament bracket for:', tournamentId);
+        const response = await fetch(`/api/tournament/bracket/${tournamentId}`);
+        const data = await response.json();
+        console.log('Bracket response:', data);
+        
+        if (data.bracket) {
+            console.log('Displaying bracket with', Object.keys(data.bracket).length, 'rounds');
+            displayTournamentBracket(data.bracket);
+        } else {
+            console.log('No bracket data received');
+        }
+    } catch (error) {
+        console.error('Error loading tournament bracket:', error);
+    }
+}
+
+// Display tournament bracket
+function displayTournamentBracket(bracket) {
+    const bracketContainer = document.querySelector('.bracket-container');
+    if (!bracketContainer) return;
+    
+    const rounds = Object.keys(bracket).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    if (rounds.length === 0) {
+        bracketContainer.innerHTML = `
+            <div class="bracket-placeholder">
+                <h3>Tournament Bracket</h3>
+                <p>No bracket data available yet.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let bracketHTML = '<div class="bracket-grid">';
+    
+    rounds.forEach(round => {
+        const roundNumber = parseInt(round);
+        const roundName = getRoundName(roundNumber, rounds.length);
+        const matchups = bracket[round];
+        
+        bracketHTML += `
+            <div class="bracket-round">
+                <h4 class="round-title">${roundName}</h4>
+                <div class="round-matchups">
+        `;
+        
+        matchups.forEach(matchup => {
+            const team1Status = getTeamStatus(matchup, matchup.team1_id);
+            const team2Status = getTeamStatus(matchup, matchup.team2_id);
+            
+            bracketHTML += `
+                <div class="bracket-matchup ${matchup.status}">
+                    <div class="bracket-team ${team1Status}" data-team-id="${matchup.team1_id || ''}">
+                        <span class="team-name">${matchup.team1_username || 'TBD'}</span>
+                        <span class="team-votes">${matchup.team1_votes || 0}</span>
+                    </div>
+                    <div class="bracket-vs">vs</div>
+                    <div class="bracket-team ${team2Status}" data-team-id="${matchup.team2_id || ''}">
+                        <span class="team-name">${matchup.team2_username || 'TBD'}</span>
+                        <span class="team-votes">${matchup.team2_votes || 0}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        bracketHTML += `
+                </div>
+            </div>
+        `;
+    });
+    
+    bracketHTML += '</div>';
+    bracketContainer.innerHTML = bracketHTML;
+}
+
+// Get round name based on round number and total rounds
+function getRoundName(roundNumber, totalRounds) {
+    const roundsFromEnd = totalRounds - roundNumber + 1;
+    
+    switch (roundsFromEnd) {
+        case 1: return 'Final';
+        case 2: return 'Semifinals';
+        case 3: return 'Quarterfinals';
+        default: return `Round ${roundNumber}`;
+    }
+}
+
+// Get team status for styling
+function getTeamStatus(matchup, teamId) {
+    if (!teamId) return 'empty';
+    if (matchup.winner_id === teamId) return 'winner';
+    if (matchup.status === 'active') return 'active';
+    return 'pending';
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Only initialize if we're on the tournament page
+    if (document.getElementById('teamsContainer')) {
+        initializeTournament();
+    }
+});
+
+// Clean up interval when page unloads
+window.addEventListener('beforeunload', function() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+    }
+});
