@@ -2,19 +2,48 @@
 // This file handles the tournament voting interface and bracket display
 
 let currentMatchup = null;
-let tournamentId = 'the-puppy'; // Updated to match your bracket script
+let tournamentId = null; // Will be set dynamically from API
 let pollInterval = null;
 
+// Load current tournament ID
+async function loadCurrentTournamentId() {
+    try {
+        const response = await fetch('/api/tournament/current');
+        const data = await response.json();
+        if (data.tournament) {
+            tournamentId = data.tournament.id;
+            console.log('Tournament ID loaded:', tournamentId);
+            return tournamentId;
+        } else {
+            console.error('No current tournament found');
+            return null;
+        }
+    } catch (err) {
+        console.error('Failed to load tournament ID:', err);
+        return null;
+    }
+}
+
 // Initialize tournament functionality
-function initializeTournament() {
+async function initializeTournament() {
     console.log('Initializing tournament system...');
+    
+    // Load tournament ID first
+    await loadCurrentTournamentId();
+    if (!tournamentId) {
+        console.error('Cannot initialize tournament without valid tournament ID');
+        return;
+    }
+    
     loadCurrentMatchup();
     loadTournamentBracket();
+    loadNominationsCount();
     
     // Poll for updates every 10 seconds
     pollInterval = setInterval(() => {
         loadCurrentMatchup();
         loadTournamentBracket();
+        loadNominationsCount();
     }, 10000);
     
     console.log('Tournament system initialized');
@@ -300,6 +329,37 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeTournament();
     }
 });
+
+// Load tournament nominations count
+async function loadNominationsCount() {
+    try {
+        const response = await fetch(`/api/tournament/nominations-count/The Puppy`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            const countElement = document.getElementById('teamsCount');
+            if (countElement) {
+                countElement.textContent = data.count;
+                
+                // Add visual feedback based on how full the tournament is
+                const percentage = (data.count / data.max) * 100;
+                const counterDisplay = countElement.parentElement;
+                
+                if (percentage >= 90) {
+                    counterDisplay.className = 'counter-display almost-full';
+                } else if (percentage >= 75) {
+                    counterDisplay.className = 'counter-display getting-full';
+                } else {
+                    counterDisplay.className = 'counter-display';
+                }
+            }
+        } else {
+            console.error('Error loading nominations count:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading nominations count:', error);
+    }
+}
 
 // Clean up interval when page unloads
 window.addEventListener('beforeunload', function() {

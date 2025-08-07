@@ -3002,6 +3002,48 @@
     color: #f0f6fc;
     line-height: 1.2;
   }
+
+  /* Team counter styles */
+  .team-counter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 20px 0;
+    padding: 12px 20px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .counter-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: #8b949e;
+  }
+
+  .counter-display {
+    font-size: 18px;
+    font-weight: 700;
+    color: #f0f6fc;
+    transition: color 0.3s ease;
+  }
+
+  .counter-display.getting-full {
+    color: #f79000;
+  }
+
+  .counter-display.almost-full {
+    color: #da3633;
+  }
+
+  .max-teams {
+    color: #8b949e;
+    font-weight: 600;
+  }
   
   @media (max-width: 768px) {
     .elo-delta-positive,
@@ -3011,6 +3053,20 @@
     
     .tournament-name {
       font-size: 14px;
+    }
+
+    .team-counter {
+      margin: 15px auto;
+      padding: 10px 16px;
+      max-width: 280px;
+    }
+
+    .counter-label {
+      font-size: 14px;
+    }
+
+    .counter-display {
+      font-size: 16px;
     }
   }
   

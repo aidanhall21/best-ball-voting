@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-08-06-1410.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-06-1410.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-08-07-1252.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-07-1252.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -199,6 +199,10 @@ db.serialize(() => {
       end_date DATETIME,
       status TEXT DEFAULT 'setup',
       bracket_type TEXT DEFAULT 'single_elimination',
+      source_contest TEXT,
+      max_teams INTEGER,
+      max_teams_per_user INTEGER DEFAULT 1,
+      scheduled_start_time DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -439,6 +443,22 @@ db.all('PRAGMA table_info(notifications)', (err, cols) => {
   if (!hasOpponentTeamId) {
     db.run('ALTER TABLE notifications ADD COLUMN opponent_team_id TEXT');
   }
+});
+
+// ---- Ensure new tournament columns exist ----
+db.all('PRAGMA table_info(tournaments)', (err, cols) => {
+  if (err) return; // silent fail
+  const extraTournamentCols = {
+    source_contest: 'TEXT',
+    max_teams: 'INTEGER',
+    max_teams_per_user: 'INTEGER DEFAULT 1',
+    scheduled_start_time: 'DATETIME'
+  };
+  Object.entries(extraTournamentCols).forEach(([col, type]) => {
+    if (!cols.some(c => c.name === col)) {
+      db.run(`ALTER TABLE tournaments ADD COLUMN ${col} ${type}`);
+    }
+  });
 });
 
 module.exports = { db, analyticsDb };

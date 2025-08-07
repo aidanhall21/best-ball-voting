@@ -64,10 +64,16 @@
 
     /* Desktop optimizations */
     @media (min-width: 1024px) {
-      .tournament-container {
-        max-width: 1100px; /* Even wider on large desktop */
-        padding: 1.5rem 2rem; /* More horizontal padding, less vertical */
-      }
+      .tournament-container { max-width: 1100px; padding: 1.5rem 2rem; }
+      .countdown-container { padding: 2.5rem 3rem; margin: 2.5rem 0; }
+      .countdown-display { gap: 3rem; }
+      .countdown-unit { min-width: 100px; padding: 1.5rem 1rem; }
+      .tournament-info { padding: 2.5rem 3rem; margin: 3rem 0; }
+      .tournament-info p { font-size: 18px; line-height: 1.6; margin-bottom: 1.25rem; }
+      .tournament-tabs { margin-bottom: 3rem; justify-content: center; }
+      .tournament-tab { padding: 1.25rem 2rem; font-size: 1.1rem; }
+      .tournament-matchup { padding: 0; margin-bottom: 0; }
+      .teams-grid { gap: 3rem; }
     }
 
     /* Large desktop optimization */
@@ -86,17 +92,32 @@
       }
     }
 
-    /* Mobile optimization - keep existing mobile-friendly padding */
-    @media (max-width: 767px) {
-      .main-content {
-        padding: 15px 0px !important;
-      }
-      
-      .tournament-container {
-        max-width: 100%;
-        padding: 1rem 0.75rem;
-        margin: 0;
-      }
+    /* Mobile optimization */
+    @media (max-width: 768px) {
+      .main-content { padding: 15px 0px !important; }
+      .tournament-container { max-width: 100%; padding: 1rem 0.75rem; margin: 0; }
+      .team-card.tournament-team { padding: 0; }
+      .tournament-info { padding: 1.5rem 1rem; margin: 1.5rem 0; }
+      .tournament-matchup { padding: 0; margin-bottom: 0; }
+      .tournament-title { font-size: 2rem; }
+      .countdown-display { gap: 1rem; }
+      .countdown-unit { min-width: 60px; padding: 0.75rem; }
+      .countdown-number { font-size: 1.5rem; }
+      .results-grid { grid-template-columns: 1fr; gap: 1rem; }
+      .results-vs { order: 2; }
+      .team-result:last-child { order: 3; }
+      .teams-grid { grid-template-columns: 1fr 1fr; gap: 0.25rem !important; padding: 0 !important; align-items: start !important; }
+      .team-card.tournament-team { margin-top: 0 !important; align-self: start !important; }
+      .team-header { margin-top: 0 !important; }
+      .team-header h4 { margin-top: 0 !important; }
+      .team-header { width: 100%; max-width: 100%; box-sizing: border-box; }
+      .roster-construction { width: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+      .player-bubble { margin-left: 2px !important; margin-right: 2px !important; }
+      .team-header h4 { font-size: 16px !important; line-height: 1.2; margin-bottom: 0.25rem; margin-top: 10px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .matchup-vs { order: 2; }
+      .bracket-grid { gap: 1rem; }
+      .bracket-round { min-width: 160px; }
+      .choose-button { margin-bottom: 5px !important; }
     }
 
     .tournament-header {
@@ -123,22 +144,7 @@
       margin: 2rem 0;
     }
 
-    /* Countdown responsive improvements */
-    @media (min-width: 1024px) {
-      .countdown-container {
-        padding: 2.5rem 3rem; /* More spacious on desktop */
-        margin: 2.5rem 0;
-      }
-      
-      .countdown-display {
-        gap: 3rem; /* Increased gap between countdown units */
-      }
-      
-      .countdown-unit {
-        min-width: 100px; /* Wider units on desktop */
-        padding: 1.5rem 1rem;
-      }
-    }
+    /* Countdown responsive improvements (merged into main desktop block) */
 
     .countdown-display {
       display: flex;
@@ -180,26 +186,9 @@
       text-align: left;
     }
 
-    /* Tournament info responsive improvements */
-    @media (min-width: 1024px) {
-      .tournament-info {
-        padding: 2.5rem 3rem; /* More generous padding on desktop */
-        margin: 3rem 0;
-      }
-      
-      .tournament-info p {
-        font-size: 18px; /* Slightly larger text on desktop */
-        line-height: 1.6;
-        margin-bottom: 1.25rem;
-      }
-    }
+    /* Tournament info responsive improvements (merged into main desktop block) */
 
-    @media (max-width: 767px) {
-      .tournament-info {
-        padding: 1.5rem 1rem; /* More compact on mobile */
-        margin: 1.5rem 0;
-      }
-    }
+    
 
     .tournament-info h3 {
       color: #f0f6fc;
@@ -239,28 +228,7 @@
       transform: translateY(0);
     }
 
-    @media (max-width: 768px) {
-      .tournament-title {
-        font-size: 2rem;
-      }
 
-      .countdown-display {
-        gap: 1rem;
-      }
-
-      .countdown-unit {
-        min-width: 60px;
-        padding: 0.75rem;
-      }
-
-      .countdown-number {
-        font-size: 1.5rem;
-      }
-
-      .tournament-container {
-        padding: 1rem;
-      }
-    }
 
     /* Tournament View Styles */
     .tournament-view {
@@ -274,18 +242,7 @@
       border-bottom: 1px solid rgba(240, 246, 252, 0.1);
     }
 
-    /* Tournament tabs responsive improvements */
-    @media (min-width: 1024px) {
-      .tournament-tabs {
-        margin-bottom: 3rem;
-        justify-content: center; /* Center tabs on desktop */
-      }
-      
-      .tournament-tab {
-        padding: 1.25rem 2rem; /* More generous padding */
-        font-size: 1.1rem;
-      }
-    }
+    /* Tournament tabs responsive improvements (merged into main desktop block) */
 
     .tournament-tab {
       background: transparent;
@@ -355,31 +312,9 @@
       width: 100%;
     }
 
-    /* Tournament matchup responsive improvements */
-    @media (min-width: 1024px) {
-      .tournament-matchup {
-        padding: 0;
-        margin-bottom: 0;
-      }
-      
-      .teams-grid {
-        gap: 3rem; /* Increased gap between teams */
-      }
-    }
+    /* Tournament matchup responsive improvements (merged into main desktop block) */
 
-    @media (max-width: 767px) {
-      .tournament-matchup {
-        padding: 0;
-        margin-bottom: 0;
-      }
-      
-      .teams-grid {
-        grid-template-columns: 1fr; /* Stack teams vertically on mobile */
-        grid-template-rows: auto auto auto;
-        gap: 1.5rem;
-        text-align: center;
-      }
-    }
+    
 
     .matchup-header {
       text-align: center;
@@ -421,7 +356,7 @@
     /* Tournament-specific player bubble styles */
     .tournament-team .player-bubble {
       width: 100%;
-      margin: 0.5rem 0;
+      margin: 0.1rem 1rem;
       box-sizing: border-box;
     }
 
@@ -452,9 +387,10 @@
 
     .betting-info {
       display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
+      flex-direction: row;
+      gap: 0.5rem;
       align-items: center;
+      justify-content: center;
     }
 
     .betting-odds {
@@ -599,21 +535,7 @@
       filter: brightness(1.1);
     }
 
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-      .results-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-      }
-
-      .results-vs {
-        order: 2;
-      }
-
-      .team-result:last-child {
-        order: 3;
-      }
-    }
+    
 
     .vote-section {
       margin-top: 1rem;
@@ -788,25 +710,7 @@
       margin: 0.25rem 0;
     }
 
-    /* Responsive design */
-    @media (max-width: 768px) {
-      .teams-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-      }
-
-      .matchup-vs {
-        order: 2;
-      }
-
-      .bracket-grid {
-        gap: 1rem;
-      }
-
-      .bracket-round {
-        min-width: 160px;
-      }
-    }
+    
     /* Owner info styles (matching draftorpass.html) */
     .owner-info {
       background: rgba(255, 255, 255, 0.05);
@@ -893,7 +797,7 @@
   <main class="main-content">
     <div class="tournament-container">
       <div class="tournament-header">
-        <h1 class="tournament-title">The Puppy Tournament Starts In</h1>
+        <h1 class="tournament-title" id="tournamentTitle">Tournament Starts In</h1>
         
         <div class="countdown-container">
           <div class="countdown-display" id="countdown">
@@ -920,6 +824,14 @@
       <div class="tournament-info">
         <h3>Tournament Details</h3>
         <p>DraftrPass is proud to present our first ever elimination tournament! 256 teams will enter and one winner will be crowned the best team drafted in The Puppy. Think your teams stack up? Select up to four of your best teams for submission into the contest, then check back on Friday, August 8th when voting begins.</p>
+        
+        <div class="team-counter">
+          <span class="counter-label">Teams Entered:</span>
+          <span class="counter-display">
+            <span id="teamsCount">--</span> / <span class="max-teams">256</span>
+          </span>
+        </div>
+        
         <p><strong>Start Time:</strong> Friday, August 8th, 2025 at 12:00 PM ET</p>
         <p><strong>Format:</strong> 256 teams going 8 rounds in a single elimination bracket. Each matchup is a best of 7.</p>
         
@@ -960,15 +872,59 @@
     // 3. Update tournament details in the HTML below
     // 4. When tournament begins, set FORCE_COUNTDOWN_MODE = false
     //
-    const FORCE_COUNTDOWN_MODE = true;
+    const FORCE_COUNTDOWN_MODE = false;
     
-    // Tournament start time: Monday, August 4, 2025 at 9:00 AM ET
-    const tournamentStart = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
+    // Global tournament configuration
+    let tournamentData = null;
+    let tournamentStart = null; // Will be set dynamically from database
 
     let tournamentViewShown = false;
     let countdownInterval;
+    
+    // Load current tournament info
+    async function loadCurrentTournament() {
+      try {
+        const response = await fetch('/api/tournament/current');
+        const data = await response.json();
+                    tournamentData = data.tournament;
+        
+        if (tournamentData) {
+          console.log('Current tournament loaded:', tournamentData);
+          
+          // Set tournament start time from database
+          if (tournamentData.scheduled_start_time) {
+            tournamentStart = new Date(tournamentData.scheduled_start_time);
+            console.log('Tournament start time set to:', tournamentStart);
+          } else {
+            console.warn('No scheduled start time found for tournament');
+          }
+          
+          // Update page title and headers
+          document.getElementById('tournamentTitle').textContent = `${tournamentData.name} Tournament Starts In`;
+          document.title = `${tournamentData.name} Tournament - Draft or Pass`;
+          return tournamentData;
+        } else {
+          console.log('No current tournament found');
+          document.getElementById('tournamentTitle').textContent = 'No Tournament Active';
+          return null;
+        }
+      } catch (err) {
+        console.error('Failed to load current tournament:', err);
+        document.getElementById('tournamentTitle').textContent = 'Error Loading Tournament';
+        return null;
+      }
+    }
 
     function updateCountdown() {
+      if (!tournamentStart) {
+        // Tournament start time not loaded yet
+        document.getElementById('days').textContent = '--';
+        document.getElementById('hours').textContent = '--';
+        document.getElementById('minutes').textContent = '--';
+        document.getElementById('seconds').textContent = '--';
+        return;
+      }
+      
       const now = new Date();
       const timeDiff = tournamentStart - now;
 
@@ -992,7 +948,7 @@
     }
 
     // Tournament view functions
-    function showTournamentView() {
+    async function showTournamentView() {
       // Hide countdown elements and show tournament view
       document.querySelector('.tournament-container').classList.add('tournament-active');
       document.getElementById('tournamentView').style.display = 'block';
@@ -1010,11 +966,22 @@
       // Initialize tournament system manually
       console.log('Tournament view shown, calling tournament functions directly...');
       
+      // Ensure tournament is loaded before proceeding
+      if (!tournamentData) {
+        await loadCurrentTournament();
+        if (!tournamentData) {
+          console.error('No tournament available for live view');
+          return;
+        }
+      }
+
+      console.log(tournamentData.id);
+      
       // Call tournament functions directly
       console.log('Making tournament API calls...');
       
       // Load current matchup
-      fetch('/api/tournament/current-matchup/the-puppy')
+      fetch(`/api/tournament/current-matchup/${tournamentData.id}`)
           .then(response => response.json())
           .then(data => {
             console.log('Current matchup response:', data);
@@ -1102,8 +1069,8 @@
                     <p class="matchup-subtitle">First to ${matchup.votes_needed || 4} votes wins!</p>
                   </div>
                   
-                  <div class="teams-grid">
-                    <div class="team-card tournament-team" data-team-id="${matchup.team1_id}">
+              <div class="teams-grid">
+                <div class="team-card tournament-team" style="width:100%;" data-team-id="${matchup.team1_id}">
                       <div class="team-header">
                         <h4>${matchup.team1_username}</h4>
                         <div class="betting-info">
@@ -1121,8 +1088,8 @@
                         </button>
                       </div>
                     </div>
-                                        
-                    <div class="team-card tournament-team" data-team-id="${matchup.team2_id}">
+                
+                <div class="team-card tournament-team" style="width:100%;" data-team-id="${matchup.team2_id}">
                       <div class="team-header">
                         <h4>${matchup.team2_username}</h4>
                         <div class="betting-info">
@@ -1163,7 +1130,7 @@
           });
         
       // Load tournament bracket  
-      fetch('/api/tournament/bracket/the-puppy')
+      fetch(`/api/tournament/bracket/${tournamentData.id}`)
           .then(response => response.json())
           .then(data => {
             console.log('Bracket response:', data);
@@ -1596,7 +1563,7 @@
       }
       
       // Reload current matchup data
-      fetch('/api/tournament/current-matchup/the-puppy')
+      fetch(`/api/tournament/current-matchup/${tournamentData.id}`)
         .then(response => response.json())
         .then(data => {
           console.log('Next matchup response:', data);
@@ -1713,10 +1680,7 @@
                   <span>⬅️</span> Choose
                 </button>
               </div>
-            </div>
-            
-            <div class="matchup-vs"><span>VS</span></div>
-            
+            </div>            
             <div class="team-card tournament-team" data-team-id="${matchup.team2_id}">
               <div class="team-header">
                 <h4>${matchup.team2_username}</h4>
@@ -1759,14 +1723,68 @@
       });
     }
 
+    // Load tournament nominations count
+    async function loadNominationsCount() {
+      try {
+        const response = await fetch(`/api/tournament/nominations-count/${tournamentData?.source_contest}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+          const countElement = document.getElementById('teamsCount');
+          if (countElement) {
+            countElement.textContent = data.count;
+            
+            // Add visual feedback based on how full the tournament is
+            const percentage = (data.count / data.max) * 100;
+            const counterDisplay = countElement.parentElement;
+            
+            if (percentage >= 90) {
+              counterDisplay.className = 'counter-display almost-full';
+            } else if (percentage >= 75) {
+              counterDisplay.className = 'counter-display getting-full';
+            } else {
+              counterDisplay.className = 'counter-display';
+            }
+          }
+        } else {
+          console.error('Error loading nominations count:', data.error);
+        }
+      } catch (error) {
+        console.error('Error loading nominations count:', error);
+      }
+    }
+
     // Update countdown immediately and then every second
     updateCountdown();
     countdownInterval = setInterval(updateCountdown, 1000);
+    
+    // Update nominations count every 30 seconds
+    setInterval(loadNominationsCount, 30000);
 
     // Check if tournament should be active on page load
-    document.addEventListener('DOMContentLoaded', function() {
-      const now = new Date();
-      const timeDiff = tournamentStart - now;
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Load tournament info first
+      await loadCurrentTournament();
+      console.log(tournamentStart);
+      
+      // Check if tournament should be active based on status or time
+      if (tournamentData) {
+        if (tournamentData.status === 'active' && !FORCE_COUNTDOWN_MODE) {
+          // Tournament is active in database - show tournament view
+          showTournamentView();
+        } else if (tournamentStart) {
+          const now = new Date();
+          const timeDiff = tournamentStart - now;
+          
+          if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE) {
+            // Tournament should be live based on time
+            showTournamentView();
+          }
+        }
+      }
+      
+      // Load nominations count immediately
+      loadNominationsCount();
       
       // Refresh auth state if available
       if (typeof refreshAuth === 'function') {
@@ -1775,12 +1793,159 @@
         });
       }
 
-      if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE && !tournamentViewShown) {
-        // Tournament should be active immediately
-        tournamentViewShown = true;
-        clearInterval(countdownInterval); // Stop the countdown
-        showTournamentView();
+
+    });
+
+    // Fallback: ensure mobile menu works on this page even if global init didn't run
+    document.addEventListener('headerLoaded', () => {
+      const toggle = document.getElementById('mobileMenuToggle');
+      const mobileNav = document.getElementById('mobileNav');
+      if (!toggle || !mobileNav) return;
+      if (toggle.dataset.bound === '1') return; // avoid double-binding
+      toggle.dataset.bound = '1';
+
+      toggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        mobileNav.classList.toggle('active');
+        toggle.classList.toggle('active');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!toggle.contains(e.target) && !mobileNav.contains(e.target)) {
+          mobileNav.classList.remove('active');
+          toggle.classList.remove('active');
+        }
+      });
+    });
+
+    // Mobile notifications (fallback implementation for this page) – match index.html behavior
+    function showMobileNotifications() {
+      let overlay = document.getElementById('mobileNotificationOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'mobileNotificationOverlay';
+        overlay.className = 'mobile-notification-overlay';
+        overlay.innerHTML = `
+          <div class="mobile-notification-content">
+            <div class="mobile-notification-header">
+              <h3>Notifications</h3>
+              <div class="mobile-notification-actions">
+                <button id="mobileMarkAllRead" class="mobile-mark-all-read-btn">Mark all read</button>
+                <button id="closeMobileNotifications" class="mobile-close-notifications-btn">✖</button>
+              </div>
+            </div>
+            <div id="mobileNotificationList" class="mobile-notification-list">
+              <div class="loading">Loading notifications...</div>
+            </div>
+          </div>
+        `;
+
+        // Click outside to close
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            overlay.style.display = 'none';
+            document.body.style.overflow = '';
+          }
+        });
+
+        // Close button
+        overlay.querySelector('#closeMobileNotifications').addEventListener('click', () => {
+          overlay.style.display = 'none';
+          document.body.style.overflow = '';
+        });
+
+        // Mark all as read
+        overlay.querySelector('#mobileMarkAllRead').addEventListener('click', async () => {
+          try {
+            await fetch('/notifications/read-all', { method: 'POST' });
+            if (typeof window.updateNotificationBadge === 'function') {
+              window.updateNotificationBadge(0);
+            }
+            const list = document.getElementById('mobileNotificationList');
+            loadMobileNotificationsInto(list);
+            if (typeof window.updateNotificationCount === 'function') {
+              setTimeout(window.updateNotificationCount, 400);
+            }
+          } catch (e) {
+            console.error('Failed to mark all read:', e);
+          }
+        });
+
+        document.body.appendChild(overlay);
       }
+
+      // Show overlay aligned to top per CSS
+      overlay.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+
+      // Load notifications into list
+      const list = document.getElementById('mobileNotificationList');
+      if (list) loadMobileNotificationsInto(list);
+    }
+
+    async function loadMobileNotificationsInto(container) {
+      try {
+        const res = await fetch('/notifications');
+        if (!res.ok) throw new Error('Failed to load notifications');
+        const data = await res.json();
+        const notifications = data.notifications || [];
+        if (notifications.length === 0) {
+          container.innerHTML = '<div style="color:#8b949e;font-size:14px;padding:12px 0;">No notifications yet</div>';
+          return;
+        }
+        container.innerHTML = notifications.map(n => {
+          const time = new Date(n.created_at);
+          const ago = formatTimeAgo(time);
+          const isUnread = !n.is_read;
+          return `
+            <div class="mobile-notification-item" data-id="${n.id}" style="padding:10px;border-bottom:1px solid #30363d;${isUnread ? 'background:rgba(88,166,255,0.08);' : ''}">
+              <div style="font-size:14px;color:#f0f6fc;line-height:1.4;">${n.message}</div>
+              <div style="font-size:12px;color:#8b949e;margin-top:4px;">${ago}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error('Notification load failed:', e);
+        container.innerHTML = '<div style="color:#f85149;font-size:14px;padding:12px 0;">Failed to load notifications</div>';
+      }
+    }
+
+    function formatTimeAgo(date) {
+      const now = new Date();
+      const diffMs = now - date;
+      const s = Math.floor(diffMs / 1000);
+      const m = Math.floor(s / 60);
+      const h = Math.floor(m / 60);
+      const d = Math.floor(h / 24);
+      if (s < 60) return `${s}s ago`;
+      if (m < 60) return `${m}m ago`;
+      if (h < 24) return `${h}h ago`;
+      return `${d}d ago`;
+    }
+
+    // Attach mobile notifications button when header is ready
+    document.addEventListener('headerLoaded', () => {
+      const btn = document.getElementById('mobileNotificationBtn');
+      if (!btn || btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const res = await fetch('/me');
+          const auth = await res.json();
+          if (auth && auth.user) {
+            window.currentUserId = auth.user.id;
+            showMobileNotifications();
+          } else {
+            alert('Please log in to view notifications');
+          }
+        } catch (err) {
+          console.error('Auth check failed', err);
+          alert('Please log in to view notifications');
+        }
+      });
     });
   </script>
   <footer class="legal-footer">

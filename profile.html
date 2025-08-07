@@ -1480,9 +1480,36 @@
           });
       }
 
+      // Global tournament info
+      let currentTournament = null;
+      
+      // Load current tournament info
+      async function loadCurrentTournament() {
+        try {
+          const response = await fetch('/api/tournament/current');
+          const data = await response.json();
+          currentTournament = data.tournament;
+          if (currentTournament) {
+            console.log('Current tournament loaded:', currentTournament);
+            return currentTournament.source_contest;
+          } else {
+            console.log('No current tournament found');
+            return null;
+          }
+        } catch (err) {
+          console.error('Failed to load current tournament:', err);
+          return null;
+        }
+      }
+
       // Load nominations data and deadline status, then cache them
       async function loadNominationsData() {
-        const tournament = 'The Puppy';
+        // Load tournament info first
+        const tournament = await loadCurrentTournament();
+        if (!tournament) {
+          console.error('No tournament available for nominations');
+          return;
+        }
         
         try {
           // Check deadline status and load nominations in parallel
@@ -1553,7 +1580,11 @@
 
       // Add event listeners for nomination buttons
       function attachNominationListeners() {
-        const tournament = 'The Puppy';
+        const tournament = currentTournament?.source_contest;
+        if (!tournament) {
+          console.error('No tournament available for nomination listeners');
+          return;
+        }
         
         document.querySelectorAll('.select-team-btn').forEach(btn => {
           // Remove any existing listeners by cloning the element
@@ -1618,15 +1649,26 @@
         });
       }
 
-      // Load tournament teams for The Puppy tournament
+      // Load tournament teams for current tournament
       async function loadTournamentTeams() {
         const tournamentsDiv = document.getElementById('tournamentsContent');
         if (!tournamentsDiv) return;
 
         tournamentsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">Loading tournament teams...</div>';
 
+        // Load tournament info first if not already loaded
+        if (!currentTournament) {
+          await loadCurrentTournament();
+        }
+        
+        const tournament = currentTournament?.source_contest;
+        if (!tournament) {
+          tournamentsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">No tournament available.</div>';
+          return;
+        }
+
         try {
-          const res = await fetch('/my/tournament-teams?tournament=' + encodeURIComponent('The Puppy'));
+          const res = await fetch('/my/tournament-teams?tournament=' + encodeURIComponent(tournament));
           if (!res.ok) {
             throw new Error('Failed to load tournament teams');
           }
@@ -1635,7 +1677,7 @@
           const teams = data.teams || [];
 
           if (teams.length === 0) {
-            tournamentsDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#8b949e;">No teams found for The Puppy tournament. Upload some teams to get started!</div>';
+            tournamentsDiv.innerHTML = `<div style="text-align:center; padding:20px; color:#8b949e;">No teams found for ${tournament} tournament. Upload some teams to get started!</div>`;
             return;
           }
 
@@ -1686,7 +1728,32 @@
 
           async function renderTournamentTable() {
             const sorted = sortTournamentData();
+            
+            // Check if user can nominate teams and show notification
+            const nominatedCount = window.nominatedTeamIds ? window.nominatedTeamIds.size : 0;
+            const deadlinePassed = window.nominationsDeadlinePassed || false;
+            const canNominate = !deadlinePassed && nominatedCount < 4 && sorted.length > 0;
+            
+            let notificationHtml = '';
+            if (canNominate) {
+              notificationHtml = `
+                <div class="nomination-notification" style="
+                  background: rgba(88, 166, 255, 0.1);
+                  border: 1px solid rgba(88, 166, 255, 0.3);
+                  border-radius: 8px;
+                  padding: 1rem;
+                  margin-bottom: 1rem;
+                  text-align: center;
+                  color: #58a6ff;
+                  font-weight: 500;
+                ">
+                  💡 You can nominate up to ${currentTournament?.max_teams_per_user || 4} teams for ${tournament} tournament.
+                </div>
+              `;
+            }
+            
             let tableHtml = `
+              ${notificationHtml}
               <table class="uploads-table vote-results-table">
                 <thead>
                   <tr>

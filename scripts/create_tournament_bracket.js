@@ -3,9 +3,12 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const DB_PATH = path.join(__dirname, '..', 'teams-2025-08-04-0920.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'teams-2025-08-07-1252.db');
 const TOURNAMENT_ID = process.env.TOURNAMENT_ID || 'the-puppy';
 const TOURNAMENT_NAME = process.env.TOURNAMENT_NAME || 'The Puppy';
+const SOURCE_CONTEST = process.env.SOURCE_CONTEST || TOURNAMENT_NAME;
+const MAX_TEAMS = process.env.MAX_TEAMS ? parseInt(process.env.MAX_TEAMS) : null;
+const MAX_TEAMS_PER_USER = process.env.MAX_TEAMS_PER_USER ? parseInt(process.env.MAX_TEAMS_PER_USER) : 1;
 
 function createTournamentBracket() {
     const db = new sqlite3.Database(DB_PATH);
@@ -25,41 +28,51 @@ function createTournamentBracket() {
                 return;
             }
             
-            // Step 2: Create tournament instance
-            console.log('🎯 Creating tournament instance...');
-            db.run(`
-                INSERT OR REPLACE INTO tournaments (id, name, status, start_date)
-                VALUES (?, ?, 'setup', datetime('now'))
-            `, [TOURNAMENT_ID, TOURNAMENT_NAME], (err) => {
+            // Step 2: Verify tournament exists (should already be created by API)
+            console.log('🎯 Verifying tournament exists...');
+            db.get(`SELECT * FROM tournaments WHERE id = ?`, [TOURNAMENT_ID], (err, tournament) => {
                 if (err) {
-                    console.error('Error creating tournament:', err);
+                    console.error('Error checking tournament:', err);
                     return;
                 }
                 
-                // Step 3: Get teams from tournament_nominations
-                console.log('👥 Fetching nominated teams...');
-                db.all(`
-                    SELECT tn.id, tn.username, tn.draft_id, t.tournament
+                if (!tournament) {
+                    console.error(`❌ Tournament ${TOURNAMENT_ID} not found. Please create it first via the admin interface.`);
+                    return;
+                }
+                
+                console.log(`✅ Tournament found: ${tournament.name} (status: ${tournament.status})`);
+                
+                // Step 3: Get teams from tournament nominations
+                console.log(`👥 Fetching nominated teams for tournament: ${TOURNAMENT_NAME}...`);
+                
+                const sql = `
+                    SELECT tn.id, tn.username, tn.draft_id, t.tournament, tn.user_id
                     FROM tournament_nominations tn
                     JOIN teams t ON tn.id = t.id
                     WHERE tn.tournament = ?
                     ORDER BY tn.username, tn.nominated_at
-                `, [TOURNAMENT_NAME], (err, teams) => {
+                `;
+                
+                db.all(sql, [SOURCE_CONTEST], (err, teams) => {
                     if (err) {
                         console.error('Error fetching teams:', err);
                         return;
                     }
                     
-                    console.log(`Found ${teams.length} nominated teams from ${new Set(teams.map(t => t.username)).size} users`);
+                    console.log(`Found ${teams.length} nominated teams from ${new Set(teams.map(t => t.username)).size} users in contest: ${SOURCE_CONTEST}`);
                     
                     if (teams.length === 0) {
-                        console.error('❌ No teams found in tournament_nominations table');
+                        console.error(`❌ No nominated teams found for contest: ${SOURCE_CONTEST}`);
                         db.close();
                         return;
                     }
                     
+                    // Use all nominated teams (no additional filtering needed as nominations are pre-filtered)
+                    const finalTeams = teams;
+                    
                     // Step 4: Create matchups
-                    const matchups = createBalancedMatchups(teams);
+                    const matchups = createBalancedMatchups(finalTeams);
                     console.log(`📊 Created ${matchups.length} first round matchups`);
                     
                     // Step 5: Insert matchups into database
@@ -70,7 +83,10 @@ function createTournamentBracket() {
                         createBracketStructure(db, TOURNAMENT_ID, matchups.length, () => {
                             console.log('✅ Tournament bracket created successfully!');
                             console.log(`Tournament ID: ${TOURNAMENT_ID}`);
-                            console.log(`Total teams: ${teams.length}`);
+                            console.log(`Source Contest: ${SOURCE_CONTEST}`);
+                            console.log(`Total teams: ${finalTeams.length}`);
+                            console.log(`Max teams per user: ${MAX_TEAMS_PER_USER}`);
+                            if (MAX_TEAMS) console.log(`Max teams limit: ${MAX_TEAMS}`);
                             console.log(`First round matchups: ${matchups.length}`);
                             db.close();
                         });

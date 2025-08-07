@@ -25,10 +25,11 @@
       width: 90%;
       max-width: 900px;
       margin: 0 auto;
-      background: #fff;
+      background: #ffffff;
       padding: 20px;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      border: 1px solid #e5e7eb;
     }
     .settings-group {
       margin-bottom: 30px;
@@ -45,7 +46,9 @@
     }
     .settings-label {
       min-width: 150px;
-      font-weight: 500;
+      font-weight: 600;
+      color: #111827;
+      font-size: 14px;
     }
     select, input {
       flex: 1;
@@ -54,6 +57,25 @@
       border-radius: 4px;
       font-size: 14px;
       max-width: 400px;
+      background: #ffffff;
+      color: #111827;
+      font-weight: 500;
+    }
+    
+    select:focus, input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    input::placeholder {
+      color: #6b7280;
+      font-weight: 400;
+    }
+    
+    select option {
+      background: #ffffff;
+      color: #111827;
     }
     .button-group {
       display: flex;
@@ -126,15 +148,26 @@
       border: 1px solid #bfdbfe;
     }
     .tournament-info {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      border: 1px solid #d1d5db;
       border-radius: 6px;
-      padding: 15px;
+      padding: 20px;
       margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
     .tournament-info h3 {
-      margin: 0 0 10px 0;
+      margin: 0 0 15px 0;
+      color: #111827;
+      font-weight: 600;
+    }
+    .tournament-info p {
+      margin: 8px 0;
       color: #374151;
+      font-weight: 500;
+    }
+    .tournament-info strong {
+      color: #111827;
+      font-weight: 600;
     }
     .tournament-stats {
       display: grid;
@@ -212,14 +245,33 @@
   
   <div class="settings-container">
     <div class="settings-group">
-      <h2>Tournament Configuration</h2>
+      <h2>Tournament Creation</h2>
       <div class="settings-row">
         <div class="settings-label">Tournament ID:</div>
-        <input type="text" id="tournamentId" value="the-puppy" placeholder="Enter tournament ID">
+        <input type="text" id="tournamentId" placeholder="Enter tournament ID">
       </div>
       <div class="settings-row">
         <div class="settings-label">Tournament Name:</div>
-        <input type="text" id="tournamentName" value="The Puppy" placeholder="Enter tournament name">
+        <input type="text" id="tournamentName" placeholder="Enter tournament name">
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">Source Contest:</div>
+        <select id="sourceContest">
+          <option value="">Select a contest...</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">Max Teams:</div>
+        <input type="number" id="maxTeams" placeholder="Optional - max teams allowed" min="2" max="1024">
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">Max Teams Per User:</div>
+        <input type="number" id="maxTeamsPerUser" value="1" placeholder="Max teams per user" min="1" max="50">
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">Scheduled Start Time:</div>
+        <input type="datetime-local" id="scheduledStartTime" placeholder="Optional - when to start tournament">
+        <small style="color: #666; font-size: 12px; margin-left: 10px;">Your local timezone</small>
       </div>
     </div>
 
@@ -232,6 +284,13 @@
     <div class="settings-group">
       <h2>Tournament Management</h2>
       <div class="button-group">
+        <button id="createTournament" class="action-button" style="background: #8b5cf6; color: white;">
+          <div class="button-loading">
+            <div class="loading-spinner"></div>
+            <span>Create Tournament</span>
+          </div>
+        </button>
+        
         <button id="createBracket" class="action-button create-bracket-button">
           <div class="button-loading">
             <div class="loading-spinner"></div>
@@ -327,6 +386,33 @@
       }
     }
 
+    // Load available contests
+    async function loadAvailableContests() {
+      try {
+        console.log('Loading available contests...');
+        const res = await fetch('/api/tournament/available-contests');
+        const data = await res.json();
+        console.log('Available contests response:', data);
+        
+        if (res.ok && data.contests) {
+          const contestSelect = document.getElementById('sourceContest');
+          contestSelect.innerHTML = '<option value="">Select a contest...</option>';
+          
+          data.contests.forEach(contest => {
+            const option = document.createElement('option');
+            option.value = contest.contest;
+            option.textContent = `${contest.contest} (${contest.team_count} teams)`;
+            contestSelect.appendChild(option);
+          });
+        } else {
+          showStatus(data.error || 'Error loading available contests', 'error');
+        }
+      } catch (err) {
+        console.error('Failed to load available contests:', err);
+        showStatus('Network error - failed to load available contests', 'error');
+      }
+    }
+
     // Load tournament information
     async function loadTournamentInfo() {
       const tournamentId = document.getElementById('tournamentId').value;
@@ -368,8 +454,12 @@
       detailsEl.innerHTML = `
         <p><strong>Name:</strong> ${tournament.name}</p>
         <p><strong>Status:</strong> <span style="color: ${getStatusColor(tournament.status)}">${tournament.status.toUpperCase()}</span></p>
+        <p><strong>Source Contest:</strong> ${tournament.source_contest || 'Not specified'}</p>
+        <p><strong>Max Teams:</strong> ${tournament.max_teams || 'No limit'}</p>
+        <p><strong>Max Teams Per User:</strong> ${tournament.max_teams_per_user || 1}</p>
+        ${tournament.scheduled_start_time ? `<p><strong>Scheduled Start Time:</strong> ${new Date(tournament.scheduled_start_time).toLocaleString()}</p>` : '<p><strong>Scheduled Start Time:</strong> Not set</p>'}
         <p><strong>Created:</strong> ${new Date(tournament.created_at).toLocaleString()}</p>
-        ${tournament.start_date ? `<p><strong>Started:</strong> ${new Date(tournament.start_date).toLocaleString()}</p>` : ''}
+        ${tournament.start_date ? `<p><strong>Actually Started:</strong> ${new Date(tournament.start_date).toLocaleString()}</p>` : '<p><strong>Actually Started:</strong> Not started yet</p>'}
         ${tournament.end_date ? `<p><strong>Ended:</strong> ${new Date(tournament.end_date).toLocaleString()}</p>` : ''}
       `;
 
@@ -407,6 +497,55 @@
       }
     }
 
+    // Create tournament
+    async function createTournament() {
+      const tournamentId = document.getElementById('tournamentId').value;
+      const tournamentName = document.getElementById('tournamentName').value;
+      const sourceContest = document.getElementById('sourceContest').value;
+      const maxTeams = document.getElementById('maxTeams').value;
+      const maxTeamsPerUser = document.getElementById('maxTeamsPerUser').value;
+      const scheduledStartTime = document.getElementById('scheduledStartTime').value;
+      
+      if (!tournamentId || !tournamentName || !sourceContest) {
+        showStatus('Please enter Tournament ID, Tournament Name, and select a Source Contest', 'error');
+        return;
+      }
+
+      setButtonLoading('createTournament', true);
+      showStatus('Creating tournament...', 'info');
+
+      try {
+        const res = await fetch('/api/tournament/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tournamentId,
+            tournamentName,
+            sourceContest,
+            maxTeams: maxTeams ? parseInt(maxTeams) : null,
+            maxTeamsPerUser: maxTeamsPerUser ? parseInt(maxTeamsPerUser) : 1,
+            scheduledStartTime: scheduledStartTime ? scheduledStartTime + ':00' : null
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showStatus('Tournament created successfully!', 'success');
+          await loadTournamentInfo(); // Refresh tournament info
+        } else {
+          showStatus(data.error || 'Failed to create tournament', 'error');
+        }
+      } catch (err) {
+        console.error('Failed to create tournament:', err);
+        showStatus('Network error - failed to create tournament', 'error');
+      } finally {
+        setButtonLoading('createTournament', false);
+      }
+    }
+
     // Create tournament bracket
     async function createBracket() {
       const tournamentId = document.getElementById('tournamentId').value;
@@ -435,7 +574,11 @@
         const data = await res.json();
 
         if (res.ok) {
-          showStatus(`Tournament bracket created successfully! ${data.matchupsCreated} matchups created.`, 'success');
+          let message = `Tournament bracket created successfully! ${data.matchupsCreated} matchups created.`;
+          if (data.autoNominated > 0) {
+            message += ` Auto-nominated ${data.autoNominated} teams based on ELO ratings.`;
+          }
+          showStatus(message, 'success');
           await loadTournamentInfo(); // Refresh tournament info
         } else {
           showStatus(data.error || 'Failed to create tournament bracket', 'error');
@@ -583,12 +726,15 @@
           return; // Will redirect
         }
         
-        console.log('Loading tournament info...');
+        console.log('Loading contests and tournament info...');
+        // Load available contests
+        await loadAvailableContests();
         // Load initial tournament info
         await loadTournamentInfo();
 
         console.log('Setting up event handlers...');
         // Add button handlers
+        document.getElementById('createTournament').addEventListener('click', createTournament);
         document.getElementById('createBracket').addEventListener('click', createBracket);
         document.getElementById('initializeTournament').addEventListener('click', initializeTournament);
         document.getElementById('activateNext').addEventListener('click', activateNextMatchup);

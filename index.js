@@ -1978,6 +1978,68 @@ app.post('/api/tournament/activate-next/:tournamentId', requireAdmin, (req, res)
     });
 });
 
+// Get current active tournament
+app.get('/api/tournament/current', (req, res) => {
+    db.get(`
+        SELECT * FROM tournaments 
+        WHERE status IN ('setup', 'active') 
+        ORDER BY 
+            CASE status WHEN 'active' THEN 1 WHEN 'setup' THEN 2 END,
+            created_at DESC 
+        LIMIT 1
+    `, (err, tournament) => {
+        if (err) {
+            console.error('Error getting current tournament:', err);
+            return res.status(500).json({ error: 'Failed to get current tournament' });
+        }
+        
+        res.json({ tournament });
+    });
+});
+
+// Helper function to get tournament deadline
+function getTournamentDeadline(callback) {
+    db.get(`
+        SELECT scheduled_start_time FROM tournaments 
+        WHERE status IN ('setup', 'active') 
+        ORDER BY 
+            CASE status WHEN 'active' THEN 1 WHEN 'setup' THEN 2 END,
+            created_at DESC 
+        LIMIT 1
+    `, (err, result) => {
+        if (err) {
+            console.error('Error getting tournament deadline:', err);
+            return callback(err, null);
+        }
+        
+        if (result && result.scheduled_start_time) {
+            const deadline = new Date(result.scheduled_start_time);
+            callback(null, deadline);
+        } else {
+            // No tournament found
+            callback(new Error('No tournament found with setup or active status'), null);
+        }
+    });
+}
+
+// Get available contests for tournament creation
+app.get('/api/tournament/available-contests', requireAdmin, (req, res) => {
+    db.all(`
+        SELECT DISTINCT tournament as contest, COUNT(*) as team_count
+        FROM teams 
+        WHERE tournament IS NOT NULL AND tournament != ''
+        GROUP BY tournament
+        ORDER BY tournament
+    `, (err, contests) => {
+        if (err) {
+            console.error('Error getting available contests:', err);
+            return res.status(500).json({ error: 'Failed to get available contests' });
+        }
+        
+        res.json({ contests });
+    });
+});
+
 // Get tournament info
 app.get('/api/tournament/info/:tournamentId', (req, res) => {
     const { tournamentId } = req.params;
@@ -2017,6 +2079,68 @@ app.get('/api/tournament/info/:tournamentId', (req, res) => {
     });
 });
 
+// Create tournament (admin endpoint)
+app.post('/api/tournament/create', requireAdmin, (req, res) => {
+    const { 
+        tournamentId, 
+        tournamentName, 
+        sourceContest, 
+        maxTeams, 
+        maxTeamsPerUser, 
+        scheduledStartTime 
+    } = req.body;
+    
+    if (!tournamentId || !tournamentName || !sourceContest) {
+        return res.status(400).json({ 
+            error: 'Tournament ID, name, and source contest are required' 
+        });
+    }
+    
+    // Process scheduled start time to preserve local timezone
+    let processedStartTime = null;
+    if (scheduledStartTime) {
+        // If it's already a full ISO string, use as-is
+        if (scheduledStartTime.includes('T') && scheduledStartTime.length > 16) {
+            processedStartTime = scheduledStartTime;
+        } else {
+            // If it's datetime-local format (YYYY-MM-DDTHH:MM), treat as local time
+            processedStartTime = scheduledStartTime;
+        }
+    }
+
+    // Insert tournament record
+    db.run(`
+        INSERT OR REPLACE INTO tournaments (
+            id, 
+            name, 
+            source_contest, 
+            max_teams, 
+            max_teams_per_user, 
+            scheduled_start_time,
+            status,
+            created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'setup', datetime('now'))
+    `, [
+        tournamentId, 
+        tournamentName, 
+        sourceContest, 
+        maxTeams || null, 
+        maxTeamsPerUser || 1, 
+        processedStartTime
+    ], function(err) {
+        if (err) {
+            console.error('Error creating tournament:', err);
+            return res.status(500).json({ error: 'Failed to create tournament' });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Tournament created successfully',
+            tournamentId
+        });
+    });
+});
+
 // Create tournament bracket (admin endpoint)
 app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
     const { tournamentId, tournamentName } = req.body;
@@ -2025,47 +2149,211 @@ app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
         return res.status(400).json({ error: 'Tournament ID and name are required' });
     }
     
-    // Execute the bracket creation script programmatically
-    const { spawn } = require('child_process');
-    const scriptPath = path.join(__dirname, 'scripts', 'create_tournament_bracket.js');
-    
-    // Set environment variables for the script
-    const env = { ...process.env };
-    env.TOURNAMENT_ID = tournamentId;
-    env.TOURNAMENT_NAME = tournamentName;
-    
-    const child = spawn('node', [scriptPath], { env });
-    
-    let output = '';
-    let errorOutput = '';
-    
-    child.stdout.on('data', (data) => {
-        output += data.toString();
-    });
-    
-    child.stderr.on('data', (data) => {
-        errorOutput += data.toString();
-    });
-    
-    child.on('close', (code) => {
-        if (code === 0) {
-            // Extract matchup count from output
-            const matchupMatch = output.match(/Created (\d+) first round matchups/);
-            const matchupsCreated = matchupMatch ? parseInt(matchupMatch[1]) : 0;
-            
-            res.json({ 
-                success: true, 
-                message: 'Tournament bracket created successfully',
-                matchupsCreated,
-                output: output
-            });
-        } else {
-            console.error('Bracket creation failed:', errorOutput);
-            res.status(500).json({ 
-                error: 'Failed to create tournament bracket',
-                details: errorOutput || output
-            });
+    // Step 1: Get tournament configuration with setup status
+    db.get('SELECT * FROM tournaments WHERE id = ? AND status = ?', [tournamentId, 'setup'], (err, tournament) => {
+        if (err) {
+            console.error('Error getting tournament info:', err);
+            return res.status(500).json({ error: 'Failed to get tournament info' });
         }
+        
+        if (!tournament) {
+            return res.status(404).json({ error: 'Tournament not found or not in setup status. Please create the tournament first.' });
+        }
+        
+        const sourceContest = tournament.source_contest;
+        const maxTeams = tournament.max_teams;
+        const maxTeamsPerUser = tournament.max_teams_per_user || 1;
+        
+        if (!sourceContest) {
+            return res.status(400).json({ error: 'Tournament must have a source contest specified' });
+        }
+        
+        console.log(`Processing tournament: ${tournament.name}, source: ${sourceContest}, max teams: ${maxTeams}`);
+        
+        // Step 2: Check current nomination count
+        db.get(
+            'SELECT COUNT(*) as count FROM tournament_nominations WHERE tournament = ?',
+            [sourceContest],
+            (err, nominationCount) => {
+                if (err) {
+                    console.error('Error checking nomination count:', err);
+                    return res.status(500).json({ error: 'Failed to check nomination count' });
+                }
+                
+                const currentNominations = nominationCount.count;
+                console.log(`Current nominations: ${currentNominations}, max teams: ${maxTeams}`);
+                
+                let autoNominatedCount = 0;
+                
+                if (maxTeams && currentNominations >= maxTeams) {
+                    // Step 3a: We have enough nominations, activate and create bracket
+                    console.log('Sufficient nominations found, activating tournament...');
+                    activateAndCreateBracket();
+                } else {
+                    // Step 3b: Fill remaining spots with best ELO teams
+                    const spotsToFill = maxTeams ? (maxTeams - currentNominations) : 0;
+                    console.log(`Need to fill ${spotsToFill} more spots with best ELO teams...`);
+                    fillWithBestEloTeams(spotsToFill);
+                }
+                
+                function fillWithBestEloTeams(spotsNeeded) {
+                    if (spotsNeeded <= 0) {
+                        activateAndCreateBracket();
+                        return;
+                    }
+                    
+                    // Get teams with latest ELO ratings, excluding already nominated teams
+                    const sql = `
+                        SELECT t.id, t.username, t.user_id, t.tournament,
+                               COALESCE(er.elo, 1500) as latest_elo
+                        FROM teams t
+                        LEFT JOIN (
+                            SELECT team_id, elo,
+                                   ROW_NUMBER() OVER (PARTITION BY team_id ORDER BY created_at DESC) as rn
+                            FROM elo_ratings
+                        ) er ON t.id = er.team_id AND er.rn = 1
+                        WHERE t.tournament = ?
+                        AND t.id NOT IN (
+                            SELECT id FROM tournament_nominations WHERE tournament = ?
+                        )
+                        ORDER BY latest_elo DESC
+                    `;
+                    
+                    db.all(sql, [sourceContest, sourceContest], (err, availableTeams) => {
+                        if (err) {
+                            console.error('Error getting available teams:', err);
+                            return res.status(500).json({ error: 'Failed to get available teams' });
+                        }
+                        
+                        console.log(`Found ${availableTeams.length} available teams to choose from`);
+                        
+                        // Group by user and limit per user
+                        const userTeamCounts = {};
+                        const teamsToNominate = [];
+                        
+                        // First, get current nomination counts per user
+                        db.all(
+                            'SELECT user_id, COUNT(*) as count FROM tournament_nominations WHERE tournament = ? GROUP BY user_id',
+                            [sourceContest],
+                            (err, userCounts) => {
+                                if (err) {
+                                    console.error('Error getting user nomination counts:', err);
+                                    return res.status(500).json({ error: 'Failed to get user counts' });
+                                }
+                                
+                                // Initialize user counts
+                                userCounts.forEach(uc => {
+                                    if (uc.user_id) {
+                                        userTeamCounts[uc.user_id] = uc.count;
+                                    }
+                                });
+                                
+                                // Select teams respecting max per user limit
+                                for (const team of availableTeams) {
+                                    if (teamsToNominate.length >= spotsNeeded) break;
+                                    
+                                    const currentUserCount = userTeamCounts[team.user_id] || 0;
+                                    if (currentUserCount < maxTeamsPerUser) {
+                                        teamsToNominate.push(team);
+                                        userTeamCounts[team.user_id] = currentUserCount + 1;
+                                    }
+                                }
+                                
+                                console.log(`Selected ${teamsToNominate.length} teams to auto-nominate`);
+                                autoNominatedCount = teamsToNominate.length;
+                                
+                                // Insert the auto-nominations
+                                if (teamsToNominate.length > 0) {
+                                    let completed = 0;
+                                    teamsToNominate.forEach(team => {
+                                        db.run(
+                                            'INSERT INTO tournament_nominations (id, tournament, username, draft_id, user_id) VALUES (?, ?, ?, ?, ?)',
+                                            [team.id, sourceContest, team.username, team.id, team.user_id],
+                                            (err) => {
+                                                if (err) {
+                                                    console.error('Error auto-nominating team:', err);
+                                                } else {
+                                                    console.log(`Auto-nominated team ${team.id} (ELO: ${team.latest_elo}) for user ${team.username}`);
+                                                }
+                                                completed++;
+                                                if (completed === teamsToNominate.length) {
+                                                    activateAndCreateBracket();
+                                                }
+                                            }
+                                        );
+                                    });
+                                } else {
+                                    activateAndCreateBracket();
+                                }
+                            }
+                        );
+                    });
+                }
+                
+                function activateAndCreateBracket() {
+                    // Update tournament status to active
+                    db.run(
+                        'UPDATE tournaments SET status = ?, start_date = datetime(\'now\') WHERE id = ?',
+                        ['active', tournamentId],
+                        (err) => {
+                            if (err) {
+                                console.error('Error activating tournament:', err);
+                                return res.status(500).json({ error: 'Failed to activate tournament' });
+                            }
+                            
+                            console.log('Tournament activated, creating bracket...');
+                            
+                            // Execute the bracket creation script programmatically
+                            const { spawn } = require('child_process');
+                            const scriptPath = path.join(__dirname, 'scripts', 'create_tournament_bracket.js');
+                            
+                            // Set environment variables for the script
+                            const env = { ...process.env };
+                            env.TOURNAMENT_ID = tournamentId;
+                            env.TOURNAMENT_NAME = tournamentName;
+                            env.SOURCE_CONTEST = sourceContest;
+                            env.MAX_TEAMS = maxTeams ? maxTeams.toString() : '';
+                            env.MAX_TEAMS_PER_USER = maxTeamsPerUser.toString();
+                            
+                            const child = spawn('node', [scriptPath], { env });
+                            
+                            let output = '';
+                            let errorOutput = '';
+                            
+                            child.stdout.on('data', (data) => {
+                                output += data.toString();
+                            });
+                            
+                            child.stderr.on('data', (data) => {
+                                errorOutput += data.toString();
+                            });
+                            
+                            child.on('close', (code) => {
+                                if (code === 0) {
+                                    // Extract matchup count from output
+                                    const matchupMatch = output.match(/Created (\d+) first round matchups/);
+                                    const matchupsCreated = matchupMatch ? parseInt(matchupMatch[1]) : 0;
+                                    
+                                    res.json({ 
+                                        success: true, 
+                                        message: 'Tournament bracket created successfully',
+                                        matchupsCreated,
+                                        autoNominated: autoNominatedCount,
+                                        output: output
+                                    });
+                                } else {
+                                    console.error('Bracket creation failed:', errorOutput);
+                                    res.status(500).json({ 
+                                        error: 'Failed to create tournament bracket',
+                                        details: errorOutput || output
+                                    });
+                                }
+                            });
+                        }
+                    );
+                }
+            }
+        );
     });
 });
 
@@ -3846,53 +4134,91 @@ app.post('/my/nominate-team', requireAuth, express.json(), (req, res) => {
   }
 
   // Check if nominations deadline has passed
-  const deadline = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
-  const now = new Date();
-  if (now >= deadline) {
-    return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
-  }
+  getTournamentDeadline((err, deadline) => {
+    if (err) {
+      console.error('Error checking deadline:', err);
+      return res.status(500).json({ error: 'Failed to check deadline' });
+    }
+    
+    const now = new Date();
+    if (now >= deadline) {
+      return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
+    }
 
-  // First verify the team exists and belongs to the user
-  db.get(
-    'SELECT id, tournament, username, draft_id, user_id FROM teams WHERE id = ? AND user_id = ?',
-    [teamId, userId],
-    (err, team) => {
-      if (err) {
-        console.error('DB error verifying team:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
+    // Continue with nomination logic
+    continueNomination();
+  });
+  
+  function continueNomination() {
+    // First get tournament limits
+    db.get(
+      'SELECT max_teams_per_user, max_teams FROM tournaments WHERE status IN (\'setup\', \'active\') ORDER BY CASE status WHEN \'active\' THEN 1 WHEN \'setup\' THEN 2 END, created_at DESC LIMIT 1',
+      (err, tournamentLimits) => {
+        if (err) {
+          console.error('DB error getting tournament limits:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
 
-      if (!team) {
-        return res.status(404).json({ error: 'Team not found or not owned by user' });
-      }
+        if (!tournamentLimits) {
+          return res.status(400).json({ error: 'No active tournament found' });
+        }
 
-      // Check if user already has 5 nominations for this tournament
-      db.get(
-        'SELECT COUNT(*) as count FROM tournament_nominations WHERE user_id = ? AND tournament = ?',
-        [userId, tournament],
-        (err2, userCount) => {
-          if (err2) {
-            console.error('DB error checking user nominations:', err2);
-            return res.status(500).json({ error: 'Database error' });
-          }
+        const maxTeamsPerUser = tournamentLimits.max_teams_per_user || 1;
+        const maxTeams = tournamentLimits.max_teams;
 
-          if (userCount.count >= 4) {
-            return res.status(400).json({ error: 'You can only nominate up to 4 teams per tournament' });
-          }
+        // Now verify the team exists and belongs to the user
+        db.get(
+          'SELECT id, tournament, username, draft_id, user_id FROM teams WHERE id = ? AND user_id = ?',
+          [teamId, userId],
+          (err, team) => {
+            if (err) {
+              console.error('DB error verifying team:', err);
+              return res.status(500).json({ error: 'Database error' });
+            }
 
-          // Check if tournament already has 256 nominations
-          db.get(
-            'SELECT COUNT(*) as count FROM tournament_nominations WHERE tournament = ?',
-            [tournament],
-            (err3, totalCount) => {
-              if (err3) {
-                console.error('DB error checking total nominations:', err3);
-                return res.status(500).json({ error: 'Database error' });
-              }
+            if (!team) {
+              return res.status(404).json({ error: 'Team not found or not owned by user' });
+            }
 
-              if (totalCount.count >= 256) {
-                return res.status(400).json({ error: 'Tournament nominations are full (256 teams maximum)' });
-              }
+            // Check if user already has max nominations for this tournament
+            db.get(
+              'SELECT COUNT(*) as count FROM tournament_nominations WHERE user_id = ? AND tournament = ?',
+              [userId, tournament],
+              (err2, userCount) => {
+                if (err2) {
+                  console.error('DB error checking user nominations:', err2);
+                  return res.status(500).json({ error: 'Database error' });
+                }
+
+                if (userCount.count >= maxTeamsPerUser) {
+                  return res.status(400).json({ error: `You can only nominate up to ${maxTeamsPerUser} teams per tournament` });
+                }
+
+                // Check if tournament already has max nominations (if limit is set)
+                if (maxTeams) {
+                  db.get(
+                    'SELECT COUNT(*) as count FROM tournament_nominations WHERE tournament = ?',
+                    [tournament],
+                    (err3, totalCount) => {
+                      if (err3) {
+                        console.error('DB error checking total nominations:', err3);
+                        return res.status(500).json({ error: 'Database error' });
+                      }
+
+                      if (totalCount.count >= maxTeams) {
+                        return res.status(400).json({ error: `Tournament nominations are full (${maxTeams} teams maximum)` });
+                      }
+
+                      // Continue with nomination
+                      insertNomination();
+                    }
+                  );
+                } else {
+                  // No max teams limit, continue with nomination
+                  insertNomination();
+                }
+
+                function insertNomination() {
 
               // Check if team is already nominated
               db.get(
@@ -3927,12 +4253,14 @@ app.post('/my/nominate-team', requireAuth, express.json(), (req, res) => {
                   );
                 }
               );
-            }
-          );
-        }
-      );
-    }
-  );
+                } // End insertNomination function
+              }
+            );
+          }
+        );
+      }
+    );
+  } // End continueNomination function
 });
 
 app.post('/my/unnominate-team', requireAuth, express.json(), (req, res) => {
@@ -3944,13 +4272,23 @@ app.post('/my/unnominate-team', requireAuth, express.json(), (req, res) => {
   }
 
   // Check if nominations deadline has passed
-  const deadline = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
-  const now = new Date();
-  if (now >= deadline) {
-    return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
-  }
+  getTournamentDeadline((err, deadline) => {
+    if (err) {
+      console.error('Error checking deadline:', err);
+      return res.status(500).json({ error: 'Failed to check deadline' });
+    }
+    
+    const now = new Date();
+    if (now >= deadline) {
+      return res.status(400).json({ error: 'Tournament nominations are now closed. The deadline has passed.' });
+    }
 
-  // Remove the nomination (only if it belongs to the user)
+    // Continue with unnomination logic
+    continueUnnomination();
+  });
+  
+  function continueUnnomination() {
+    // Remove the nomination (only if it belongs to the user)
   db.run(
     'DELETE FROM tournament_nominations WHERE id = ? AND tournament = ? AND user_id = ?',
     [teamId, tournament, userId],
@@ -3971,6 +4309,7 @@ app.post('/my/unnominate-team', requireAuth, express.json(), (req, res) => {
       });
     }
   );
+  } // End continueUnnomination function
 });
 
 app.get('/my/nominations', requireAuth, (req, res) => {
@@ -3996,17 +4335,45 @@ app.get('/my/nominations', requireAuth, (req, res) => {
 });
 
 app.get('/tournament/deadline-status', (req, res) => {
-  const deadline = new Date('2025-08-08T12:00:00-04:00'); // EDT (Eastern Daylight Time)
-  const now = new Date();
-  const hasDeadlinePassed = now >= deadline;
-  const timeRemaining = hasDeadlinePassed ? 0 : deadline - now;
+  getTournamentDeadline((err, deadline) => {
+    if (err) {
+      console.error('Error getting deadline:', err);
+      return res.status(500).json({ error: 'Failed to get deadline' });
+    }
+    
+    const now = new Date();
+    const hasDeadlinePassed = now >= deadline;
+    const timeRemaining = hasDeadlinePassed ? 0 : deadline - now;
 
-  res.json({
-    deadline: deadline.toISOString(),
-    hasDeadlinePassed: hasDeadlinePassed,
-    timeRemaining: timeRemaining,
-    currentTime: now.toISOString()
-  });
+    res.json({
+      deadline: deadline.toISOString(),
+      hasDeadlinePassed: hasDeadlinePassed,
+      timeRemaining: timeRemaining,
+      currentTime: now.toISOString()
+    });
+  }); // End getTournamentDeadline callback
+});
+
+// Get tournament nominations count
+app.get('/api/tournament/nominations-count/:tournament', (req, res) => {
+  const { tournament } = req.params;
+  
+  db.get(
+    'SELECT COUNT(*) as count FROM tournament_nominations WHERE tournament = ?',
+    [tournament],
+    (err, result) => {
+      if (err) {
+        console.error('DB error getting nominations count:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      res.json({ 
+        count: result.count,
+        max: 256,
+        tournament: tournament
+      });
+    }
+  );
 });
 
 // === NEW: Public voting history for any team ===
