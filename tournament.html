@@ -2460,7 +2460,7 @@
         <div class="modal-body">
           <div class="teams-comparison">
             <div class="team-column">
-              <div class="team-header ${matchup.winner_id === matchup.team1_id ? 'winner' : 'loser'}">
+              <div class="team-header ${matchup.winner_id ? (matchup.winner_id === matchup.team1_id ? 'winner' : 'loser') : ''}">
                 <h3>${matchup.team1_username || 'TBD'}</h3>
                 <div class="vote-info">
                   <span class="votes">Votes: ${matchup.team1_votes || 0}</span>
@@ -2470,7 +2470,7 @@
             </div>
             
             <div class="team-column">
-              <div class="team-header ${matchup.winner_id === matchup.team2_id ? 'winner' : 'loser'}">
+              <div class="team-header ${matchup.winner_id ? (matchup.winner_id === matchup.team2_id ? 'winner' : 'loser') : ''}">
                 <h3>${matchup.team2_username || 'TBD'}</h3>
                 <div class="vote-info">
                   <span class="votes">Votes: ${matchup.team2_votes || 0}</span>
