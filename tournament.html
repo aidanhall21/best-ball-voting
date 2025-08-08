@@ -631,7 +631,183 @@
       margin-bottom: 1rem;
     }
 
-    /* Bracket Styles */
+    /* March Madness Style Bracket */
+    .bracket-container {
+      background: rgba(240, 246, 252, 0.03);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: 12px;
+      padding: 2rem;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    /* Desktop bracket layout */
+    @media (min-width: 1024px) {
+      .march-madness-bracket {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        grid-template-rows: 1fr auto 1fr;
+        gap: 3rem;
+        min-height: 800px;
+        width: 100%;
+        position: relative;
+      }
+
+      .bracket-region {
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+
+      .bracket-region.top-left {
+        grid-column: 1;
+        grid-row: 1;
+        justify-content: flex-end;
+      }
+
+      .bracket-region.bottom-left {
+        grid-column: 1;
+        grid-row: 3;
+        justify-content: flex-start;
+      }
+
+      .bracket-region.top-right {
+        grid-column: 3;
+        grid-row: 1;
+        justify-content: flex-end;
+      }
+
+      .bracket-region.bottom-right {
+        grid-column: 3;
+        grid-row: 3;
+        justify-content: flex-start;
+      }
+
+      .bracket-center {
+        grid-column: 2;
+        grid-row: 1 / 4;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-width: 300px;
+      }
+
+      .region-rounds {
+        display: flex;
+        gap: 2rem;
+        height: 100%;
+      }
+
+      .bracket-round {
+        min-width: 180px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .round-title {
+        color: #f0f6fc;
+        text-align: center;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: rgba(13, 17, 23, 0.95);
+        padding: 0.5rem;
+        border-radius: 6px;
+      }
+
+      .round-matchups {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        flex: 1;
+        gap: 0.75rem;
+      }
+
+      /* Spacing adjustments for each round */
+      .round-1 .round-matchups {
+        gap: 0.5rem;
+      }
+
+      .round-2 .round-matchups {
+        gap: 1rem;
+      }
+
+      .round-3 .round-matchups {
+        gap: 2rem;
+      }
+
+      .round-4 .round-matchups {
+        gap: 4rem;
+      }
+
+      .round-5 .round-matchups {
+        gap: 8rem;
+      }
+
+      .round-6 .round-matchups {
+        gap: 16rem;
+      }
+
+      /* Connecting lines between rounds */
+      .bracket-matchup {
+        position: relative;
+      }
+
+      .bracket-matchup::after {
+        content: '';
+        position: absolute;
+        right: -1rem;
+        top: 50%;
+        width: 2rem;
+        height: 2px;
+        background: rgba(240, 246, 252, 0.2);
+        transform: translateY(-50%);
+      }
+
+      /* Right region flows inward, so lines go left */
+      .bracket-region.top-right .bracket-matchup::after,
+      .bracket-region.bottom-right .bracket-matchup::after {
+        left: -1rem;
+        right: auto;
+      }
+
+      /* No connecting lines on the last round of each region */
+      .bracket-round:last-child .bracket-matchup::after {
+        display: none;
+      }
+
+      /* Vertical connectors for multiple matchups feeding into next round */
+      .round-matchups {
+        position: relative;
+      }
+
+      .round-matchups::before {
+        content: '';
+        position: absolute;
+        right: -2rem;
+        top: 25%;
+        bottom: 25%;
+        width: 2px;
+        background: rgba(240, 246, 252, 0.2);
+      }
+
+      /* Right regions have vertical connectors on the left */
+      .bracket-region.top-right .round-matchups::before,
+      .bracket-region.bottom-right .round-matchups::before {
+        left: -2rem;
+        right: auto;
+      }
+
+      /* No vertical connectors on the last round */
+      .bracket-round:last-child .round-matchups::before {
+        display: none;
+      }
+    }
+
+    /* Fallback for smaller screens */
     .bracket-grid {
       display: flex;
       gap: 2rem;
@@ -639,30 +815,33 @@
       padding: 1rem 0;
     }
 
+    @media (max-width: 1023px) {
+      .march-madness-bracket {
+        display: none;
+      }
+      .bracket-grid {
+        display: flex;
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .bracket-grid {
+        display: none;
+      }
+    }
+
     .bracket-round {
       min-width: 200px;
       flex-shrink: 0;
-    }
-
-    .round-title {
-      color: #f0f6fc;
-      text-align: center;
-      margin-bottom: 1rem;
-      font-size: 1.1rem;
-      font-weight: 600;
-    }
-
-    .round-matchups {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
     }
 
     .bracket-matchup {
       background: rgba(240, 246, 252, 0.03);
       border: 1px solid rgba(240, 246, 252, 0.1);
       border-radius: 8px;
-      padding: 1rem;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      position: relative;
     }
 
     .bracket-matchup.active {
@@ -674,14 +853,16 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.5rem;
+      padding: 0.4rem 0.6rem;
       border-radius: 4px;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.2rem;
+      font-size: 0.85rem;
     }
 
     .bracket-team.winner {
       background: rgba(46, 160, 67, 0.15);
       color: #3fb950;
+      font-weight: 600;
     }
 
     .bracket-team.active {
@@ -696,18 +877,85 @@
 
     .team-name {
       font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 120px;
     }
 
     .team-votes {
       font-weight: bold;
-      font-size: 0.9rem;
+      font-size: 0.8rem;
+      min-width: 20px;
+      text-align: right;
     }
 
     .bracket-vs {
       text-align: center;
       color: #8b949e;
-      font-size: 0.8rem;
-      margin: 0.25rem 0;
+      font-size: 0.7rem;
+      margin: 0.2rem 0;
+    }
+
+    /* Region titles */
+    .region-title {
+      color: #58a6ff;
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Center championship area */
+    .championship-area {
+      background: rgba(88, 166, 255, 0.1);
+      border: 2px solid rgba(88, 166, 255, 0.3);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+      min-width: 250px;
+    }
+
+    .championship-title {
+      color: #f0f6fc;
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(135deg, #58a6ff, #79c0ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .finals-matchup {
+      background: rgba(240, 246, 252, 0.05);
+      border: 2px solid rgba(88, 166, 255, 0.2);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .champion-display {
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 193, 7, 0.1));
+      border: 2px solid rgba(255, 215, 0, 0.5);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .champion-title {
+      color: #ffd700;
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .champion-name {
+      color: #f0f6fc;
+      font-size: 1.3rem;
+      font-weight: 700;
     }
 
     
@@ -771,13 +1019,12 @@
       cursor: pointer;
       margin: 16px auto;
       display: block;
-      transition: all 0.3s ease;
+      transition: background 0.3s ease, box-shadow 0.3s ease;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
 
     .next-button:hover {
       background: linear-gradient(45deg, #218838, #17a2b8);
-      transform: translateY(-2px);
       box-shadow: 0 6px 15px rgba(0,0,0,0.3);
     }
 
@@ -889,12 +1136,10 @@
                     tournamentData = data.tournament;
         
         if (tournamentData) {
-          console.log('Current tournament loaded:', tournamentData);
           
           // Set tournament start time from database
           if (tournamentData.scheduled_start_time) {
             tournamentStart = new Date(tournamentData.scheduled_start_time);
-            console.log('Tournament start time set to:', tournamentStart);
           } else {
             console.warn('No scheduled start time found for tournament');
           }
@@ -904,7 +1149,6 @@
           document.title = `${tournamentData.name} Tournament - Draft or Pass`;
           return tournamentData;
         } else {
-          console.log('No current tournament found');
           document.getElementById('tournamentTitle').textContent = 'No Tournament Active';
           return null;
         }
@@ -929,11 +1173,17 @@
       const timeDiff = tournamentStart - now;
 
       if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE && !tournamentViewShown) {
-        // Tournament has started - switch to tournament view (only once)
-        tournamentViewShown = true;
-        clearInterval(countdownInterval); // Stop the countdown
-        showTournamentView();
-        return;
+        // Tournament has started - check if tournament is active before showing tournament view
+        if (tournamentData && tournamentData.status === 'active') {
+          tournamentViewShown = true;
+          clearInterval(countdownInterval); // Stop the countdown
+          showTournamentView();
+          return;
+        } else {
+          // Tournament exists but is not active yet - keep showing countdown
+          console.log('Tournament countdown ended but tournament status is not active:', tournamentData?.status);
+          // Continue showing countdown until tournament becomes active
+        }
       }
 
       const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
@@ -949,6 +1199,17 @@
 
     // Tournament view functions
     async function showTournamentView() {
+      // Ensure tournament is loaded and active before proceeding
+      if (!tournamentData) {
+        await loadCurrentTournament();
+      }
+      
+      // Double-check tournament status before showing tournament view
+      if (!tournamentData || tournamentData.status !== 'active') {
+        console.error('Cannot show tournament view - tournament is not active:', tournamentData?.status);
+        return;
+      }
+      
       // Hide countdown elements and show tournament view
       document.querySelector('.tournament-container').classList.add('tournament-active');
       document.getElementById('tournamentView').style.display = 'block';
@@ -956,15 +1217,12 @@
       // Update page title
       document.querySelector('.tournament-title').textContent = 'Tournament Live';
 
-      console.log('Tournament view shown, calling tournament functions directly...');
       
       // Setup tab switching
       setupTournamentTabs();
 
-      console.log('Tournament tabs setup');
       
       // Initialize tournament system manually
-      console.log('Tournament view shown, calling tournament functions directly...');
       
       // Ensure tournament is loaded before proceeding
       if (!tournamentData) {
@@ -975,16 +1233,13 @@
         }
       }
 
-      console.log(tournamentData.id);
       
       // Call tournament functions directly
-      console.log('Making tournament API calls...');
       
       // Load current matchup
       fetch(`/api/tournament/current-matchup/${tournamentData.id}`)
           .then(response => response.json())
           .then(data => {
-            console.log('Current matchup response:', data);
             const container = document.getElementById('teamsContainer');
             
             // Handle special cases first
@@ -1133,58 +1388,9 @@
       fetch(`/api/tournament/bracket/${tournamentData.id}`)
           .then(response => response.json())
           .then(data => {
-            console.log('Bracket response:', data);
             const bracketContainer = document.querySelector('.bracket-container');
             if (data.bracket && Object.keys(data.bracket).length > 0) {
-              const rounds = Object.keys(data.bracket).sort((a, b) => parseInt(a) - parseInt(b));
-              let bracketHTML = '<div class="bracket-grid">';
-              
-              rounds.forEach(round => {
-                const roundNumber = parseInt(round);
-                const totalRounds = rounds.length;
-                const roundsFromEnd = totalRounds - roundNumber + 1;
-                
-                let roundName;
-                switch (roundsFromEnd) {
-                  case 1: roundName = 'Final'; break;
-                  case 2: roundName = 'Semifinals'; break;
-                  case 3: roundName = 'Quarterfinals'; break;
-                  default: roundName = `Round ${roundNumber}`;
-                }
-                
-                const matchups = data.bracket[round];
-                bracketHTML += `
-                  <div class="bracket-round">
-                    <h4 class="round-title">${roundName}</h4>
-                    <div class="round-matchups">
-                `;
-                
-                matchups.forEach(matchup => {
-                  const team1Status = matchup.winner_id === matchup.team1_id ? 'winner' : 
-                                     (matchup.status === 'active' ? 'active' : 'pending');
-                  const team2Status = matchup.winner_id === matchup.team2_id ? 'winner' : 
-                                     (matchup.status === 'active' ? 'active' : 'pending');
-                  
-                  bracketHTML += `
-                    <div class="bracket-matchup ${matchup.status}">
-                      <div class="bracket-team ${team1Status}">
-                        <span class="team-name">${matchup.team1_username || 'TBD'}</span>
-                        <span class="team-votes">${matchup.team1_votes || 0}</span>
-                      </div>
-                      <div class="bracket-vs">vs</div>
-                      <div class="bracket-team ${team2Status}">
-                        <span class="team-name">${matchup.team2_username || 'TBD'}</span>
-                        <span class="team-votes">${matchup.team2_votes || 0}</span>
-                      </div>
-                    </div>
-                  `;
-                });
-                
-                bracketHTML += '</div></div>';
-              });
-              
-              bracketHTML += '</div>';
-              bracketContainer.innerHTML = bracketHTML;
+              generateMarchMadnessBracket(data.bracket, bracketContainer);
             } else {
               bracketContainer.innerHTML = `
                 <div class="bracket-placeholder">
@@ -1199,9 +1405,236 @@
           });
     }
     
+    // Generate March Madness style bracket
+    function generateMarchMadnessBracket(bracket, container) {
+      const rounds = Object.keys(bracket).sort((a, b) => parseInt(a) - parseInt(b));
+      const totalRounds = rounds.length;
+      
+      // For 256 teams, we expect 8 rounds total
+      if (totalRounds !== 8) {
+        // Fallback to simple bracket for non-256 team tournaments
+        generateSimpleBracket(bracket, container);
+        return;
+      }
+      
+      // Organize matchups by regions (assuming 4 regions of 64 teams each)
+      const regions = organizeByRegions(bracket, rounds);
+      
+      let bracketHTML = `
+        <div class="march-madness-bracket">
+          <!-- Top Left Region -->
+          <div class="bracket-region top-left">
+            <div class="region-title">Midwest</div>
+            <div class="region-rounds">
+              ${generateRegionRounds(regions.topLeft, 'left')}
+            </div>
+          </div>
+          
+          <!-- Top Right Region -->
+          <div class="bracket-region top-right">
+            <div class="region-title">East</div>
+            <div class="region-rounds">
+              ${generateRegionRounds(regions.topRight, 'right')}
+            </div>
+          </div>
+          
+          <!-- Bottom Left Region -->
+          <div class="bracket-region bottom-left">
+            <div class="region-title">West</div>
+            <div class="region-rounds">
+              ${generateRegionRounds(regions.bottomLeft, 'left')}
+            </div>
+          </div>
+          
+          <!-- Bottom Right Region -->
+          <div class="bracket-region bottom-right">
+            <div class="region-title">South</div>
+            <div class="region-rounds">
+              ${generateRegionRounds(regions.bottomRight, 'right')}
+            </div>
+          </div>
+          
+          <!-- Center Championship Area -->
+          <div class="bracket-center">
+            ${generateChampionshipArea(regions.championship)}
+          </div>
+        </div>
+        
+        <!-- Fallback for mobile -->
+        <div class="bracket-grid">
+          ${generateSimpleBracketContent(bracket)}
+        </div>
+      `;
+      
+      container.innerHTML = bracketHTML;
+    }
+    
+    // Organize bracket data by regions
+    function organizeByRegions(bracket, rounds) {
+      const regions = {
+        topLeft: {},
+        topRight: {},
+        bottomLeft: {},
+        bottomRight: {},
+        championship: {}
+      };
+      
+      rounds.forEach(round => {
+        const roundNum = parseInt(round);
+        const matchups = bracket[round];
+        
+        if (roundNum <= 6) {
+          // Regional rounds (1-6)
+          regions.topLeft[round] = matchups.filter((_, i) => i < matchups.length / 4);
+          regions.topRight[round] = matchups.filter((_, i) => i >= matchups.length / 4 && i < matchups.length / 2);
+          regions.bottomLeft[round] = matchups.filter((_, i) => i >= matchups.length / 2 && i < (3 * matchups.length) / 4);
+          regions.bottomRight[round] = matchups.filter((_, i) => i >= (3 * matchups.length) / 4);
+        } else {
+          // Championship rounds (7-8)
+          regions.championship[round] = matchups;
+        }
+      });
+      
+      return regions;
+    }
+    
+    // Generate rounds for a region
+    function generateRegionRounds(regionData, direction) {
+      const rounds = Object.keys(regionData).sort((a, b) => {
+        // For right regions, reverse the order to flow inward
+        return direction === 'right' ? parseInt(b) - parseInt(a) : parseInt(a) - parseInt(b);
+      });
+      
+      return rounds.map(round => {
+        const roundNumber = parseInt(round);
+        const roundName = getRoundName(roundNumber, 8);
+        const matchups = regionData[round];
+        
+        return `
+          <div class="bracket-round round-${roundNumber}">
+            <h4 class="round-title">${roundName}</h4>
+            <div class="round-matchups">
+              ${matchups.map(matchup => generateMatchupHTML(matchup)).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // Generate championship area
+    function generateChampionshipArea(championshipData) {
+      const rounds = Object.keys(championshipData).sort((a, b) => parseInt(a) - parseInt(b));
+      
+      if (rounds.length === 0) {
+        return `
+          <div class="championship-area">
+            <h3 class="championship-title">Championship</h3>
+            <p style="color: #8b949e;">Championship matchups will appear here</p>
+          </div>
+        `;
+      }
+      
+      let championshipHTML = `
+        <div class="championship-area">
+          <h3 class="championship-title">Championship</h3>
+      `;
+      
+      rounds.forEach(round => {
+        const roundNumber = parseInt(round);
+        const roundName = roundNumber === 8 ? 'Final' : 'Semifinals';
+        const matchups = championshipData[round];
+        
+        championshipHTML += `
+          <div class="championship-round">
+            <h4 style="color: #f0f6fc; margin-bottom: 1rem;">${roundName}</h4>
+            ${matchups.map(matchup => {
+              if (roundNumber === 8 && matchup.winner_id) {
+                return `
+                  <div class="finals-matchup">
+                    ${generateMatchupHTML(matchup)}
+                  </div>
+                  <div class="champion-display">
+                    <div class="champion-title">🏆 Champion</div>
+                    <div class="champion-name">${matchup.winner_id === matchup.team1_id ? matchup.team1_username : matchup.team2_username}</div>
+                  </div>
+                `;
+              } else {
+                return `<div class="finals-matchup">${generateMatchupHTML(matchup)}</div>`;
+              }
+            }).join('')}
+          </div>
+        `;
+      });
+      
+      championshipHTML += '</div>';
+      return championshipHTML;
+    }
+    
+    // Generate matchup HTML
+    function generateMatchupHTML(matchup) {
+      const team1Status = matchup.winner_id === matchup.team1_id ? 'winner' : 
+                         (matchup.status === 'active' ? 'active' : '');
+      const team2Status = matchup.winner_id === matchup.team2_id ? 'winner' : 
+                         (matchup.status === 'active' ? 'active' : '');
+      
+      return `
+        <div class="bracket-matchup ${matchup.status}">
+          <div class="bracket-team ${team1Status}">
+            <span class="team-name">${matchup.team1_username || 'TBD'}</span>
+            <span class="team-votes">${matchup.team1_votes || 0}</span>
+          </div>
+          <div class="bracket-vs">vs</div>
+          <div class="bracket-team ${team2Status}">
+            <span class="team-name">${matchup.team2_username || 'TBD'}</span>
+            <span class="team-votes">${matchup.team2_votes || 0}</span>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Get round name based on round number
+    function getRoundName(roundNumber, totalRounds) {
+      const roundsFromEnd = totalRounds - roundNumber + 1;
+      switch (roundsFromEnd) {
+        case 1: return 'Final';
+        case 2: return 'Semifinals';
+        case 3: return 'Quarterfinals';
+        case 4: return 'Sweet 16';
+        case 5: return 'Round of 32';
+        case 6: return 'Round of 64';
+        case 7: return 'Round of 128';
+        case 8: return 'Round of 256';
+        default: return `Round ${roundNumber}`;
+      }
+    }
+    
+    // Fallback simple bracket generator
+    function generateSimpleBracket(bracket, container) {
+      container.innerHTML = `<div class="bracket-grid">${generateSimpleBracketContent(bracket)}</div>`;
+    }
+    
+    // Generate simple bracket content
+    function generateSimpleBracketContent(bracket) {
+      const rounds = Object.keys(bracket).sort((a, b) => parseInt(a) - parseInt(b));
+      
+      return rounds.map(round => {
+        const roundNumber = parseInt(round);
+        const roundName = getRoundName(roundNumber, rounds.length);
+        const matchups = bracket[round];
+        
+        return `
+          <div class="bracket-round">
+            <h4 class="round-title">${roundName}</h4>
+            <div class="round-matchups">
+              ${matchups.map(matchup => generateMatchupHTML(matchup)).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
     // Cast tournament vote (exactly like draftorpass.html)
     window.castTournamentVote = async function(matchupId, teamId) {
-      console.log('Casting tournament vote:', matchupId, teamId);
       
       // Get matchup data to determine winner/loser
       const currentMatchup = document.querySelector('.tournament-matchup');
@@ -1226,7 +1659,6 @@
       const loserId = teamId === team1Id ? team2Id : team1Id;
       const isTeam1Winner = winnerId === team1Id;
       
-      console.log('Winner:', winnerId, 'Loser:', loserId);
       
       // Get choose buttons
       const chooseBtn1 = team1Card.querySelector('.choose-button');
@@ -1290,21 +1722,17 @@
       ownerInfo2.innerHTML = `<div class="owner-stats">Voting...</div>`;
       
       // Background network calls (like draftorpass.html)
-      console.log('🚀 Starting background network calls...');
       (async () => {
         try {
           // Step 1: Call /versus first
-          console.log('🔄 Background: Calling /versus...', { winnerId, loserId });
           let captchaToken;
           try {
             captchaToken = await getCaptchaToken();
-            console.log('✅ Captcha token obtained:', captchaToken ? 'SUCCESS' : 'FAILED');
           } catch (err) {
             console.error('❌ Unable to obtain Turnstile token:', err);
             return;
           }
           
-          console.log('📡 Making /versus request...');
           const versusResponse = await fetch('/versus', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1315,7 +1743,6 @@
             })
           });
           
-          console.log('📥 /versus response status:', versusResponse.status);
           
           if (!versusResponse.ok) {
             const errorText = await versusResponse.text();
@@ -1323,10 +1750,8 @@
             return;
           }
           
-          console.log('✅ Background: /versus call successful');
           
           // Step 2: If /versus succeeded, log to tournament system
-          console.log('🔄 Background: Calling /api/tournament/vote...');
           const tournamentResponse = await fetch('/api/tournament/vote', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1336,15 +1761,11 @@
             })
           });
           
-          console.log('📥 Tournament vote response status:', tournamentResponse.status);
           const tournamentData = await tournamentResponse.json();
-          console.log('📊 Tournament data:', tournamentData);
           
           if (tournamentData.success) {
-            console.log('✅ Background: Tournament vote logged successfully');
             
             // Use the vote count data from the tournament vote response
-            console.log('📊 Tournament vote data:', tournamentData);
             
             // Handle both response structures: 
             // - Ongoing matchup: votes directly on tournamentData
@@ -1534,7 +1955,6 @@
       nextButton.textContent = "Next Matchup →";
       nextButton.className = "next-button";
       nextButton.onclick = async (e) => {
-        console.log('🔘 Next Matchup button clicked');
         
         // Show loading state
         const originalText = nextButton.textContent;
@@ -1566,7 +1986,6 @@
       fetch(`/api/tournament/current-matchup/${tournamentData.id}`)
         .then(response => response.json())
         .then(data => {
-          console.log('Next matchup response:', data);
           const container = document.getElementById('teamsContainer');
           
           // Handle special cases first
@@ -1765,7 +2184,6 @@
     document.addEventListener('DOMContentLoaded', async function() {
       // Load tournament info first
       await loadCurrentTournament();
-      console.log(tournamentStart);
       
       // Check if tournament should be active based on status or time
       if (tournamentData) {

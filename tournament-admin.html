@@ -112,20 +112,6 @@
     .initialize-tournament-button:hover:not(:disabled) {
       background: #2563eb;
     }
-    .activate-next-button {
-      background: #f59e0b;
-      color: white;
-    }
-    .activate-next-button:hover:not(:disabled) {
-      background: #d97706;
-    }
-    .danger-button {
-      background: #ef4444;
-      color: white;
-    }
-    .danger-button:hover:not(:disabled) {
-      background: #dc2626;
-    }
     .status-message {
       margin-top: 20px;
       padding: 10px;
@@ -305,13 +291,6 @@
           </div>
         </button>
         
-        <button id="activateNext" class="action-button activate-next-button">
-          <div class="button-loading">
-            <div class="loading-spinner"></div>
-            <span>Activate Next Matchup</span>
-          </div>
-        </button>
-        
         <button id="refreshInfo" class="action-button" style="background: #6b7280; color: white;">
           <div class="button-loading">
             <div class="loading-spinner"></div>
@@ -321,17 +300,7 @@
       </div>
     </div>
 
-    <div class="settings-group">
-      <h2>Danger Zone</h2>
-      <div class="button-group">
-        <button id="resetTournament" class="action-button danger-button">
-          <div class="button-loading">
-            <div class="loading-spinner"></div>
-            <span>Reset Tournament (Delete All Data)</span>
-          </div>
-        </button>
-      </div>
-    </div>
+
 
     <div id="statusMessage" class="status-message"></div>
   </div>
@@ -627,93 +596,9 @@
       }
     }
 
-    // Activate next matchup
-    async function activateNextMatchup() {
-      const tournamentId = document.getElementById('tournamentId').value;
-      
-      if (!tournamentId) {
-        showStatus('Please enter Tournament ID', 'error');
-        return;
-      }
 
-      setButtonLoading('activateNext', true);
-      showStatus('Activating next matchup...', 'info');
 
-      try {
-        const res = await fetch(`/api/tournament/activate-next/${tournamentId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
 
-        const data = await res.json();
-
-        if (res.ok) {
-          if (data.success) {
-            showStatus('Next matchup activated successfully!', 'success');
-          } else {
-            showStatus(data.message || 'No matchups available to activate', 'info');
-          }
-          await loadTournamentInfo(); // Refresh tournament info
-        } else {
-          showStatus(data.error || 'Failed to activate next matchup', 'error');
-        }
-      } catch (err) {
-        console.error('Failed to activate next matchup:', err);
-        showStatus('Network error - failed to activate next matchup', 'error');
-      } finally {
-        setButtonLoading('activateNext', false);
-      }
-    }
-
-    // Reset tournament (danger zone)
-    async function resetTournament() {
-      const tournamentId = document.getElementById('tournamentId').value;
-      
-      if (!tournamentId) {
-        showStatus('Please enter Tournament ID', 'error');
-        return;
-      }
-
-      const confirmed = confirm(`Are you sure you want to COMPLETELY DELETE all data for tournament "${tournamentId}"? This action cannot be undone!`);
-      if (!confirmed) return;
-
-      const doubleConfirmed = confirm('This will delete ALL matchups, votes, and results. Type the tournament ID in the next prompt to confirm.');
-      if (!doubleConfirmed) return;
-
-      const typedId = prompt(`Type "${tournamentId}" to confirm deletion:`);
-      if (typedId !== tournamentId) {
-        showStatus('Tournament ID did not match. Reset cancelled.', 'info');
-        return;
-      }
-
-      setButtonLoading('resetTournament', true);
-      showStatus('Resetting tournament...', 'info');
-
-      try {
-        const res = await fetch(`/api/tournament/reset/${tournamentId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          showStatus('Tournament reset successfully! All data has been deleted.', 'success');
-          await loadTournamentInfo(); // Refresh tournament info
-        } else {
-          showStatus(data.error || 'Failed to reset tournament', 'error');
-        }
-      } catch (err) {
-        console.error('Failed to reset tournament:', err);
-        showStatus('Network error - failed to reset tournament', 'error');
-      } finally {
-        setButtonLoading('resetTournament', false);
-      }
-    }
 
     // Initialize page
     document.addEventListener('DOMContentLoaded', async () => {
@@ -737,12 +622,19 @@
         document.getElementById('createTournament').addEventListener('click', createTournament);
         document.getElementById('createBracket').addEventListener('click', createBracket);
         document.getElementById('initializeTournament').addEventListener('click', initializeTournament);
-        document.getElementById('activateNext').addEventListener('click', activateNextMatchup);
-        document.getElementById('refreshInfo').addEventListener('click', () => {
+        document.getElementById('refreshInfo').addEventListener('click', async () => {
           setButtonLoading('refreshInfo', true);
-          loadTournamentInfo().finally(() => setButtonLoading('refreshInfo', false));
+          showStatus('Refreshing tournament info...', 'info');
+          try {
+            await loadTournamentInfo();
+            showStatus('Tournament info refreshed successfully!', 'success');
+          } catch (err) {
+            console.error('Failed to refresh tournament info:', err);
+            showStatus('Failed to refresh tournament info', 'error');
+          } finally {
+            setButtonLoading('refreshInfo', false);
+          }
         });
-        document.getElementById('resetTournament').addEventListener('click', resetTournament);
 
         // Add input handlers to refresh tournament info when ID changes
         document.getElementById('tournamentId').addEventListener('input', () => {

@@ -1535,11 +1535,16 @@
           } else {
             window.nominationsDeadlinePassed = false; // fallback to allow nominations
           }
+
+          // Check if tournament is active (which should also disable nominations)
+          window.tournamentIsActive = currentTournament && currentTournament.status === 'active';
+          console.log('Tournament is active:', window.tournamentIsActive);
           
         } catch (err) {
           console.error('Failed to load nominations:', err);
           window.nominatedTeamIds = new Set(); // fallback to empty set
           window.nominationsDeadlinePassed = false; // fallback to allow nominations
+          window.tournamentIsActive = false; // fallback to allow nominations
         }
       }
 
@@ -1547,24 +1552,32 @@
       function updateButtonStates() {
         const nominatedTeamIds = window.nominatedTeamIds || new Set();
         const deadlinePassed = window.nominationsDeadlinePassed || false;
+        const tournamentActive = window.tournamentIsActive || false;
+        
+        // Nominations should be disabled if either deadline passed OR tournament is active
+        const nominationsClosed = deadlinePassed || tournamentActive;
         
         // Update button states based on nominations
         document.querySelectorAll('.select-team-btn').forEach(btn => {
           const teamId = btn.getAttribute('data-id');
           
-          if (deadlinePassed) {
-            // Deadline passed - disable all nomination buttons
+          if (nominationsClosed) {
+            // Nominations closed - disable all nomination buttons
             btn.disabled = true;
             btn.classList.add('disabled');
             if (nominatedTeamIds.has(teamId)) {
               btn.textContent = 'Nominated';
               btn.classList.add('nominated');
             } else {
-              btn.textContent = 'Closed';
+              if (tournamentActive) {
+                btn.textContent = 'Tournament Active';
+              } else {
+                btn.textContent = 'Closed';
+              }
               btn.classList.remove('nominated');
             }
           } else {
-            // Deadline not passed - normal functionality
+            // Nominations open - normal functionality
             btn.disabled = false;
             btn.classList.remove('disabled');
             if (nominatedTeamIds.has(teamId)) {
@@ -1597,10 +1610,17 @@
             
             if (!clickedTeamId) return;
             
-            // Check if deadline has passed
+            // Check if deadline has passed or tournament is active
             const deadlinePassed = window.nominationsDeadlinePassed || false;
+            const tournamentActive = window.tournamentIsActive || false;
+            
             if (deadlinePassed) {
               showSimplePopup('Tournament nominations are now closed. The deadline has passed.');
+              return;
+            }
+            
+            if (tournamentActive) {
+              showSimplePopup('Tournament nominations are now closed. The tournament is currently active.');
               return;
             }
             
@@ -1689,11 +1709,14 @@
           // Load nominations once and cache them
           await loadNominationsData();
 
-          // Show deadline message if nominations are closed
-          if (window.nominationsDeadlinePassed) {
-            const deadlineMessage = document.createElement('div');
-            deadlineMessage.className = 'deadline-message';
-            deadlineMessage.style.cssText = `
+          // Show message if nominations are closed
+          const deadlinePassed = window.nominationsDeadlinePassed || false;
+          const tournamentActive = window.tournamentIsActive || false;
+          
+          if (deadlinePassed || tournamentActive) {
+            const statusMessage = document.createElement('div');
+            statusMessage.className = 'deadline-message';
+            statusMessage.style.cssText = `
               background: rgba(218, 54, 51, 0.1);
               border: 1px solid rgba(248, 81, 73, 0.3);
               border-radius: 8px;
@@ -1703,8 +1726,14 @@
               color: #f85149;
               font-weight: 600;
             `;
-            deadlineMessage.innerHTML = '⏰ Tournament nominations are now closed. The deadline has passed.';
-            tournamentsDiv.insertBefore(deadlineMessage, tournamentsDiv.firstChild);
+            
+            if (tournamentActive) {
+              statusMessage.innerHTML = '🏆 Tournament nominations are now closed. The tournament is currently active.';
+            } else {
+              statusMessage.innerHTML = '⏰ Tournament nominations are now closed. The deadline has passed.';
+            }
+            
+            tournamentsDiv.insertBefore(statusMessage, tournamentsDiv.firstChild);
           }
 
           function sortTournamentData() {
@@ -1732,7 +1761,8 @@
             // Check if user can nominate teams and show notification
             const nominatedCount = window.nominatedTeamIds ? window.nominatedTeamIds.size : 0;
             const deadlinePassed = window.nominationsDeadlinePassed || false;
-            const canNominate = !deadlinePassed && nominatedCount < 4 && sorted.length > 0;
+            const tournamentActive = window.tournamentIsActive || false;
+            const canNominate = !deadlinePassed && !tournamentActive && nominatedCount < 4 && sorted.length > 0;
             
             let notificationHtml = '';
             if (canNominate) {
@@ -2516,15 +2546,45 @@
           
           // Enhance versus_vote messages with links
           if (notification.type === 'versus_vote' && notification.related_team_id) {
+            // Link "your team" to voting history
             msgHtml = msgHtml.replace('your team', `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color:#58a6ff;text-decoration:none;">your team</a>`);
             
-            if (notification.opponent_team_id) {
-              const againstIndex = msgHtml.lastIndexOf('against ');
-              if (againstIndex !== -1) {
-                const beforeAgainst = msgHtml.substring(0, againstIndex + 8);
-                const opponentName = msgHtml.substring(againstIndex + 8);
-                if (opponentName.trim()) {
-                  msgHtml = beforeAgainst + `<span class="desktop-opponent-link" data-team-id="${notification.opponent_team_id}" style="color:#58a6ff;cursor:pointer;text-decoration:none;">${opponentName}</span>`;
+            // Check if this is a tournament notification and handle specially
+            const isTournamentNotification = msgHtml.includes('Tournament Round');
+            
+            if (isTournamentNotification) {
+              // Link "Tournament" word to tournament.html
+              msgHtml = msgHtml.replace(/(\w+\s+)Tournament(\s+Round)/g, '$1<a href="tournament.html" style="color:#58a6ff;text-decoration:none;">Tournament</a>$2');
+              
+              // Handle opponent name - find opponent name before any vote count info
+              if (notification.opponent_team_id) {
+                const againstIndex = msgHtml.lastIndexOf('against ');
+                if (againstIndex !== -1) {
+                  // Look for vote count pattern like "(3 more votes needed)" or "- YOU WON THE MATCHUP!"
+                  const afterAgainst = msgHtml.substring(againstIndex + 8);
+                  const voteCountMatch = afterAgainst.match(/^([^(]+?)(\s*\([^)]+\)|$|\s*-\s*[^)]+$)/);
+                  
+                  if (voteCountMatch) {
+                    const opponentName = voteCountMatch[1].trim();
+                    const voteCountPart = voteCountMatch[2] || '';
+                    
+                    if (opponentName) {
+                      const beforeAgainst = msgHtml.substring(0, againstIndex + 8);
+                      msgHtml = beforeAgainst + `<span class="desktop-opponent-link" data-team-id="${notification.opponent_team_id}" style="color:#58a6ff;cursor:pointer;text-decoration:none;">${opponentName}</span>` + voteCountPart;
+                    }
+                  }
+                }
+              }
+            } else {
+              // Regular (non-tournament) notification - link entire opponent name
+              if (notification.opponent_team_id) {
+                const againstIndex = msgHtml.lastIndexOf('against ');
+                if (againstIndex !== -1) {
+                  const beforeAgainst = msgHtml.substring(0, againstIndex + 8);
+                  const opponentName = msgHtml.substring(againstIndex + 8);
+                  if (opponentName.trim()) {
+                    msgHtml = beforeAgainst + `<span class="desktop-opponent-link" data-team-id="${notification.opponent_team_id}" style="color:#58a6ff;cursor:pointer;text-decoration:none;">${opponentName}</span>`;
+                  }
                 }
               }
             }

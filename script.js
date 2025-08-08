@@ -741,23 +741,50 @@ document.addEventListener("DOMContentLoaded", () => {
     let messageHTML = notification.message;
     
     if (notification.type === 'versus_vote' && notification.related_team_id) {
-      // The message format is: "{emoji}{voterName} voted {for/against} your team in the {tournament} against {opponentName}"
-      
-      // First, create the team link
+      // Link "your team" to voting history
       const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
       messageHTML = messageHTML.replace('your team', teamLink);
       
-      // If we have opponent info, find and replace just the opponent name at the very end
-      if (notification.opponent_team_id) {
-        // Find the last occurrence of "against " and everything after it should be the opponent name
-        const againstIndex = messageHTML.lastIndexOf('against ');
-        if (againstIndex !== -1) {
-          const beforeAgainst = messageHTML.substring(0, againstIndex + 8); // Keep "against "
-          const opponentName = messageHTML.substring(againstIndex + 8); // Everything after "against "
-          
-          if (opponentName.trim()) {
-            const opponentLink = `<span class="opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
-            messageHTML = beforeAgainst + opponentLink;
+      // Check if this is a tournament notification and handle specially
+      const isTournamentNotification = messageHTML.includes('Tournament Round');
+      
+      if (isTournamentNotification) {
+        // Link "Tournament" word to tournament.html
+        messageHTML = messageHTML.replace(/(\w+\s+)Tournament(\s+Round)/g, '$1<a href="tournament.html" style="color:#58a6ff;text-decoration:none;">Tournament</a>$2');
+        
+        // Handle opponent name - find opponent name before any vote count info
+        if (notification.opponent_team_id) {
+          const againstIndex = messageHTML.lastIndexOf('against ');
+          if (againstIndex !== -1) {
+            // Look for vote count pattern like "(3 more votes needed)" or "- YOU WON THE MATCHUP!"
+            const afterAgainst = messageHTML.substring(againstIndex + 8);
+            const voteCountMatch = afterAgainst.match(/^([^(]+?)(\s*\([^)]+\)|$|\s*-\s*[^)]+$)/);
+            
+            if (voteCountMatch) {
+              const opponentName = voteCountMatch[1].trim();
+              const voteCountPart = voteCountMatch[2] || '';
+              
+              if (opponentName) {
+                const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
+                const opponentLink = `<span class="opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+                messageHTML = beforeAgainst + opponentLink + voteCountPart;
+              }
+            }
+          }
+        }
+      } else {
+        // Regular (non-tournament) notification - link entire opponent name
+        if (notification.opponent_team_id) {
+          // Find the last occurrence of "against " and everything after it should be the opponent name
+          const againstIndex = messageHTML.lastIndexOf('against ');
+          if (againstIndex !== -1) {
+            const beforeAgainst = messageHTML.substring(0, againstIndex + 8); // Keep "against "
+            const opponentName = messageHTML.substring(againstIndex + 8); // Everything after "against "
+            
+            if (opponentName.trim()) {
+              const opponentLink = `<span class="opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+              messageHTML = beforeAgainst + opponentLink;
+            }
           }
         }
       }
@@ -3503,20 +3530,49 @@ function createMobileNotificationItem(notification) {
   let messageHTML = notification.message;
   
   if (notification.type === 'versus_vote' && notification.related_team_id) {
-    // First, create the team link
+    // Link "your team" to voting history
     const teamLink = `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color: #58a6ff; text-decoration: none;">your team</a>`;
     messageHTML = messageHTML.replace('your team', teamLink);
     
-    // If we have opponent info, find and replace just the opponent name at the very end
-    if (notification.opponent_team_id) {
-      const againstIndex = messageHTML.lastIndexOf('against ');
-      if (againstIndex !== -1) {
-        const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
-        const opponentName = messageHTML.substring(againstIndex + 8);
-        
-        if (opponentName.trim()) {
-          const opponentLink = `<span class="mobile-opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
-          messageHTML = beforeAgainst + opponentLink;
+    // Check if this is a tournament notification and handle specially
+    const isTournamentNotification = messageHTML.includes('Tournament Round');
+    
+    if (isTournamentNotification) {
+      // Link "Tournament" word to tournament.html
+      messageHTML = messageHTML.replace(/(\w+\s+)Tournament(\s+Round)/g, '$1<a href="tournament.html" style="color:#58a6ff;text-decoration:none;">Tournament</a>$2');
+      
+      // Handle opponent name - find opponent name before any vote count info
+      if (notification.opponent_team_id) {
+        const againstIndex = messageHTML.lastIndexOf('against ');
+        if (againstIndex !== -1) {
+          // Look for vote count pattern like "(3 more votes needed)" or "- YOU WON THE MATCHUP!"
+          const afterAgainst = messageHTML.substring(againstIndex + 8);
+          const voteCountMatch = afterAgainst.match(/^([^(]+?)(\s*\([^)]+\)|$|\s*-\s*[^)]+$)/);
+          
+          if (voteCountMatch) {
+            const opponentName = voteCountMatch[1].trim();
+            const voteCountPart = voteCountMatch[2] || '';
+            
+            if (opponentName) {
+              const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
+              const opponentLink = `<span class="mobile-opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+              messageHTML = beforeAgainst + opponentLink + voteCountPart;
+            }
+          }
+        }
+      }
+    } else {
+      // Regular (non-tournament) notification - link entire opponent name
+      if (notification.opponent_team_id) {
+        const againstIndex = messageHTML.lastIndexOf('against ');
+        if (againstIndex !== -1) {
+          const beforeAgainst = messageHTML.substring(0, againstIndex + 8);
+          const opponentName = messageHTML.substring(againstIndex + 8);
+          
+          if (opponentName.trim()) {
+            const opponentLink = `<span class="mobile-opponent-link" data-team-id="${notification.opponent_team_id}" style="color: #58a6ff; cursor: pointer; text-decoration: underline;">${opponentName}</span>`;
+            messageHTML = beforeAgainst + opponentLink;
+          }
         }
       }
     }

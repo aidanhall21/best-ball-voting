@@ -1443,42 +1443,86 @@ app.post("/versus", verifyCaptcha, (req, res) => {
             
             // Create detailed notifications for team owners (if voter is logged in and different from team owners)
             if (voterId) {
-              // Get voter information
+              // Check if this vote is part of an active tournament matchup
               db.get(
-                `SELECT u.display_name
-                 FROM users u WHERE u.id = ?`,
-                [voterId],
-                (err3, voterRow) => {
-                  if (err3) {
-                    console.error('Error fetching voter info for notifications:', err3);
-                    return;
-                  }
+                `SELECT tm.*, t.name as tournament_name, tm.round_number, tm.bracket_position,
+                        (SELECT COUNT(*) FROM tournament_votes tv WHERE tv.matchup_id = tm.id AND tv.team_id = tm.team1_id) as team1_votes,
+                        (SELECT COUNT(*) FROM tournament_votes tv WHERE tv.matchup_id = tm.id AND tv.team_id = tm.team2_id) as team2_votes
+                 FROM tournament_matchups tm
+                 LEFT JOIN tournaments t ON tm.tournament_id = t.id
+                 WHERE tm.status = 'active' 
+                   AND ((tm.team1_id = ? AND tm.team2_id = ?) OR (tm.team1_id = ? AND tm.team2_id = ?))`,
+                [winnerId, loserId, loserId, winnerId],
+                (tournamentErr, tournamentMatchup) => {
+                  // Get voter information
+                  db.get(
+                    `SELECT u.display_name
+                     FROM users u WHERE u.id = ?`,
+                    [voterId],
+                    (err3, voterRow) => {
+                      if (err3) {
+                        console.error('Error fetching voter info for notifications:', err3);
+                        return;
+                      }
 
-                  const voterName = voterRow?.display_name || 'Someone';
+                      const voterName = voterRow?.display_name || 'Someone';
 
-                  teamRows.forEach(team => {
-                    // Only create notification if team has an owner and it's not the voter themselves
-                    if (team.user_id && team.user_id !== voterId) {
-                      const isWinner = team.id === winnerId;
-                      const opponentTeam = teamRows.find(t => t.id !== team.id);
-                      const opponentName = opponentTeam?.display_name || opponentTeam?.username || 'another user';
-                      
-                      // Build the notification message
-                      const emoji = isWinner ? '🔥 ' : '❌ ';
-                      const message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in ${team.tournament} against ${opponentName}`;
-                      
-                      db.run(
-                        `INSERT INTO notifications (user_id, type, message, related_team_id, related_user_id, opponent_team_id) 
-                         VALUES (?, ?, ?, ?, ?, ?)`,
-                        [team.user_id, 'versus_vote', message, team.id, voterId, opponentTeam?.id],
-                        (err4) => {
-                          if (err4) {
-                            console.error('Error creating notification:', err4);
+                      teamRows.forEach(team => {
+                        // Only create notification if team has an owner and it's not the voter themselves
+                        if (team.user_id && team.user_id !== voterId) {
+                          const isWinner = team.id === winnerId;
+                          const opponentTeam = teamRows.find(t => t.id !== team.id);
+                          const opponentName = opponentTeam?.display_name || opponentTeam?.username || 'another user';
+                          
+                          let message;
+                          const emoji = isWinner ? '🔥 ' : '❌ ';
+                          
+                          if (tournamentMatchup) {
+                            // This is a tournament vote - provide enhanced context
+                            // Get current vote counts and add 1 to the winning team since this vote hasn't been recorded in tournament_votes yet
+                            let teamVotes = team.id === tournamentMatchup.team1_id ? tournamentMatchup.team1_votes : tournamentMatchup.team2_votes;
+                            let opponentVotes = team.id === tournamentMatchup.team1_id ? tournamentMatchup.team2_votes : tournamentMatchup.team1_votes;
+                            
+                            // Add the current vote to the appropriate team's count
+                            if (isWinner) {
+                              teamVotes += 1;
+                            } else {
+                              opponentVotes += 1;
+                            }
+                            
+                            const votesNeeded = tournamentMatchup.votes_needed || 4;
+                            const votesRemaining = Math.max(0, votesNeeded - teamVotes);
+                            
+                            // Determine if this vote won or lost the tournament matchup
+                            const wonMatchup = teamVotes >= votesNeeded;
+                            const lostMatchup = opponentVotes >= votesNeeded;
+                            
+                            if (wonMatchup) {
+                              message = `🏆 ${voterName} voted for your team in ${tournamentMatchup.tournament_name || team.tournament} Tournament Round ${tournamentMatchup.round_number} against ${opponentName} - YOU WON THE MATCHUP!`;
+                            } else if (lostMatchup) {
+                              message = `💔 ${voterName} voted ${isWinner ? 'for' : 'against'} your team in ${tournamentMatchup.tournament_name || team.tournament} Tournament Round ${tournamentMatchup.round_number} against ${opponentName} - You lost the matchup`;
+                            } else {
+                              message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in ${tournamentMatchup.tournament_name || team.tournament} Tournament Round ${tournamentMatchup.round_number} against ${opponentName} (${votesRemaining} more votes needed)`;
+                            }
+                          } else {
+                            // Regular vote - use existing format
+                            message = `${emoji}${voterName} voted ${isWinner ? 'for' : 'against'} your team in ${team.tournament} against ${opponentName}`;
                           }
+                          
+                          db.run(
+                            `INSERT INTO notifications (user_id, type, message, related_team_id, related_user_id, opponent_team_id) 
+                             VALUES (?, ?, ?, ?, ?, ?)`,
+                            [team.user_id, 'versus_vote', message, team.id, voterId, opponentTeam?.id],
+                            (err4) => {
+                              if (err4) {
+                                console.error('Error creating notification:', err4);
+                              }
+                            }
+                          );
                         }
-                      );
+                      });
                     }
-                  });
+                  );
                 }
               );
             }

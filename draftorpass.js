@@ -249,13 +249,41 @@
         notificationList.innerHTML = notifications.map(notification => {
           const timeAgo = formatTimeAgo(new Date(notification.created_at));
 
-          // Enhance versus_vote messages with links
-          let msgHtml = notification.message;
-          if (notification.type === 'versus_vote' && notification.related_team_id) {
-            // Link "your team" to voting history
-            msgHtml = msgHtml.replace('your team', `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color:#58a6ff;text-decoration:none;">your team</a>`);
+                  // Enhance versus_vote messages with links
+        let msgHtml = notification.message;
+        if (notification.type === 'versus_vote' && notification.related_team_id) {
+          // Link "your team" to voting history
+          msgHtml = msgHtml.replace('your team', `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color:#58a6ff;text-decoration:none;">your team</a>`);
 
-            // Append link for opponent name at the end if opponent_team_id present
+          // Check if this is a tournament notification and handle specially
+          const isTournamentNotification = msgHtml.includes('Tournament Round');
+          
+          if (isTournamentNotification) {
+            // Link "Tournament" word to tournament.html
+            msgHtml = msgHtml.replace(/(\w+\s+)Tournament(\s+Round)/g, '$1<a href="tournament.html" style="color:#58a6ff;text-decoration:none;">Tournament</a>$2');
+            
+            // Handle opponent name - find opponent name before any vote count info
+            if (notification.opponent_team_id) {
+              const againstIdx = msgHtml.lastIndexOf('against ');
+              if (againstIdx !== -1) {
+                // Look for vote count pattern like "(3 more votes needed)" or "- YOU WON THE MATCHUP!"
+                const afterAgainst = msgHtml.substring(againstIdx + 8);
+                const voteCountMatch = afterAgainst.match(/^([^(]+?)(\s*\([^)]+\)|$|\s*-\s*[^)]+$)/);
+                
+                if (voteCountMatch) {
+                  const opponentName = voteCountMatch[1].trim();
+                  const voteCountPart = voteCountMatch[2] || '';
+                  
+                  if (opponentName) {
+                    const before = msgHtml.substring(0, againstIdx + 8);
+                    const oppLink = `<span class="desktop-opponent-link" data-team-id="${notification.opponent_team_id}" style="color:#58a6ff;cursor:pointer;text-decoration:none;">${opponentName}</span>`;
+                    msgHtml = before + oppLink + voteCountPart;
+                  }
+                }
+              }
+            }
+          } else {
+            // Regular (non-tournament) notification - link entire opponent name
             if (notification.opponent_team_id) {
               const againstIdx = msgHtml.lastIndexOf('against ');
               if (againstIdx !== -1) {
@@ -266,6 +294,7 @@
               }
             }
           }
+        }
 
           return `
             <div class="notification-item ${notification.is_read ? 'read' : 'unread'}" data-id="${notification.id}">

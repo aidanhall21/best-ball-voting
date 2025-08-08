@@ -45,13 +45,42 @@
           // Link "your team" to voting history
           msgHtml = msgHtml.replace('your team', `<a href="voting-history.html?teamId=${notification.related_team_id}" style="color:#58a6ff;text-decoration:none;">your team</a>`);
 
-          // Add opponent team link if available
-          if (notification.opponent_team_id) {
-            const againstIdx = msgHtml.lastIndexOf('against ');
-            if (againstIdx !== -1) {
-              const before = msgHtml.substring(0, againstIdx + 8);
-              const after = msgHtml.substring(againstIdx + 8);
-              msgHtml = before + `<a href="voting-history.html?teamId=${notification.opponent_team_id}" style="color:#58a6ff;text-decoration:none;">${after}</a>`;
+          // Check if this is a tournament notification and handle specially
+          const isTournamentNotification = msgHtml.includes('Tournament Round');
+          
+          if (isTournamentNotification) {
+            // Link "Tournament" word to tournament.html
+            msgHtml = msgHtml.replace(/(\w+\s+)Tournament(\s+Round)/g, '$1<a href="tournament.html" style="color:#58a6ff;text-decoration:none;">Tournament</a>$2');
+            
+            // Handle opponent name - find opponent name before any vote count info
+            if (notification.opponent_team_id) {
+              const againstIdx = msgHtml.lastIndexOf('against ');
+              if (againstIdx !== -1) {
+                // Look for vote count pattern like "(3 more votes needed)" or "- YOU WON THE MATCHUP!"
+                const afterAgainst = msgHtml.substring(againstIdx + 8);
+                const voteCountMatch = afterAgainst.match(/^([^(]+?)(\s*\([^)]+\)|$|\s*-\s*[^)]+$)/);
+                
+                if (voteCountMatch) {
+                  const opponentName = voteCountMatch[1].trim();
+                  const voteCountPart = voteCountMatch[2] || '';
+                  
+                  if (opponentName) {
+                    const before = msgHtml.substring(0, againstIdx + 8);
+                    const opponentLink = `<a href="voting-history.html?teamId=${notification.opponent_team_id}" style="color:#58a6ff;text-decoration:none;">${opponentName}</a>`;
+                    msgHtml = before + opponentLink + voteCountPart;
+                  }
+                }
+              }
+            }
+          } else {
+            // Regular (non-tournament) notification - link entire opponent name
+            if (notification.opponent_team_id) {
+              const againstIdx = msgHtml.lastIndexOf('against ');
+              if (againstIdx !== -1) {
+                const before = msgHtml.substring(0, againstIdx + 8);
+                const after = msgHtml.substring(againstIdx + 8);
+                msgHtml = before + `<a href="voting-history.html?teamId=${notification.opponent_team_id}" style="color:#58a6ff;text-decoration:none;">${after}</a>`;
+              }
             }
           }
         }

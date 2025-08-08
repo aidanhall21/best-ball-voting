@@ -2,8 +2,18 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Tournament Bracket Creation Script
+ * 
+ * Creates a March Madness-style tournament bracket with regional distribution:
+ * - Distributes teams across 4 regions (Midwest, East, West, South)
+ * - Ensures max 1 team per user per region for balanced competition
+ * - Creates matchups within each region to avoid same-user matchups
+ * - Supports up to 4 teams per user (one in each region)
+ */
+
 // Configuration
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'teams-2025-08-07-1252.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'teams-2025-08-08-0938.db');
 const TOURNAMENT_ID = process.env.TOURNAMENT_ID || 'the-puppy';
 const TOURNAMENT_NAME = process.env.TOURNAMENT_NAME || 'The Puppy';
 const SOURCE_CONTEST = process.env.SOURCE_CONTEST || TOURNAMENT_NAME;
@@ -86,6 +96,7 @@ function createTournamentBracket() {
                             console.log(`Source Contest: ${SOURCE_CONTEST}`);
                             console.log(`Total teams: ${finalTeams.length}`);
                             console.log(`Max teams per user: ${MAX_TEAMS_PER_USER}`);
+                            console.log(`🏟️ Regional distribution: Max 1 team per user per region (Midwest/East/West/South)`);
                             if (MAX_TEAMS) console.log(`Max teams limit: ${MAX_TEAMS}`);
                             console.log(`First round matchups: ${matchups.length}`);
                             db.close();
@@ -98,8 +109,7 @@ function createTournamentBracket() {
 }
 
 function createBalancedMatchups(teams) {
-    const matchups = [];
-    const usedTeams = new Set();
+    console.log('🎯 Creating regionally balanced matchups...');
     
     // Group teams by username
     const teamsByUser = {};
@@ -110,20 +120,127 @@ function createBalancedMatchups(teams) {
         teamsByUser[team.username].push(team);
     });
     
-    // Convert to array and shuffle
-    const allTeams = [];
+    console.log(`👥 Found ${Object.keys(teamsByUser).length} users with teams`);
+    
+    // Distribute teams across 4 regions (max 1 team per user per region)
+    const regions = [[], [], [], []]; // Midwest, East, West, South
+    const regionNames = ['Midwest', 'East', 'West', 'South'];
+    
+    // Track which users have teams in which regions
+    const userRegionAssignments = {}; // username -> Set of region indices
+    
     Object.entries(teamsByUser).forEach(([username, userTeams]) => {
-        userTeams.forEach(team => {
-            allTeams.push({ ...team, username });
+        userRegionAssignments[username] = new Set();
+        
+        // Shuffle user's teams for random distribution
+        shuffleArray(userTeams);
+        
+        // Assign each team to a different region (max 4 teams per user, max 1 per region)
+        userTeams.forEach((team, index) => {
+            if (index < 4) { // Only assign up to 4 teams (one per region)
+                const regionIndex = index;
+                regions[regionIndex].push({ ...team, username, regionIndex });
+                userRegionAssignments[username].add(regionIndex);
+                console.log(`  📍 ${username} team ${team.id} → ${regionNames[regionIndex]} region`);
+            } else {
+                console.log(`  ⚠️ Skipping ${username} team ${team.id} (user already has 4 teams across regions)`);
+            }
         });
     });
     
-    shuffleArray(allTeams);
+    // Balance region sizes by moving teams if necessary
+    console.log('\n📊 Regional distribution:');
+    regions.forEach((region, i) => {
+        console.log(`  ${regionNames[i]}: ${region.length} teams`);
+    });
+    
+    // Find target size for each region (for 256 teams, each region should have 64)
+    const totalTeams = regions.reduce((sum, region) => sum + region.length, 0);
+    const targetRegionSize = Math.ceil(totalTeams / 4);
+    
+    console.log(`\n🎯 Target region size: ${targetRegionSize} teams each`);
+    
+    // Redistribute teams to balance regions while maintaining user constraints
+    balanceRegions(regions, userRegionAssignments, targetRegionSize, regionNames);
+    
+    // Create matchups within each region
+    const allMatchups = [];
+    
+    regions.forEach((region, regionIndex) => {
+        console.log(`\n🏟️ Creating matchups for ${regionNames[regionIndex]} region (${region.length} teams):`);
+        
+        const regionMatchups = createRegionMatchups(region, regionIndex * 64); // Each region starts at different bracket positions
+        allMatchups.push(...regionMatchups);
+    });
+    
+    console.log(`\n✅ Created ${allMatchups.length} total matchups across all regions`);
+    return allMatchups;
+}
+
+function balanceRegions(regions, userRegionAssignments, targetSize, regionNames) {
+    // Simple balancing: move excess teams from larger regions to smaller ones
+    // while respecting the constraint that each user can only have 1 team per region
+    
+    let moved = true;
+    while (moved) {
+        moved = false;
+        
+        // Find regions that are over/under target
+        const overRegions = regions.map((region, i) => ({ index: i, size: region.length, excess: region.length - targetSize }))
+                                   .filter(r => r.excess > 0)
+                                   .sort((a, b) => b.excess - a.excess);
+        
+        const underRegions = regions.map((region, i) => ({ index: i, size: region.length, deficit: targetSize - region.length }))
+                                    .filter(r => r.deficit > 0)
+                                    .sort((a, b) => b.deficit - a.deficit);
+        
+        if (overRegions.length === 0 || underRegions.length === 0) break;
+        
+        // Try to move a team from an over-region to an under-region
+        for (const overRegion of overRegions) {
+            for (const underRegion of underRegions) {
+                // Find a team in the over-region whose user doesn't already have a team in the under-region
+                const teamToMove = regions[overRegion.index].find(team => 
+                    !userRegionAssignments[team.username].has(underRegion.index)
+                );
+                
+                if (teamToMove) {
+                    // Move the team
+                    regions[overRegion.index] = regions[overRegion.index].filter(t => t.id !== teamToMove.id);
+                    teamToMove.regionIndex = underRegion.index;
+                    regions[underRegion.index].push(teamToMove);
+                    
+                    // Update user assignments
+                    userRegionAssignments[teamToMove.username].delete(overRegion.index);
+                    userRegionAssignments[teamToMove.username].add(underRegion.index);
+                    
+                    console.log(`  🔄 Moved ${teamToMove.username} team ${teamToMove.id} from ${regionNames[overRegion.index]} to ${regionNames[underRegion.index]}`);
+                    moved = true;
+                    break;
+                }
+            }
+            if (moved) break;
+        }
+    }
+    
+    // Final region sizes
+    console.log('\n📊 Final regional distribution:');
+    regions.forEach((region, i) => {
+        console.log(`  ${regionNames[i]}: ${region.length} teams`);
+    });
+}
+
+function createRegionMatchups(regionTeams, startingBracketPosition) {
+    const matchups = [];
+    const usedTeams = new Set();
+    
+    // Shuffle teams within the region
+    shuffleArray(regionTeams);
     
     // Create matchups ensuring different usernames
     let i = 0;
-    while (i < allTeams.length - 1) {
-        const team1 = allTeams[i];
+    while (i < regionTeams.length - 1) {
+        const team1 = regionTeams[i];
         
         if (usedTeams.has(team1.id)) {
             i++;
@@ -132,8 +249,8 @@ function createBalancedMatchups(teams) {
         
         // Find next team with different username
         let team2 = null;
-        for (let j = i + 1; j < allTeams.length; j++) {
-            const candidate = allTeams[j];
+        for (let j = i + 1; j < regionTeams.length; j++) {
+            const candidate = regionTeams[j];
             if (!usedTeams.has(candidate.id) && candidate.username !== team1.username) {
                 team2 = candidate;
                 break;
@@ -141,27 +258,32 @@ function createBalancedMatchups(teams) {
         }
         
         if (team2) {
-            matchups.push({ team1, team2 });
+            matchups.push({ 
+                team1, 
+                team2, 
+                bracketPosition: startingBracketPosition + matchups.length + 1 
+            });
             usedTeams.add(team1.id);
             usedTeams.add(team2.id);
-            console.log(`  ${matchups.length}: ${team1.username} (${team1.id}) vs ${team2.username} (${team2.id})`);
+            console.log(`    ${matchups.length}: ${team1.username} vs ${team2.username}`);
         }
         
         i++;
     }
     
-    // Handle any remaining unmatched teams
-    const unmatchedTeams = allTeams.filter(team => !usedTeams.has(team.id));
+    // Handle any remaining unmatched teams within this region
+    const unmatchedTeams = regionTeams.filter(team => !usedTeams.has(team.id));
     if (unmatchedTeams.length > 1) {
-        console.log(`⚠️ Found ${unmatchedTeams.length} unmatched teams, creating additional matchups...`);
+        console.log(`    ⚠️ Found ${unmatchedTeams.length} unmatched teams in region, creating additional matchups...`);
         
         for (let i = 0; i < unmatchedTeams.length - 1; i += 2) {
             const matchup = {
                 team1: unmatchedTeams[i],
-                team2: unmatchedTeams[i + 1]
+                team2: unmatchedTeams[i + 1],
+                bracketPosition: startingBracketPosition + matchups.length + 1
             };
             matchups.push(matchup);
-            console.log(`  ${matchups.length}: ${matchup.team1.username} (${matchup.team1.id}) vs ${matchup.team2.username} (${matchup.team2.id})`);
+            console.log(`    ${matchups.length}: ${matchup.team1.username} vs ${matchup.team2.username}`);
         }
     }
     
@@ -179,7 +301,7 @@ function insertMatchups(db, matchups, callback) {
         `, [
             TOURNAMENT_ID,
             1, // First round
-            index + 1, // Bracket position
+            matchup.bracketPosition || (index + 1), // Use regional bracket position if available
             matchup.team1.id,
             matchup.team2.id
         ], (err) => {
