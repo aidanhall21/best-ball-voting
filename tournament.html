@@ -1175,30 +1175,53 @@
       if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE && !tournamentViewShown) {
         // Tournament has started - check if tournament is active before showing tournament view
         if (tournamentData && tournamentData.status === 'active') {
-          tournamentViewShown = true;
           clearInterval(countdownInterval); // Stop the countdown
           showTournamentView();
           return;
         } else {
-          // Tournament exists but is not active yet - keep showing countdown
+          // Tournament exists but is not active yet - show zeros and stop countdown
           console.log('Tournament countdown ended but tournament status is not active:', tournamentData?.status);
-          // Continue showing countdown until tournament becomes active
+          document.getElementById('days').textContent = '00';
+          document.getElementById('hours').textContent = '00';
+          document.getElementById('minutes').textContent = '00';
+          document.getElementById('seconds').textContent = '00';
+          clearInterval(countdownInterval); // Stop the countdown to prevent going negative
+          return;
         }
       }
 
-      const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+      // Only calculate and display countdown if time is remaining
+      if (timeDiff > 0) {
+        const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
 
-      document.getElementById('days').textContent = days.toString().padStart(2, '0');
-      document.getElementById('hours').textContent = hours.toString().padStart(2, '0');
-      document.getElementById('minutes').textContent = minutes.toString().padStart(2, '0');
-      document.getElementById('seconds').textContent = seconds.toString().padStart(2, '0');
+        document.getElementById('days').textContent = days.toString().padStart(2, '0');
+        document.getElementById('hours').textContent = hours.toString().padStart(2, '0');
+        document.getElementById('minutes').textContent = minutes.toString().padStart(2, '0');
+        document.getElementById('seconds').textContent = seconds.toString().padStart(2, '0');
+      } else {
+        // Time has expired, show zeros
+        document.getElementById('days').textContent = '00';
+        document.getElementById('hours').textContent = '00';
+        document.getElementById('minutes').textContent = '00';
+        document.getElementById('seconds').textContent = '00';
+        clearInterval(countdownInterval); // Stop the countdown
+      }
     }
 
     // Tournament view functions
     async function showTournamentView() {
+      // Prevent multiple calls to showTournamentView
+      if (tournamentViewShown) {
+        console.log('Tournament view already shown, skipping...');
+        return;
+      }
+      
+      // Set flag immediately to prevent race conditions
+      tournamentViewShown = true;
+      
       // Ensure tournament is loaded and active before proceeding
       if (!tournamentData) {
         await loadCurrentTournament();
@@ -1207,6 +1230,8 @@
       // Double-check tournament status before showing tournament view
       if (!tournamentData || tournamentData.status !== 'active') {
         console.error('Cannot show tournament view - tournament is not active:', tournamentData?.status);
+        // Reset flag if we're not actually showing the view
+        tournamentViewShown = false;
         return;
       }
       
@@ -2186,7 +2211,8 @@
       await loadCurrentTournament();
       
       // Check if tournament should be active based on status or time
-      if (tournamentData) {
+      // Only show tournament view if it hasn't been shown already
+      if (tournamentData && !tournamentViewShown) {
         if (tournamentData.status === 'active' && !FORCE_COUNTDOWN_MODE) {
           // Tournament is active in database - show tournament view
           showTournamentView();
