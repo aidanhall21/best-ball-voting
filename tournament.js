@@ -277,8 +277,13 @@ function displayTournamentBracket(bracket) {
             const team1Status = getTeamStatus(matchup, matchup.team1_id);
             const team2Status = getTeamStatus(matchup, matchup.team2_id);
             
+            // Only add click handler if both teams are present
+            const clickable = matchup.team1_id && matchup.team2_id;
+            const clickHandler = clickable ? `onclick="showMatchupPopup(${matchup.id})"` : '';
+            const clickableClass = clickable ? 'clickable' : '';
+            
             bracketHTML += `
-                <div class="bracket-matchup ${matchup.status}">
+                <div class="bracket-matchup ${matchup.status} ${clickableClass}" ${clickHandler} data-matchup-id="${matchup.id}">
                     <div class="bracket-team ${team1Status}" data-team-id="${matchup.team1_id || ''}">
                         <span class="team-name">${matchup.team1_username || 'TBD'}</span>
                         <span class="team-votes">${matchup.team1_votes || 0}</span>
@@ -320,6 +325,203 @@ function getTeamStatus(matchup, teamId) {
     if (matchup.winner_id === teamId) return 'winner';
     if (matchup.status === 'active') return 'active';
     return 'pending';
+}
+
+// Show matchup popup with team details
+async function showMatchupPopup(matchupId) {
+    try {
+        // Show loading state
+        showPopupLoading();
+        
+        // Fetch detailed matchup information
+        const response = await fetch(`/api/tournament/matchup/${matchupId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to load matchup details');
+        }
+        
+        if (data.matchup) {
+            displayMatchupPopup(data.matchup);
+        } else {
+            throw new Error('No matchup data received');
+        }
+    } catch (error) {
+        console.error('Error loading matchup popup:', error);
+        showPopupError('Failed to load matchup details');
+    }
+}
+
+// Display the matchup popup
+function displayMatchupPopup(matchup) {
+    const modal = getOrCreateModal();
+    
+    const team1VotesNeeded = (matchup.votes_needed || 4) - (matchup.team1_votes || 0);
+    const team2VotesNeeded = (matchup.votes_needed || 4) - (matchup.team2_votes || 0);
+    const roundName = getRoundName(matchup.round_number, 8); // Assuming 8 total rounds
+    
+    const modalContent = `
+        <div class="modal-header">
+            <h2>${roundName} - Match ${matchup.bracket_position}</h2>
+            <p class="matchup-status">
+                ${matchup.status === 'completed' ? `Winner: ${matchup.winner_username}` : 
+                  matchup.status === 'active' ? `First to ${matchup.votes_needed || 4} votes wins!` : 
+                  'Pending'}
+            </p>
+            <button class="modal-close" onclick="closeMatchupPopup()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+            <div class="teams-comparison">
+                <div class="team-column">
+                    <div class="team-header ${matchup.winner_id === matchup.team1_id ? 'winner' : ''}">
+                        <h3>${matchup.team1_username || 'TBD'}</h3>
+                        <div class="team-meta">
+                            <span class="draft-id">${matchup.team1_draft_id || ''}</span>
+                            <div class="vote-info">
+                                <span class="votes">${matchup.team1_votes || 0} votes</span>
+                                ${matchup.status === 'active' && team1VotesNeeded > 0 ? 
+                                  `<span class="votes-needed">${team1VotesNeeded} more needed</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    ${generatePopupRoster(matchup.team1_roster)}
+                </div>
+                
+                <div class="vs-divider">
+                    <span class="vs-text">VS</span>
+                </div>
+                
+                <div class="team-column">
+                    <div class="team-header ${matchup.winner_id === matchup.team2_id ? 'winner' : ''}">
+                        <h3>${matchup.team2_username || 'TBD'}</h3>
+                        <div class="team-meta">
+                            <span class="draft-id">${matchup.team2_draft_id || ''}</span>
+                            <div class="vote-info">
+                                <span class="votes">${matchup.team2_votes || 0} votes</span>
+                                ${matchup.status === 'active' && team2VotesNeeded > 0 ? 
+                                  `<span class="votes-needed">${team2VotesNeeded} more needed</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    ${generatePopupRoster(matchup.team2_roster)}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    modal.innerHTML = modalContent;
+    modal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+}
+
+// Generate roster HTML for popup
+function generatePopupRoster(roster) {
+    if (!roster || !roster.length) {
+        return '<div class="no-roster">No roster data available</div>';
+    }
+    
+    // Count positions for roster construction
+    const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+    roster.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+    
+    const rosterConstructionHTML = `
+        <div class="roster-construction">
+            <div class="roster-counts">QB${counts.QB} | RB${counts.RB} | WR${counts.WR} | TE${counts.TE}</div>
+        </div>
+    `;
+    
+    // Generate player list HTML
+    const playerListHTML = roster.map(player => {
+        const stackStar = player.stack ? `<span class="stack-star ${player.stack}">★</span>` : '';
+        const pickHTML = (player.pick || player.pick === 0) ? `<span class="pick-num">#${player.pick}</span>` : '';
+        const infoHTML = `<span class="player-info">${player.name}${player.team ? ` - ${player.team}` : ''}</span>`;
+        
+        return `
+            <div class="player-row">
+                <div class="player-bubble" style="border: 2px solid ${getPositionColor(player.position)}">
+                    ${pickHTML}${infoHTML}${stackStar}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    return `
+        ${rosterConstructionHTML}
+        <div class="player-list">
+            ${playerListHTML}
+        </div>
+    `;
+}
+
+// Get position color (same as existing system)
+function getPositionColor(position) {
+    const colors = {
+        QB: '#a855f7', // Purple
+        RB: '#22c55e', // Green
+        WR: '#facc15', // Yellow
+        TE: '#3b82f6'  // Blue
+    };
+    return colors[position] || '#999999';
+}
+
+// Modal utility functions
+function getOrCreateModal() {
+    let modal = document.getElementById('matchupModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'matchupModal';
+        modal.className = 'matchup-modal';
+        document.body.appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeMatchupPopup();
+            }
+        });
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                closeMatchupPopup();
+            }
+        });
+    }
+    return modal;
+}
+
+function showPopupLoading() {
+    const modal = getOrCreateModal();
+    modal.innerHTML = `
+        <div class="modal-loading">
+            <div class="loading-spinner"></div>
+            <p>Loading matchup details...</p>
+        </div>
+    `;
+    modal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+}
+
+function showPopupError(message) {
+    const modal = getOrCreateModal();
+    modal.innerHTML = `
+        <div class="modal-error">
+            <h3>Error</h3>
+            <p>${message}</p>
+            <button onclick="closeMatchupPopup()">Close</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+}
+
+function closeMatchupPopup() {
+    const modal = document.getElementById('matchupModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
 }
 
 // Initialize when DOM is loaded

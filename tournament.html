@@ -1127,6 +1127,7 @@
 
     let tournamentViewShown = false;
     let countdownInterval;
+    let nominationsCountInterval;
     
     // Load current tournament info
     async function loadCurrentTournament() {
@@ -1222,6 +1223,13 @@
       // Set flag immediately to prevent race conditions
       tournamentViewShown = true;
       
+      // Stop nominations count polling since tournament view is now showing
+      if (nominationsCountInterval) {
+        clearInterval(nominationsCountInterval);
+        nominationsCountInterval = null;
+        console.log('Stopped nominations count polling - tournament view activated');
+      }
+      
       // Ensure tournament is loaded and active before proceeding
       if (!tournamentData) {
         await loadCurrentTournament();
@@ -1232,6 +1240,12 @@
         console.error('Cannot show tournament view - tournament is not active:', tournamentData?.status);
         // Reset flag if we're not actually showing the view
         tournamentViewShown = false;
+        
+        // Restart nominations polling since we're not showing tournament view
+        if (!nominationsCountInterval && tournamentData && tournamentData.status === 'setup') {
+          nominationsCountInterval = setInterval(loadNominationsCount, 30000);
+          console.log('Restarted nominations count polling - tournament view failed to activate');
+        }
         return;
       }
       
@@ -1602,8 +1616,13 @@
       const team2Status = matchup.winner_id === matchup.team2_id ? 'winner' : 
                          (matchup.status === 'active' ? 'active' : '');
       
+      // Only add click handler if both teams are present
+      const clickable = matchup.team1_id && matchup.team2_id;
+      const clickHandler = clickable ? `onclick="showMatchupPopup(${matchup.id})"` : '';
+      const clickableClass = clickable ? 'clickable' : '';
+      
       return `
-        <div class="bracket-matchup ${matchup.status}">
+        <div class="bracket-matchup ${matchup.status} ${clickableClass}" ${clickHandler} data-matchup-id="${matchup.id}">
           <div class="bracket-team ${team1Status}">
             <span class="team-name">${matchup.team1_username || 'TBD'}</span>
             <span class="team-votes">${matchup.team1_votes || 0}</span>
@@ -2170,6 +2189,16 @@
     // Load tournament nominations count
     async function loadNominationsCount() {
       try {
+        // Stop polling if tournament view is shown or tournament is not in setup status
+        if (tournamentViewShown || (tournamentData && tournamentData.status !== 'setup')) {
+          if (nominationsCountInterval) {
+            clearInterval(nominationsCountInterval);
+            nominationsCountInterval = null;
+            console.log('Stopped nominations count polling - tournament view shown or not in setup');
+          }
+          return;
+        }
+        
         const response = await fetch(`/api/tournament/nominations-count/${tournamentData?.source_contest}`);
         const data = await response.json();
         
@@ -2202,8 +2231,8 @@
     updateCountdown();
     countdownInterval = setInterval(updateCountdown, 1000);
     
-    // Update nominations count every 30 seconds
-    setInterval(loadNominationsCount, 30000);
+    // Update nominations count every 30 seconds (will stop automatically when tournament view shows)
+    nominationsCountInterval = setInterval(loadNominationsCount, 30000);
 
     // Check if tournament should be active on page load
     document.addEventListener('DOMContentLoaded', async function() {
@@ -2390,6 +2419,198 @@
           alert('Please log in to view notifications');
         }
       });
+    });
+
+    // === MATCHUP POPUP FUNCTIONS ===
+    
+    // Show matchup popup with team details
+    async function showMatchupPopup(matchupId) {
+      try {
+        // Show loading state
+        showPopupLoading();
+        
+        // Fetch detailed matchup information
+        const response = await fetch(`/api/tournament/matchup/${matchupId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to load matchup details');
+        }
+        
+        if (data.matchup) {
+          displayMatchupPopup(data.matchup);
+        } else {
+          throw new Error('No matchup data received');
+        }
+      } catch (error) {
+        console.error('Error loading matchup popup:', error);
+        showPopupError('Failed to load matchup details');
+      }
+    }
+
+    // Display the matchup popup
+    function displayMatchupPopup(matchup) {
+      const modal = getOrCreateModal();
+      
+      const team1VotesNeeded = (matchup.votes_needed || 4) - (matchup.team1_votes || 0);
+      const team2VotesNeeded = (matchup.votes_needed || 4) - (matchup.team2_votes || 0);
+      const roundName = getRoundName(matchup.round_number, 8); // Assuming 8 total rounds
+      
+      const modalContent = `
+        <div class="modal-body">
+          <div class="teams-comparison">
+            <div class="team-column">
+              <div class="team-header ${matchup.winner_id === matchup.team1_id ? 'winner' : 'loser'}">
+                <h3>${matchup.team1_username || 'TBD'}</h3>
+                <div class="vote-info">
+                  <span class="votes">Votes: ${matchup.team1_votes || 0}</span>
+                </div>
+              </div>
+              ${generatePopupRoster(matchup.team1_roster)}
+            </div>
+            
+            <div class="team-column">
+              <div class="team-header ${matchup.winner_id === matchup.team2_id ? 'winner' : 'loser'}">
+                <h3>${matchup.team2_username || 'TBD'}</h3>
+                <div class="vote-info">
+                  <span class="votes">Votes: ${matchup.team2_votes || 0}</span>
+                </div>
+              </div>
+              ${generatePopupRoster(matchup.team2_roster)}
+            </div>
+          </div>
+        </div>
+      `;
+      
+      modal.innerHTML = modalContent;
+      modal.style.display = 'flex';
+      document.body.classList.add('modal-open');
+    }
+
+    // Generate roster HTML for popup
+    function generatePopupRoster(roster) {
+      if (!roster || !roster.length) {
+        return '<div class="no-roster">No roster data available</div>';
+      }
+      
+      // Count positions for roster construction
+      const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+      roster.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++; });
+      
+      // Generate player list HTML
+      const playerListHTML = roster.map(player => {
+        const stackStar = player.stack ? `<span class="stack-star ${player.stack}">★</span>` : '';
+        const pickHTML = (player.pick || player.pick === 0) ? `<span class="pick-num">#${player.pick}</span>` : '';
+        const infoHTML = `<span class="player-info">${player.name}${player.team ? ` - ${player.team}` : ''}</span>`;
+        
+        return `
+          <div class="player-row">
+            <div class="player-bubble" style="border: 2px solid ${getPositionColor(player.position)}">
+              ${pickHTML}${infoHTML}${stackStar}
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      return `
+        <div class="player-list">
+          ${playerListHTML}
+        </div>
+      `;
+
+      (document.documentElement || document.body).appendChild(modal);
+    }
+
+    // Get position color (same as existing system)
+    function getPositionColor(position) {
+      const colors = {
+        QB: '#a855f7', // Purple
+        RB: '#22c55e', // Green
+        WR: '#facc15', // Yellow
+        TE: '#3b82f6'  // Blue
+      };
+      return colors[position] || '#999999';
+    }
+
+    // Modal utility functions
+    function getOrCreateModal() {
+      let modal = document.getElementById('matchupModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'matchupModal';
+        modal.className = 'matchup-modal';
+        // Attach to root to avoid body transforms affecting fixed positioning
+        (document.documentElement || document.body).appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            closeMatchupPopup();
+          }
+        });
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && modal.style.display === 'flex') {
+            closeMatchupPopup();
+          }
+        });
+      }
+      return modal;
+    }
+
+    function showPopupLoading() {
+      const modal = getOrCreateModal();
+      modal.innerHTML = `
+        <div class="modal-loading">
+          <div class="loading-spinner"></div>
+          <p>Loading matchup details...</p>
+        </div>
+      `;
+      modal.style.display = 'flex';
+      // Ensure overlay centers content and sits above header
+      modal.style.position = 'fixed';
+      modal.style.inset = '0';
+      modal.style.display = 'grid';
+      modal.style.placeItems = 'center';
+      modal.style.zIndex = '9999';
+      document.body.classList.add('modal-open');
+    }
+
+    function showPopupError(message) {
+      const modal = getOrCreateModal();
+      modal.innerHTML = `
+        <div class="modal-error">
+          <h3>Error</h3>
+          <p>${message}</p>
+          <button onclick="closeMatchupPopup()">Close</button>
+        </div>
+      `;
+      modal.style.display = 'flex';
+      modal.style.position = 'fixed';
+      modal.style.inset = '0';
+      modal.style.display = 'grid';
+      modal.style.placeItems = 'center';
+      modal.style.zIndex = '9999';
+      document.body.classList.add('modal-open');
+    }
+
+    function closeMatchupPopup() {
+      const modal = document.getElementById('matchupModal');
+      if (modal) {
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+      }
+    }
+
+    // Clean up intervals when page unloads
+    window.addEventListener('beforeunload', function() {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+      if (nominationsCountInterval) {
+        clearInterval(nominationsCountInterval);
+      }
     });
   </script>
   <footer class="legal-footer">

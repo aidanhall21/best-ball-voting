@@ -30,30 +30,40 @@ function getCurrentTournamentMatchup(db, tournamentId, userId, callback) {
                 FROM tournament_votes 
                 WHERE voter_id = ?
             )
+            AND t1.user_id != ?
+            AND t2.user_id != ?
         ORDER BY RANDOM()
         LIMIT 1
     `;
     
-    db.get(query, [tournamentId, userId], (err, matchup) => {
+    db.get(query, [tournamentId, userId, userId, userId], (err, matchup) => {
         if (err) return callback(err);
         if (!matchup) {
-            // Check if user has voted on all active matchups in current round
+            // Check if user has voted on all active matchups in current round (excluding their own teams)
             db.get(`
                 SELECT COUNT(*) as total_active,
                        (SELECT COUNT(DISTINCT matchup_id) 
                         FROM tournament_votes 
                         WHERE voter_id = ? 
                         AND matchup_id IN (
-                            SELECT id FROM tournament_matchups 
-                            WHERE tournament_id = ? 
-                            AND status = 'active' 
-                            AND winner_id IS NULL
+                            SELECT tm.id FROM tournament_matchups tm
+                            LEFT JOIN teams t1 ON tm.team1_id = t1.id
+                            LEFT JOIN teams t2 ON tm.team2_id = t2.id
+                            WHERE tm.tournament_id = ? 
+                            AND tm.status = 'active' 
+                            AND tm.winner_id IS NULL
+                            AND t1.user_id != ?
+                            AND t2.user_id != ?
                         )) as user_voted
-                FROM tournament_matchups 
-                WHERE tournament_id = ? 
-                AND status = 'active' 
-                AND winner_id IS NULL
-            `, [userId, tournamentId, tournamentId], (err, stats) => {
+                FROM tournament_matchups tm
+                LEFT JOIN teams t1 ON tm.team1_id = t1.id
+                LEFT JOIN teams t2 ON tm.team2_id = t2.id
+                WHERE tm.tournament_id = ? 
+                AND tm.status = 'active' 
+                AND tm.winner_id IS NULL
+                AND t1.user_id != ?
+                AND t2.user_id != ?
+            `, [userId, tournamentId, userId, userId, tournamentId, userId, userId], (err, stats) => {
                 if (err) return callback(err);
                 
                 if (stats.total_active > 0 && stats.user_voted >= stats.total_active) {

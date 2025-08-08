@@ -1973,6 +1973,81 @@ app.get('/api/tournament/bracket/:tournamentId', (req, res) => {
     });
 });
 
+// Get detailed matchup information for popup view
+app.get('/api/tournament/matchup/:matchupId', (req, res) => {
+    const { matchupId } = req.params;
+    
+    // Get matchup with full team details including rosters
+    const query = `
+        SELECT 
+            tm.*,
+            t1.username as team1_username,
+            t1.draft_id as team1_draft_id,
+            t2.username as team2_username,
+            t2.draft_id as team2_draft_id,
+            w.username as winner_username,
+            (SELECT COUNT(*) FROM tournament_votes tv WHERE tv.matchup_id = tm.id AND tv.team_id = tm.team1_id) as team1_votes,
+            (SELECT COUNT(*) FROM tournament_votes tv WHERE tv.matchup_id = tm.id AND tv.team_id = tm.team2_id) as team2_votes
+        FROM tournament_matchups tm
+        LEFT JOIN teams t1 ON tm.team1_id = t1.id
+        LEFT JOIN teams t2 ON tm.team2_id = t2.id
+        LEFT JOIN teams w ON tm.winner_id = w.id
+        WHERE tm.id = ?
+    `;
+    
+    db.get(query, [matchupId], (err, matchup) => {
+        if (err) {
+            console.error('Error getting matchup:', err);
+            return res.status(500).json({ error: 'Failed to get matchup' });
+        }
+        
+        if (!matchup) {
+            return res.status(404).json({ error: 'Matchup not found' });
+        }
+        
+        // Get rosters for both teams if they exist
+        const getRoster = (teamId, callback) => {
+            if (!teamId) return callback(null, []);
+            
+            db.all(`
+                SELECT p.*
+                FROM players p
+                WHERE p.team_id = ?
+                ORDER BY 
+                    CASE p.position 
+                        WHEN 'QB' THEN 1 
+                        WHEN 'RB' THEN 2 
+                        WHEN 'WR' THEN 3 
+                        WHEN 'TE' THEN 4 
+                        ELSE 5 
+                    END,
+                    p.name ASC
+            `, [teamId], callback);
+        };
+        
+        // Get rosters for both teams
+        getRoster(matchup.team1_id, (err1, team1Roster) => {
+            if (err1) {
+                console.error('Error getting team1 roster:', err1);
+                return res.status(500).json({ error: 'Failed to get team rosters' });
+            }
+            
+            getRoster(matchup.team2_id, (err2, team2Roster) => {
+                if (err2) {
+                    console.error('Error getting team2 roster:', err2);
+                    return res.status(500).json({ error: 'Failed to get team rosters' });
+                }
+                
+                // Add rosters to matchup object
+                matchup.team1_roster = team1Roster || [];
+                matchup.team2_roster = team2Roster || [];
+                
+                res.json({ matchup });
+            });
+        });
+    });
+});
+
 // Initialize tournament (admin endpoint)
 app.post('/api/tournament/initialize/:tournamentId', requireAdmin, (req, res) => {
     const { tournamentId } = req.params;

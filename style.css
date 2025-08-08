@@ -4801,3 +4801,428 @@
 
     
     
+
+/* ===== TOURNAMENT MATCHUP POPUP MODAL STYLES ===== */
+
+/* Modal overlay - specific to tournament */
+#matchupModal.matchup-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* Modal content container */
+#matchupModal.matchup-modal > div {
+  background: #0d1117;
+  border-radius: 12px;
+  border: 1px solid #30363d;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.8);
+  max-width: 1000px;
+  width: 100%;
+  max-height: 95vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Modal header */
+#matchupModal .modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #30363d;
+  position: relative;
+}
+
+#matchupModal .modal-header h2 {
+  margin: 0 0 8px 0;
+  color: #f0f6fc;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+#matchupModal .modal-header .matchup-status {
+  margin: 0;
+  color: #8b949e;
+  font-size: 16px;
+}
+
+#matchupModal .modal-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  background: none;
+  border: none;
+  font-size: 32px;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+#matchupModal .modal-close:hover {
+  color: #f0f6fc;
+  background: #21262d;
+}
+
+/* Modal body */
+#matchupModal .modal-body {
+  padding: 24px;
+}
+
+/* Teams comparison layout */
+#matchupModal .teams-comparison {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+#matchupModal .team-column {
+  flex: 1;
+  background: #161b22;
+  border-radius: 12px;
+  border: 1px solid #30363d;
+  padding: 20px;
+}
+
+#matchupModal .team-header {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #30363d;
+}
+
+#matchupModal .team-header.winner {
+  border-bottom-color: #2ea043;
+}
+
+#matchupModal .team-header.winner h3 {
+  color: #2ea043;
+}
+
+#matchupModal .team-header.loser {
+  border-bottom-color: #f85149;
+}
+
+#matchupModal .team-header.loser h3 {
+  color: #f85149;
+}
+
+#matchupModal .team-header h3 {
+  margin: 0 0 12px 0;
+  color: #f0f6fc;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+#matchupModal .team-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+#matchupModal .draft-id {
+  color: #8b949e;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+#matchupModal .vote-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+#matchupModal .votes {
+  color: #f0f6fc;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+#matchupModal .votes-needed {
+  color: #8b949e;
+  font-size: 14px;
+}
+
+/* VS divider */
+#matchupModal .vs-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+#matchupModal .vs-text {
+  background: #21262d;
+  color: #8b949e;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid #30363d;
+}
+
+/* Roster styling in popup */
+#matchupModal .roster-construction {
+  margin-bottom: 16px;
+}
+
+#matchupModal .roster-counts {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #8b949e;
+  text-align: center;
+  font-weight: 500;
+}
+
+#matchupModal .player-list {
+  max-height: none;
+  overflow-y: visible;
+}
+
+#matchupModal .player-row {
+  margin-bottom: 4px;
+}
+
+#matchupModal .player-bubble {
+  border-radius: 8px;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+  min-width: 100px;
+  width: 80%;
+}
+
+#matchupModal .pick-num {
+  color: #8b949e;
+  min-width: 32px;
+}
+
+#matchupModal .player-info {
+  color: #f0f6fc;
+  flex: 1;
+}
+
+#matchupModal .stack-star {
+  font-weight: 600;
+  margin-left: auto;
+}
+
+#matchupModal .stack-star.red { color: #f85149; }
+#matchupModal .stack-star.blue { color: #58a6ff; }
+#matchupModal .stack-star.green { color: #56d364; }
+#matchupModal .stack-star.yellow { color: #e3b341; }
+
+/* No roster message */
+#matchupModal .no-roster {
+  text-align: center;
+  color: #8b949e;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+/* Loading and error states */
+#matchupModal .modal-loading, 
+#matchupModal .modal-error {
+  padding: 60px 40px;
+  text-align: center;
+}
+
+#matchupModal .modal-loading p, 
+#matchupModal .modal-error p {
+  margin: 16px 0 0 0;
+  color: #8b949e;
+  font-size: 16px;
+}
+
+#matchupModal .modal-error h3 {
+  margin: 0 0 12px 0;
+  color: #f85149;
+  font-size: 20px;
+}
+
+#matchupModal .modal-error button {
+  margin-top: 20px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #f0f6fc;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+#matchupModal .modal-error button:hover {
+  background: #30363d;
+}
+
+/* Loading spinner */
+#matchupModal .loading-spinner {
+  border: 3px solid #30363d;
+  border-top: 3px solid #58a6ff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: matchupModalSpin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes matchupModalSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Bracket matchup hover effect for clickable items - tournament specific */
+.tournament-view .bracket-matchup.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tournament-view .bracket-matchup.clickable:hover {
+  background: #21262d;
+  border-color: #58a6ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Prevent scrolling when tournament modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  #matchupModal.matchup-modal {
+    padding: 10px;
+    align-items: flex-start;
+    padding-top: 20px;
+  }
+  
+  #matchupModal .teams-comparison {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  #matchupModal .vs-divider {
+    transform: rotate(90deg);
+    padding: 8px 0;
+  }
+  
+  #matchupModal .modal-header h2 {
+    font-size: 20px;
+  }
+  
+  #matchupModal .modal-body {
+    padding: 16px;
+  }
+  
+  #matchupModal .team-column {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  #matchupModal .modal-header {
+    padding: 16px;
+  }
+  
+  #matchupModal .modal-close {
+    top: 12px;
+    right: 16px;
+    font-size: 28px;
+  }
+}
+
+/* Tournament modal typography and header centering */
+#matchupModal {
+  font-family: 'Söhne', 'Inter', sans-serif;
+}
+#matchupModal .team-header,
+#matchupModal .team-header h3 {
+  text-align: center;
+}
+
+/* Mobile-specific layout for tournament popup: side-by-side columns */
+@media (max-width: 768px) {
+  /* Make modal content use full viewport width with small margins */
+  #matchupModal.matchup-modal > div {
+    max-width: 100vw;
+    width: 100%;
+    margin: 0 2px;
+    overflow-x: hidden;
+  }
+
+  /* Tighter padding inside modal body */
+  #matchupModal .modal-body {
+    padding: 2px;
+  }
+
+  /* Place team columns side by side */
+  #matchupModal .teams-comparison {
+    flex-direction: row;
+    gap: 2px;
+    align-items: stretch;
+  }
+
+  /* Columns share width evenly and don't overflow */
+  #matchupModal .team-column {
+    flex: 1 1 0;
+    width: 50%;
+    min-width: 0;
+    padding: 1px;
+    box-sizing: border-box;
+  }
+
+  /* Add top padding to team header on mobile */
+  #matchupModal .team-header {
+    padding-top: 12px;
+    padding-bottom: 8px;
+  }
+
+  /* Make roster bubbles fill their column width */
+  #matchupModal .player-row {
+    width: 100%;
+  }
+  #matchupModal .player-bubble {
+    width: 100%;
+    padding: 1px;
+    position: relative;
+    padding-left: 22px;
+  }
+
+  /* Left-align pick number inside bubble */
+  #matchupModal .player-bubble .pick-num {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    min-width: 0;
+  }
+
+  /* Make player-row a flex container and center player-info */
+  #matchupModal .player-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
