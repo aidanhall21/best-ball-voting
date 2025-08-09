@@ -2021,6 +2021,7 @@ app.get('/api/tournament/matchup/:matchupId', (req, res) => {
                         WHEN 'TE' THEN 4 
                         ELSE 5 
                     END,
+                    p.pick ASC,
                     p.name ASC
             `, [teamId], callback);
         };

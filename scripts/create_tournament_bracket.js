@@ -12,7 +12,7 @@ const path = require('path');
  */
 
 // Configuration
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'teams-2025-08-08-0938.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'teams-2025-08-09-0917.db');
 const TOURNAMENT_ID = process.env.TOURNAMENT_ID || '1';
 const TOURNAMENT_NAME = process.env.TOURNAMENT_NAME || 'The Puppy';
 const SOURCE_CONTEST = process.env.SOURCE_CONTEST || TOURNAMENT_NAME;
@@ -341,60 +341,79 @@ function createNextRound(db, tournamentId, previousRoundIds, currentRoundMatchup
     const nextRoundMatchups = Math.ceil(currentRoundMatchups / 2);
     console.log(`Round ${roundNumber}: ${nextRoundMatchups} matchups`);
     
-    const currentRoundIds = [];
+    const currentRoundIds = new Array(nextRoundMatchups); // Pre-allocate array with correct size
     let completed = 0;
     
     // Create matchups for this round
     for (let i = 0; i < nextRoundMatchups; i++) {
-        db.run(`
-            INSERT INTO tournament_matchups 
-            (tournament_id, round_number, bracket_position, status)
-            VALUES (?, ?, ?, 'pending')
-        `, [tournamentId, roundNumber, i + 1], function(err) {
-            if (err) {
-                console.error('Error creating next round matchup:', err);
-                return;
-            }
-            
-            const matchupId = this.lastID;
-            currentRoundIds.push(matchupId);
-            
-            // Update parent matchups to point to this matchup
-            const parentMatch1 = previousRoundIds[i * 2];
-            const parentMatch2 = previousRoundIds[i * 2 + 1];
-            
-            let updates = 0;
-            const updateComplete = () => {
-                updates++;
-                if (updates === 2 || !parentMatch2) {
-                    completed++;
-                    if (completed === nextRoundMatchups) {
-                        // Move to next round
-                        createNextRound(db, tournamentId, currentRoundIds, nextRoundMatchups, roundNumber + 1, callback);
-                    }
+        // Use an IIFE to capture the current value of i
+        ((matchupIndex) => {
+            db.run(`
+                INSERT INTO tournament_matchups 
+                (tournament_id, round_number, bracket_position, status)
+                VALUES (?, ?, ?, 'pending')
+            `, [tournamentId, roundNumber, matchupIndex + 1], function(err) {
+                if (err) {
+                    console.error('Error creating next round matchup:', err);
+                    return;
                 }
-            };
-            
-            if (parentMatch1) {
-                db.run(`
-                    UPDATE tournament_matchups 
-                    SET parent_matchup_id = ?, parent_position = 1 
-                    WHERE id = ?
-                `, [matchupId, parentMatch1], updateComplete);
-            } else {
-                updateComplete();
-            }
-            
-            if (parentMatch2) {
-                db.run(`
-                    UPDATE tournament_matchups 
-                    SET parent_matchup_id = ?, parent_position = 2 
-                    WHERE id = ?
-                `, [matchupId, parentMatch2], updateComplete);
-            } else {
-                updateComplete();
-            }
-        });
+                
+                const matchupId = this.lastID;
+                currentRoundIds[matchupIndex] = matchupId; // Store in correct position
+                
+                // Update parent matchups to point to this matchup
+                // Special handling for semifinals: when we have exactly 4 teams going to 2 (regardless of round number)
+                let parentMatch1, parentMatch2;
+                if (currentRoundMatchups === 4 && nextRoundMatchups === 2) {
+                    // Semifinals: Cross-pair the regions (1 vs 3, 2 vs 4)
+                    if (matchupIndex === 0) {
+                        // First semifinal: bracket positions 1 vs 3
+                        parentMatch1 = previousRoundIds[0]; // bracket_position 1
+                        parentMatch2 = previousRoundIds[2]; // bracket_position 3
+                    } else {
+                        // Second semifinal: bracket positions 2 vs 4
+                        parentMatch1 = previousRoundIds[1]; // bracket_position 2
+                        parentMatch2 = previousRoundIds[3]; // bracket_position 4
+                    }
+                } else {
+                    // Normal pairing for all other rounds
+                    parentMatch1 = previousRoundIds[matchupIndex * 2];
+                    parentMatch2 = previousRoundIds[matchupIndex * 2 + 1];
+                }
+                
+                let updates = 0;
+                const updateComplete = () => {
+                    updates++;
+                    if (updates === 2 || !parentMatch2) {
+                        completed++;
+                        if (completed === nextRoundMatchups) {
+                            // Move to next round
+                            createNextRound(db, tournamentId, currentRoundIds, nextRoundMatchups, roundNumber + 1, callback);
+                        }
+                    }
+                };
+                
+                if (parentMatch1) {
+                    db.run(`
+                        UPDATE tournament_matchups 
+                        SET parent_matchup_id = ?, parent_position = 1 
+                        WHERE id = ?
+                    `, [matchupId, parentMatch1], updateComplete);
+                } else {
+                    updateComplete();
+                }
+                
+                if (parentMatch2) {
+                    db.run(`
+                        UPDATE tournament_matchups 
+                        SET parent_matchup_id = ?, parent_position = 2 
+                        WHERE id = ?
+                    `, [matchupId, parentMatch2], updateComplete);
+                } else {
+                    updateComplete();
+                }
+            });
+        })(i);
     }
 }
 

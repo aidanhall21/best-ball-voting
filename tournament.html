@@ -767,6 +767,20 @@
         transform: translateY(-50%);
       }
 
+      .matchup-id-badge {
+        position: absolute;
+        top: -8px;
+        left: 4px;
+        background: rgba(33, 139, 255, 0.8);
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 4px;
+        z-index: 10;
+        pointer-events: none;
+      }
+
       /* Right region flows inward, so lines go left */
       .bracket-region.top-right .bracket-matchup::after,
       .bracket-region.bottom-right .bracket-matchup::after {
@@ -1623,6 +1637,7 @@
       
       return `
         <div class="bracket-matchup ${matchup.status} ${clickableClass}" ${clickHandler} data-matchup-id="${matchup.id}">
+          <div class="matchup-id-badge">ID: ${matchup.id}</div>
           <div class="bracket-team ${team1Status}">
             <span class="team-name">${matchup.team1_username || 'TBD'}</span>
             <span class="team-votes">${matchup.team1_votes || 0}</span>
