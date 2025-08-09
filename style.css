@@ -5126,8 +5126,8 @@ body.modal-open {
     padding: 8px 0;
   }
   
-  #matchupModal .modal-header h2 {
-    font-size: 20px;
+  #matchupModal .modal-header h3 {
+    font-size: 14px;
   }
   
   #matchupModal .modal-body {
@@ -5148,6 +5148,27 @@ body.modal-open {
     top: 12px;
     right: 16px;
     font-size: 28px;
+  }
+
+  /* Extra small mobile styles for team header h3 and votes - maximum specificity */
+  div#matchupModal.matchup-modal .modal-body .teams-comparison .team-column .team-header h3,
+  div#matchupModal.matchup-modal .team-header.winner h3,
+  div#matchupModal.matchup-modal .team-header.loser h3,
+  div#matchupModal .modal-body .teams-comparison .team-column .team-header h3,
+  #matchupModal .matchup-modal .team-header h3,
+  #matchupModal .matchup-modal .team-header.winner h3,
+  #matchupModal .matchup-modal .team-header.loser h3,
+  #matchupModal .team-header h3,
+  #matchupModal .team-header.winner h3,
+  #matchupModal .team-header.loser h3 {
+    font-size: 14px !important;
+    font-weight: normal !important;
+  }
+
+  /* Mobile styles for votes class */
+  #matchupModal .vote-info .votes,
+  #matchupModal .votes {
+    font-size: 12px !important;
   }
 }
 
@@ -5191,10 +5212,55 @@ body.modal-open {
     box-sizing: border-box;
   }
 
+  /* Add mobile close button */
+  #matchupModal .modal-close {
+    display: block;
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #8b949e;
+    cursor: pointer;
+    padding: 5px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    z-index: 10;
+  }
+
+  #matchupModal .modal-close:hover {
+    color: #f0f6fc;
+    background: #21262d;
+  }
+
   /* Add top padding to team header on mobile */
   #matchupModal .team-header {
     padding-top: 12px;
     padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+
+  /* Mobile styles for team header h3 and votes - maximum specificity */
+  div#matchupModal.matchup-modal .modal-body .teams-comparison .team-column .team-header h3,
+  div#matchupModal.matchup-modal .team-header.winner h3,
+  div#matchupModal.matchup-modal .team-header.loser h3,
+  div#matchupModal .modal-body .teams-comparison .team-column .team-header h3,
+  #matchupModal .matchup-modal .team-header h3,
+  #matchupModal .matchup-modal .team-header.winner h3,
+  #matchupModal .matchup-modal .team-header.loser h3,
+  #matchupModal .team-header h3,
+  #matchupModal .team-header.winner h3,
+  #matchupModal .team-header.loser h3 {
+    font-size: 14px !important;
+    font-weight: normal !important;
+  }
+
+  /* Mobile styles for votes class */
+  #matchupModal .vote-info .votes,
+  #matchupModal .votes {
+    font-size: 12px !important;
   }
 
   /* Make roster bubbles fill their column width */
