@@ -72,6 +72,32 @@
       margin: 0;
     }
 
+    .team-rating {
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    .rating-label {
+      color: #8b949e;
+      font-size: 14px;
+      margin-right: 8px;
+    }
+
+    .rating-value {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 18px;
+      min-width: 40px;
+      border: 2px solid;
+      text-align: center;
+      /* Default styling - will be overridden by tier classes */
+      background-color: #374151;
+      color: #9ca3af;
+      border-color: #4b5563;
+    }
+
     .voting-history-header {
       display: flex;
       align-items: center;
@@ -223,6 +249,61 @@
       border-color: #16a34a;
     }
 
+    /* Apply tier colors to rating-value elements as well */
+    .rating-value.tier-none {
+      background-color: #374151;
+      color: #9ca3af;
+      border-color: #4b5563;
+    }
+
+    .rating-value.tier-low {
+      background-color: #dc2626;
+      color: #ffffff;
+      border-color: #b91c1c;
+    }
+
+    .rating-value.tier-below {
+      background-color: #ea580c;
+      color: #ffffff;
+      border-color: #c2410c;
+    }
+
+    .rating-value.tier-average {
+      background-color: #ca8a04;
+      color: #ffffff;
+      border-color: #a16207;
+    }
+
+    .rating-value.tier-good {
+      background-color: #16a34a;
+      color: #ffffff;
+      border-color: #15803d;
+    }
+
+    .rating-value.tier-elite {
+      background-color: #2563eb;
+      color: #ffffff;
+      border-color: #1d4ed8;
+    }
+
+    .rating-value.tier-bottom {
+      background-color: #991b1b;
+      color: #ffffff;
+      border-color: #7f1d1d;
+    }
+
+    .rating-value.tier-below-avg {
+      background-color: #f97316;
+      color: #ffffff;
+      border-color: #ea580c;
+    }
+
+    .rating-value.tier-above-avg {
+      background-color: #22c55e;
+      color: #ffffff;
+      border-color: #16a34a;
+    }
+
     .win-result {
       color: #238636;
       font-weight: 600;
@@ -323,6 +404,20 @@
       .page-header .team-title {
         font-size: 20px;
         text-align: center;
+      }
+
+      .team-rating {
+        margin-top: 6px;
+      }
+
+      .rating-label {
+        font-size: 12px;
+      }
+
+      .rating-value {
+        font-size: 16px;
+        padding: 4px 8px;
+        min-width: 30px;
       }
 
       .team-subtitle {
@@ -453,28 +548,47 @@
 
     /* Mobile chart styles */
     @media (max-width: 768px) {
-      .chart-wrapper {
-        padding: 10px;
-        margin: 0 -20px; /* Extend to edges of container */
-        border-radius: 0;
-        background: #161b22;
-        border-left: none;
-        border-right: none;
+      #eloChartContainer {
+        margin-left: -20px;
+        margin-right: -20px;
+        margin-bottom: 20px;
+        overflow: hidden; /* Prevent any horizontal scrolling on chart */
+      }
+      
+      .chart-header {
+        padding: 0 20px;
+        margin-bottom: 10px;
       }
       
       .chart-header h3 {
         font-size: 20px;
       }
       
+      .chart-wrapper {
+        padding: 10px 0;
+        margin: 0;
+        border-radius: 0;
+        background: #161b22;
+        border-left: none;
+        border-right: none;
+        width: 100vw;
+        margin-left: calc(-50vw + 50%);
+        overflow: hidden; /* Prevent horizontal scrolling */
+      }
+      
       .chart-wrapper canvas {
         width: 100% !important;
         height: 40vh !important; /* Make chart appropriately sized on mobile */
         min-height: 250px;
+        padding: 0 10px;
+        box-sizing: border-box;
       }
       
-      #eloChartContainer {
-        margin-left: -20px;
-        margin-right: -20px;
+      /* Ensure only the voting table can scroll horizontally */
+      .voting-history-content {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 20px;
       }
     }
   </style>
@@ -485,6 +599,10 @@
   <!-- Page Title Section -->
   <div class="page-header">
     <h1 class="team-title" id="teamTitle">Loading...</h1>
+    <div class="team-rating" id="teamRating" style="display: none;">
+      <span class="rating-label">Current Draftr Rating:</span>
+      <span class="rating-value" id="teamRatingValue">-</span>
+    </div>
   </div>
 
 
@@ -503,18 +621,18 @@
       </div>
     </div>
     
-    <div class="voting-history-content">
-      <!-- Elo History Chart -->
-      <div id="eloChartContainer" style="display: none; margin-bottom: 30px;">
-        <div class="chart-header">
-          <h3>Elo Rating History</h3>
-          <p class="chart-subtitle">Track this team's Elo rating changes over time</p>
-        </div>
-        <div class="chart-wrapper">
-          <canvas id="eloChart" width="800" height="400"></canvas>
-        </div>
+    <!-- Elo History Chart - Separate from voting content -->
+    <div id="eloChartContainer" style="display: none; margin-bottom: 30px;">
+      <div class="chart-header">
+        <h3>Draftr Rating History</h3>
+        <p class="chart-subtitle">Track this team's Draftr rating changes over time</p>
       </div>
-      
+      <div class="chart-wrapper">
+        <canvas id="eloChart" width="800" height="400"></canvas>
+      </div>
+    </div>
+    
+    <div class="voting-history-content">
       <div id="loadingIndicator" class="loading-indicator">
         Loading voting history...
       </div>
@@ -1142,6 +1260,25 @@
       return `<span class="rating-box ${tierClass}">${Math.round(eloRating)}</span>`;
     }
 
+    // Helper to update team rating display in header with proper color coding
+    function updateTeamRatingDisplay(eloRating, percentile) {
+      const teamRatingElement = document.getElementById('teamRating');
+      const teamRatingValueElement = document.getElementById('teamRatingValue');
+      
+      if (!teamRatingElement || !teamRatingValueElement) return;
+      
+      if (!eloRating || eloRating === 0) {
+        teamRatingValueElement.textContent = '-';
+        teamRatingValueElement.className = 'rating-value tier-none';
+      } else {
+        teamRatingValueElement.textContent = Math.round(eloRating);
+        const tierClass = getPercentileTierClass(percentile || 0.5);
+        teamRatingValueElement.className = `rating-value ${tierClass}`;
+      }
+      
+      teamRatingElement.style.display = 'block';
+    }
+
     // Global team data for tournament information
     let teamData = null;
 
@@ -1154,6 +1291,9 @@
         
         document.getElementById('teamTitle').textContent = 
           `${teamData.username || 'Anonymous'} - ${teamData.tournament || 'Unknown Contest'}`;
+
+        // Update the team rating in header with proper color coding
+        updateTeamRatingDisplay(teamData.elo_rating, teamData.percentile);
 
         // Then get voting history
         const votesResponse = await fetch(`/team-votes/${teamId}`);
@@ -1175,7 +1315,7 @@
               <tr>
                 <th>Result</th>
                 <th>Opponent</th>
-                <th>Elo Rating</th>
+                <th>Draftr Rating</th>
                 <th>View</th>
                 <th>Voter</th>
                 <th>Date</th>
@@ -1272,6 +1412,16 @@
           return;
         }
         
+        // Get the most recent Elo rating and display it in the header
+        const mostRecentElo = data.history[data.history.length - 1].elo;
+        const teamRatingElement = document.getElementById('teamRating');
+        const teamRatingValueElement = document.getElementById('teamRatingValue');
+        
+        if (teamRatingElement && teamRatingValueElement) {
+          teamRatingValueElement.textContent = Math.round(mostRecentElo);
+          teamRatingElement.style.display = 'block';
+        }
+        
         // Show the chart container
         document.getElementById('eloChartContainer').style.display = 'block';
         
@@ -1290,7 +1440,7 @@
           data: {
             labels: labels,
             datasets: [{
-              label: 'Elo Rating',
+              label: 'Draftr Rating',
               data: eloValues,
               borderColor: '#58a6ff',
               backgroundColor: 'rgba(88, 166, 255, 0.1)',
@@ -1351,7 +1501,7 @@
               y: {
                 title: {
                   display: !isMobile, // Hide axis title on mobile
-                  text: 'Elo Rating',
+                  text: 'Draftr Rating',
                   color: '#8b949e',
                   font: {
                     size: 14,
@@ -1366,9 +1516,9 @@
                   color: '#30363d',
                   display: !isMobile // Hide grid lines on mobile
                 },
-                // Fixed Y-axis range from 1000 to 2000 with 1500 as midpoint
-                min: 1000,
-                max: 2000
+                // Fixed Y-axis range from 500 to 2500 with 1500 as midpoint
+                min: 800,
+                max: 2500
               }
             },
             elements: {
