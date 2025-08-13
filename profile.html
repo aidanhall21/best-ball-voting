@@ -1486,18 +1486,30 @@
       // Load current tournament info
       async function loadCurrentTournament() {
         try {
-          const response = await fetch('/api/tournament/current');
-          const data = await response.json();
-          currentTournament = data.tournament;
-          if (currentTournament) {
-            console.log('Current tournament loaded:', currentTournament);
+          // Try to load setup tournament first (for nominations), fall back to current
+          const setupResponse = await fetch('/api/tournament/setup');
+          const setupData = await setupResponse.json();
+          
+          if (setupData.tournament) {
+            // Use setup tournament for nominations
+            currentTournament = setupData.tournament;
+            console.log('Setup tournament loaded for nominations:', currentTournament);
             return currentTournament.source_contest;
           } else {
-            console.log('No current tournament found');
-            return null;
+            // Fall back to current tournament if no setup tournament
+            const response = await fetch('/api/tournament/current');
+            const data = await response.json();
+            currentTournament = data.tournament;
+            if (currentTournament) {
+              console.log('Current tournament loaded (fallback):', currentTournament);
+              return currentTournament.source_contest;
+            } else {
+              console.log('No tournament found');
+              return null;
+            }
           }
         } catch (err) {
-          console.error('Failed to load current tournament:', err);
+          console.error('Failed to load tournament:', err);
           return null;
         }
       }

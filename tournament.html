@@ -1136,7 +1136,8 @@
     const FORCE_COUNTDOWN_MODE = false;
     
     // Global tournament configuration
-    let tournamentData = null;
+    let tournamentData = null; // Setup tournament for countdown/nominations
+    let activeTournamentData = null; // Active tournament for voting/bracket
     let tournamentStart = null; // Will be set dynamically from database
 
     let tournamentViewShown = false;
@@ -1146,23 +1147,33 @@
     // Load current tournament info
     async function loadCurrentTournament() {
       try {
-        const response = await fetch('/api/tournament/current');
-        const data = await response.json();
-                    tournamentData = data.tournament;
+        // Load both setup and active tournaments
+        const [setupResponse, activeResponse] = await Promise.all([
+          fetch('/api/tournament/setup'),
+          fetch('/api/tournament/active')
+        ]);
         
-        if (tournamentData) {
-          
+        const setupData = await setupResponse.json();
+        const activeData = await activeResponse.json();
+        
+        tournamentData = setupData.tournament; // For countdown/nominations
+        activeTournamentData = activeData.tournament; // For voting/bracket
+        
+        // Prefer setup tournament for countdown, fall back to active
+        const countdownTournament = tournamentData || activeTournamentData;
+        
+        if (countdownTournament) {
           // Set tournament start time from database
-          if (tournamentData.scheduled_start_time) {
-            tournamentStart = new Date(tournamentData.scheduled_start_time);
+          if (countdownTournament.scheduled_start_time) {
+            tournamentStart = new Date(countdownTournament.scheduled_start_time);
           } else {
             console.warn('No scheduled start time found for tournament');
           }
           
           // Update page title and headers
-          document.getElementById('tournamentTitle').textContent = `${tournamentData.name} Tournament Starts In`;
-          document.title = `${tournamentData.name} Tournament - Draft or Pass`;
-          return tournamentData;
+          document.getElementById('tournamentTitle').textContent = `${countdownTournament.name} Tournament Starts In`;
+          document.title = `${countdownTournament.name} Tournament - Draft or Pass`;
+          return countdownTournament;
         } else {
           document.getElementById('tournamentTitle').textContent = 'No Tournament Active';
           return null;
@@ -1188,14 +1199,14 @@
       const timeDiff = tournamentStart - now;
 
       if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE && !tournamentViewShown) {
-        // Tournament has started - check if tournament is active before showing tournament view
-        if (tournamentData && tournamentData.status === 'active') {
+        // Tournament has started - check if there's an active tournament to show
+        if (activeTournamentData && activeTournamentData.status === 'active') {
           clearInterval(countdownInterval); // Stop the countdown
           showTournamentView();
           return;
         } else {
-          // Tournament exists but is not active yet - show zeros and stop countdown
-          console.log('Tournament countdown ended but tournament status is not active:', tournamentData?.status);
+          // Tournament countdown ended but no active tournament yet - show zeros and stop countdown
+          console.log('Tournament countdown ended but no active tournament found');
           document.getElementById('days').textContent = '00';
           document.getElementById('hours').textContent = '00';
           document.getElementById('minutes').textContent = '00';
@@ -1244,14 +1255,14 @@
         console.log('Stopped nominations count polling - tournament view activated');
       }
       
-      // Ensure tournament is loaded and active before proceeding
-      if (!tournamentData) {
+      // Ensure tournaments are loaded before proceeding
+      if (!activeTournamentData) {
         await loadCurrentTournament();
       }
       
-      // Double-check tournament status before showing tournament view
-      if (!tournamentData || tournamentData.status !== 'active') {
-        console.error('Cannot show tournament view - tournament is not active:', tournamentData?.status);
+      // Double-check active tournament exists before showing tournament view
+      if (!activeTournamentData || activeTournamentData.status !== 'active') {
+        console.error('Cannot show tournament view - no active tournament:', activeTournamentData?.status);
         // Reset flag if we're not actually showing the view
         tournamentViewShown = false;
         
@@ -1290,7 +1301,7 @@
       // Call tournament functions directly
       
       // Load current matchup
-      fetch(`/api/tournament/current-matchup/${tournamentData.id}`)
+      fetch(`/api/tournament/current-matchup/${activeTournamentData.id}`)
           .then(response => response.json())
           .then(data => {
             const container = document.getElementById('teamsContainer');
@@ -1438,7 +1449,7 @@
           });
         
       // Load tournament bracket  
-      fetch(`/api/tournament/bracket/${tournamentData.id}`)
+      fetch(`/api/tournament/bracket/${activeTournamentData.id}`)
           .then(response => response.json())
           .then(data => {
             const bracketContainer = document.querySelector('.bracket-container');
@@ -2254,20 +2265,19 @@
       // Load tournament info first
       await loadCurrentTournament();
       
-      // Check if tournament should be active based on status or time
+      // Check if there's an active tournament to show tabs for
       // Only show tournament view if it hasn't been shown already
-      if (tournamentData && !tournamentViewShown) {
-        if (tournamentData.status === 'active' && !FORCE_COUNTDOWN_MODE) {
-          // Tournament is active in database - show tournament view
+      if (activeTournamentData && !tournamentViewShown && !FORCE_COUNTDOWN_MODE) {
+        // There's an active tournament - show tournament view
+        showTournamentView();
+      } else if (tournamentData && tournamentStart && !tournamentViewShown) {
+        // Check if setup tournament time has passed (fallback logic)
+        const now = new Date();
+        const timeDiff = tournamentStart - now;
+        
+        if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE) {
+          // Tournament should be live based on time
           showTournamentView();
-        } else if (tournamentStart) {
-          const now = new Date();
-          const timeDiff = tournamentStart - now;
-          
-          if (timeDiff <= 0 && !FORCE_COUNTDOWN_MODE) {
-            // Tournament should be live based on time
-            showTournamentView();
-          }
         }
       }
       

@@ -2117,6 +2117,40 @@ app.get('/api/tournament/current', (req, res) => {
     });
 });
 
+// Get current setup tournament (for nominations)
+app.get('/api/tournament/setup', (req, res) => {
+    db.get(`
+        SELECT * FROM tournaments 
+        WHERE status = 'setup'
+        ORDER BY created_at DESC 
+        LIMIT 1
+    `, (err, tournament) => {
+        if (err) {
+            console.error('Error getting setup tournament:', err);
+            return res.status(500).json({ error: 'Failed to get setup tournament' });
+        }
+        
+        res.json({ tournament });
+    });
+});
+
+// Get current active tournament (for voting/bracket)
+app.get('/api/tournament/active', (req, res) => {
+    db.get(`
+        SELECT * FROM tournaments 
+        WHERE status = 'active'
+        ORDER BY created_at DESC 
+        LIMIT 1
+    `, (err, tournament) => {
+        if (err) {
+            console.error('Error getting active tournament:', err);
+            return res.status(500).json({ error: 'Failed to get active tournament' });
+        }
+        
+        res.json({ tournament });
+    });
+});
+
 // Helper function to get tournament deadline
 function getTournamentDeadline(callback) {
     db.get(`
