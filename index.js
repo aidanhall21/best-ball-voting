@@ -2104,7 +2104,7 @@ app.get('/api/tournament/current', (req, res) => {
         SELECT * FROM tournaments 
         WHERE status IN ('setup', 'active') 
         ORDER BY 
-            CASE status WHEN 'active' THEN 1 WHEN 'setup' THEN 2 END,
+            CASE status WHEN 'setup' THEN 1 WHEN 'active' THEN 2 END,
             created_at DESC 
         LIMIT 1
     `, (err, tournament) => {
@@ -2123,7 +2123,7 @@ function getTournamentDeadline(callback) {
         SELECT scheduled_start_time FROM tournaments 
         WHERE status IN ('setup', 'active') 
         ORDER BY 
-            CASE status WHEN 'active' THEN 1 WHEN 'setup' THEN 2 END,
+            CASE status WHEN 'setup' THEN 1 WHEN 'active' THEN 2 END,
             created_at DESC 
         LIMIT 1
     `, (err, result) => {
