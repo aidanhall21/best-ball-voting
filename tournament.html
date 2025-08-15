@@ -1239,6 +1239,8 @@
 
     // Tournament view functions
     async function showTournamentView() {
+      console.log('🚀 showTournamentView() called');
+      
       // Prevent multiple calls to showTournamentView
       if (tournamentViewShown) {
         console.log('Tournament view already shown, skipping...');
@@ -1288,22 +1290,29 @@
       
       // Initialize tournament system manually
       
-      // Ensure tournament is loaded before proceeding
-      if (!tournamentData) {
+      // Ensure active tournament is loaded before proceeding
+      if (!activeTournamentData) {
         await loadCurrentTournament();
-        if (!tournamentData) {
-          console.error('No tournament available for live view');
+        if (!activeTournamentData) {
+          console.error('No active tournament available for live view');
           return;
         }
       }
+      
+      console.log('🎮 Using active tournament:', activeTournamentData.name, 'ID:', activeTournamentData.id);
 
       
       // Call tournament functions directly
       
       // Load current matchup
+      console.log(`🎯 Fetching current matchup for tournament ${activeTournamentData.id}`);
       fetch(`/api/tournament/current-matchup/${activeTournamentData.id}`)
-          .then(response => response.json())
+          .then(response => {
+            console.log('📥 Current matchup response:', response.status);
+            return response.json();
+          })
           .then(data => {
+            console.log('📊 Current matchup data:', data);
             const container = document.getElementById('teamsContainer');
             
             // Handle special cases first
@@ -2053,7 +2062,7 @@
       }
       
       // Reload current matchup data
-      fetch(`/api/tournament/current-matchup/${tournamentData.id}`)
+      fetch(`/api/tournament/current-matchup/${activeTournamentData.id}`)
         .then(response => response.json())
         .then(data => {
           const container = document.getElementById('teamsContainer');
@@ -2267,7 +2276,13 @@
       
       // Check if there's an active tournament to show tabs for
       // Only show tournament view if it hasn't been shown already
+      console.log('🔍 Debug tournament view conditions:');
+      console.log('  activeTournamentData:', activeTournamentData);
+      console.log('  tournamentViewShown:', tournamentViewShown);
+      console.log('  FORCE_COUNTDOWN_MODE:', FORCE_COUNTDOWN_MODE);
+      
       if (activeTournamentData && !tournamentViewShown && !FORCE_COUNTDOWN_MODE) {
+        console.log('✅ Conditions met - calling showTournamentView()');
         // There's an active tournament - show tournament view
         showTournamentView();
       } else if (tournamentData && tournamentStart && !tournamentViewShown) {

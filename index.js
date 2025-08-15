@@ -2402,15 +2402,46 @@ app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
                                     }
                                 });
                                 
-                                // Select teams respecting max per user limit
-                                for (const team of availableTeams) {
-                                    if (teamsToNominate.length >= spotsNeeded) break;
+                                // Try to select teams with progressive per-user limits
+                                let currentMaxPerUser = maxTeamsPerUser;
+                                let attempt = 1;
+                                
+                                while (teamsToNominate.length < spotsNeeded && currentMaxPerUser <= 20 && attempt <= 5) {
+                                    console.log(`Attempt ${attempt}: Trying with max ${currentMaxPerUser} teams per user...`);
                                     
-                                    const currentUserCount = userTeamCounts[team.user_id] || 0;
-                                    if (currentUserCount < maxTeamsPerUser) {
-                                        teamsToNominate.push(team);
-                                        userTeamCounts[team.user_id] = currentUserCount + 1;
+                                    // Reset for this attempt
+                                    const tempUserCounts = { ...userTeamCounts };
+                                    const tempTeamsToNominate = [...teamsToNominate];
+                                    
+                                    // Select teams respecting current max per user limit
+                                    for (const team of availableTeams) {
+                                        if (tempTeamsToNominate.length >= spotsNeeded) break;
+                                        
+                                        const currentUserCount = tempUserCounts[team.user_id] || 0;
+                                        if (currentUserCount < currentMaxPerUser) {
+                                            // Only add if not already in the list
+                                            if (!teamsToNominate.some(t => t.id === team.id)) {
+                                                tempTeamsToNominate.push(team);
+                                                tempUserCounts[team.user_id] = currentUserCount + 1;
+                                            }
+                                        }
                                     }
+                                    
+                                    const newTeamsAdded = tempTeamsToNominate.length - teamsToNominate.length;
+                                    console.log(`Added ${newTeamsAdded} more teams (total: ${tempTeamsToNominate.length}/${spotsNeeded})`);
+                                    
+                                    // Update the actual arrays
+                                    teamsToNominate.length = 0;
+                                    teamsToNominate.push(...tempTeamsToNominate);
+                                    Object.assign(userTeamCounts, tempUserCounts);
+                                    
+                                    // If we didn't add any new teams, increase the limit
+                                    if (newTeamsAdded === 0 || teamsToNominate.length >= spotsNeeded) {
+                                        break;
+                                    }
+                                    
+                                    currentMaxPerUser += 2; // Increase by 2 each attempt
+                                    attempt++;
                                 }
                                 
                                 console.log(`Selected ${teamsToNominate.length} teams to auto-nominate`);
@@ -2459,7 +2490,17 @@ app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
                             
                             // Execute the bracket creation script programmatically
                             const { spawn } = require('child_process');
+                            const fs = require('fs');
                             const scriptPath = path.join(__dirname, 'scripts', 'create_tournament_bracket.js');
+                            
+                            // Verify script exists before attempting to run it
+                            if (!fs.existsSync(scriptPath)) {
+                                console.error('Bracket script not found at:', scriptPath);
+                                return res.status(500).json({ 
+                                    error: 'Bracket creation script not found',
+                                    path: scriptPath 
+                                });
+                            }
                             
                             // Set environment variables for the script
                             const env = { ...process.env };
@@ -2468,25 +2509,46 @@ app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
                             env.SOURCE_CONTEST = sourceContest;
                             env.MAX_TEAMS = maxTeams ? maxTeams.toString() : '';
                             env.MAX_TEAMS_PER_USER = maxTeamsPerUser.toString();
+                            // Pass current working directory to child process
+                            env.PWD = process.cwd();
                             
-                            const child = spawn('node', [scriptPath], { env });
+                            console.log('🚀 Starting bracket creation script...');
+                            console.log('  Script path:', scriptPath);
+                            console.log('  Working directory:', process.cwd());
+                            console.log('  Node.js path:', process.execPath);
+                            
+                            // Use process.execPath for more reliable Node.js execution
+                            const child = spawn(process.execPath, [scriptPath], { 
+                                env,
+                                cwd: __dirname  // Set working directory explicitly
+                            });
                             
                             let output = '';
                             let errorOutput = '';
                             
                             child.stdout.on('data', (data) => {
-                                output += data.toString();
+                                const chunk = data.toString();
+                                console.log('Bracket script output:', chunk);
+                                output += chunk;
                             });
                             
                             child.stderr.on('data', (data) => {
-                                errorOutput += data.toString();
+                                const chunk = data.toString();
+                                console.error('Bracket script error:', chunk);
+                                errorOutput += chunk;
                             });
                             
                             child.on('close', (code) => {
+                                console.log(`Bracket script exited with code: ${code}`);
+                                console.log('Full script output:', output);
+                                console.log('Full script errors:', errorOutput);
+                                
                                 if (code === 0) {
                                     // Extract matchup count from output
                                     const matchupMatch = output.match(/Created (\d+) first round matchups/);
                                     const matchupsCreated = matchupMatch ? parseInt(matchupMatch[1]) : 0;
+                                    
+                                    console.log(`Extracted matchups created: ${matchupsCreated}`);
                                     
                                     res.json({ 
                                         success: true, 
@@ -2496,7 +2558,8 @@ app.post('/api/tournament/create-bracket', requireAdmin, (req, res) => {
                                         output: output
                                     });
                                 } else {
-                                    console.error('Bracket creation failed:', errorOutput);
+                                    console.error('Bracket creation failed with code:', code);
+                                    console.error('Error output:', errorOutput);
                                     res.status(500).json({ 
                                         error: 'Failed to create tournament bracket',
                                         details: errorOutput || output
