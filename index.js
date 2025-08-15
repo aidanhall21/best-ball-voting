@@ -3337,6 +3337,7 @@ app.get('/my/profile', requireAuth, (req, res) => {
       foes: []
     },
     voteResults: [],
+    achievements: [],
     isOwnProfile: true,
     viewerLoggedIn: true
   };
@@ -3379,14 +3380,28 @@ app.get('/my/profile', requireAuth, (req, res) => {
 
               const myTeamIds = myTeams.map(t => t.id);
               if (!myTeamIds.length) {
-                return res.json(response); // No teams, return early
+                // Get achievements before returning
+                getUserAchievements(userId, (achievementsErr, achievements) => {
+                  if (!achievementsErr) {
+                    response.achievements = achievements;
+                  }
+                  return res.json(response); // No teams, return early
+                });
+                return;
               }
 
               // Limit team IDs to prevent massive IN clauses
               const limitedTeamIds = myTeamIds.slice(0, 100); // Limit to 100 teams max
               
               if (limitedTeamIds.length === 0) {
-                return res.json(response);
+                // Get achievements before returning
+                getUserAchievements(userId, (achievementsErr, achievements) => {
+                  if (!achievementsErr) {
+                    response.achievements = achievements;
+                  }
+                  return res.json(response);
+                });
+                return;
               }
 
               // Simplified query to reduce memory usage
@@ -3425,12 +3440,13 @@ app.get('/my/profile', requireAuth, (req, res) => {
                   return res.status(500).json({ error: 'DB error' });
                 }
 
-                // --- Updated: Rank friends & foes using Wilson lower-bound score ---
+                // --- Calculate win_rate and Wilson lower-bound score ---
                 const z = 1.96; // 95% confidence interval constant
 
                 statsRows.forEach(r => {
                   const n = r.wins + r.losses;
                   const p = n ? r.wins / n : 0;
+                  r.win_rate = p; // Add missing win_rate calculation
                   r.wilson = n ? (
                     (
                       p + (z * z) / (2 * n) -
@@ -3503,7 +3519,14 @@ app.get('/my/profile', requireAuth, (req, res) => {
                     console.error('DB error fetching team vote results:', err5);
                     // Even if this fails, send rest of profile; leave voteResults empty
                     response.voteResults = [];
-                    return res.json(response);
+                    // Get achievements before returning
+                    getUserAchievements(userId, (achievementsErr, achievements) => {
+                      if (!achievementsErr) {
+                        response.achievements = achievements;
+                      }
+                      return res.json(response);
+                    });
+                    return;
                   }
 
                   // Calculate percentages to match leaderboard formatting
@@ -3616,7 +3639,13 @@ app.get('/my/profile', requireAuth, (req, res) => {
 
                         const sendWithRating = (rating) => {
                           response.medianMadden = rating;
-                          res.json(response);
+                          // Get achievements before sending final response
+                          getUserAchievements(userId, (achievementsErr, achievements) => {
+                            if (!achievementsErr) {
+                              response.achievements = achievements;
+                            }
+                            res.json(response);
+                          });
                         };
 
                         let meta = userLeaderboardCacheMeta.get(cacheKey);
@@ -3781,19 +3810,72 @@ app.get('/profile/:username', (req, res) => {
             isOwnProfile: viewerUserId === targetUserId,
             viewerLoggedIn: !!viewerUserId,
             voteResults: [],
-            votingStats: { friends: [], foes: [] }
+            votingStats: { friends: [], foes: [] },
+            uploads: [],
+            usernames: [],
+            achievements: []
           };
 
-          // First gather this user's team IDs (used for both voting stats & team stats)
-          db.all('SELECT id FROM teams WHERE user_id = ?', [targetUserId], (errTeams, teamIdRows) => {
-            if (errTeams) {
-              console.error('DB error fetching team ids:', errTeams);
-              return res.status(500).json({ error: 'Database error' });
-            }
+          // If viewing own profile, get uploads and usernames data
+          if (viewerUserId === targetUserId) {
+            // Get distinct usernames for this user
+            db.all(
+              'SELECT DISTINCT username FROM teams WHERE user_id = ? AND username IS NOT NULL ORDER BY username',
+              [targetUserId],
+              (err, usernameRows) => {
+                if (err) {
+                  console.error('DB error fetching usernames:', err);
+                } else {
+                  response.usernames = usernameRows.map(r => r.username);
+                }
 
-            const myTeamIds = teamIdRows.map(r => r.id);
+                // Get upload data
+                db.all(
+                  `SELECT username, tournament, COUNT(*) as count 
+                   FROM teams 
+                   WHERE user_id = ? 
+                   GROUP BY username, tournament
+                   ORDER BY tournament, username`,
+                  [targetUserId],
+                  (err2, uploadRows) => {
+                    if (err2) {
+                      console.error('DB error fetching uploads:', err2);
+                    } else {
+                      response.uploads = uploadRows || [];
+                    }
 
-            const afterVotingStats = () => {
+                    // Continue with team gathering
+                    gatherTeamIds();
+                  }
+                );
+              }
+            );
+          } else {
+            // Not own profile, continue with team gathering
+            gatherTeamIds();
+          }
+
+          function gatherTeamIds() {
+            // First gather this user's team IDs (used for both voting stats & team stats)
+            db.all('SELECT id FROM teams WHERE user_id = ?', [targetUserId], (errTeams, teamIdRows) => {
+              if (errTeams) {
+                console.error('DB error fetching team ids:', errTeams);
+                return res.status(500).json({ error: 'Database error' });
+              }
+
+              const myTeamIds = teamIdRows.map(r => r.id);
+
+              const afterVotingStats = () => {
+              // Get achievements for this user before proceeding
+              getUserAchievements(targetUserId, (achievementsErr, achievements) => {
+                if (!achievementsErr) {
+                  response.achievements = achievements;
+                }
+                proceedAfterAchievements();
+              });
+            };
+
+            const proceedAfterAchievements = () => {
               // === Get vote results for each of the user\'s teams (same as before) ===
               const teamStatsSql = `
                 WITH team_stats AS (
@@ -3955,7 +4037,7 @@ app.get('/profile/:username', (req, res) => {
                      }
                 }});
               });
-            };
+            }; // End proceedAfterAchievements function
 
             // If no teams, we can skip votingStats and directly get teamStats (which will return empty anyway)
             if (!myTeamIds.length) {
@@ -4065,11 +4147,222 @@ app.get('/profile/:username', (req, res) => {
 
               afterVotingStats();
             });
-          });
+            }); // End gatherTeamIds function
+          }
         }
       );
     }
   );
+});
+
+// === Achievements API Endpoints ===
+
+// Get all achievements for a user (for profile display)
+app.get('/user/:userId/achievements', (req, res) => {
+  const { userId } = req.params;
+  
+  const sql = `
+    SELECT 
+      a.id,
+      a.name,
+      a.description,
+      a.image_path,
+      a.category,
+      ua.awarded_at
+    FROM user_achievements ua
+    JOIN achievements a ON ua.achievement_id = a.id
+    WHERE ua.user_id = ? AND a.is_active = 1
+    ORDER BY a.category, a.sort_order, ua.awarded_at DESC
+  `;
+  
+  db.all(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching user achievements:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ achievements: rows || [] });
+  });
+});
+
+// Get user achievements for profile endpoint (used by /my/profile and /profile/:username)
+function getUserAchievements(userId, callback) {
+  const sql = `
+    SELECT 
+      a.id,
+      a.name,
+      a.description,
+      a.image_path,
+      a.category,
+      ua.awarded_at
+    FROM user_achievements ua
+    JOIN achievements a ON ua.achievement_id = a.id
+    WHERE ua.user_id = ? AND a.is_active = 1
+    ORDER BY a.category, a.sort_order, ua.awarded_at DESC
+  `;
+  
+  db.all(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching user achievements:', err);
+      return callback(err, []);
+    }
+    callback(null, rows || []);
+  });
+}
+
+// Admin: Get all achievements (for management)
+app.get('/admin/achievements', requireAuth, (req, res) => {
+  // Add admin check here if you have admin roles
+  const sql = `
+    SELECT 
+      id,
+      name,
+      description,
+      image_path,
+      category,
+      sort_order,
+      is_active,
+      created_at
+    FROM achievements
+    ORDER BY category, sort_order, name
+  `;
+  
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching achievements:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ achievements: rows || [] });
+  });
+});
+
+// Admin: Create new achievement
+app.post('/admin/achievements', requireAuth, (req, res) => {
+  // Add admin check here
+  const { id, name, description, image_path, category, sort_order } = req.body;
+  
+  if (!id || !name || !description) {
+    return res.status(400).json({ error: 'ID, name, and description are required' });
+  }
+  
+  const sql = `
+    INSERT INTO achievements (id, name, description, image_path, category, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+  
+  db.run(sql, [id, name, description, image_path, category || 'general', sort_order || 0], function(err) {
+    if (err) {
+      console.error('Error creating achievement:', err);
+      if (err.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'Achievement ID already exists' });
+      }
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ success: true, id: id });
+  });
+});
+
+// Admin: Award achievement to user
+app.post('/admin/award-achievement', requireAuth, (req, res) => {
+  // Add admin check here
+  const { user_id, achievement_id, notes } = req.body;
+  const awarded_by = req.user.id;
+  
+  if (!user_id || !achievement_id) {
+    return res.status(400).json({ error: 'User ID and Achievement ID are required' });
+  }
+  
+  const sql = `
+    INSERT INTO user_achievements (user_id, achievement_id, awarded_by, notes)
+    VALUES (?, ?, ?, ?)
+  `;
+  
+  db.run(sql, [user_id, achievement_id, awarded_by, notes], function(err) {
+    if (err) {
+      console.error('Error awarding achievement:', err);
+      if (err.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'User already has this achievement' });
+      }
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ success: true, id: this.lastID });
+  });
+});
+
+// Admin: Remove achievement from user
+app.delete('/admin/remove-achievement', requireAuth, (req, res) => {
+  // Add admin check here
+  const { user_id, achievement_id } = req.body;
+  
+  if (!user_id || !achievement_id) {
+    return res.status(400).json({ error: 'User ID and Achievement ID are required' });
+  }
+  
+  const sql = `DELETE FROM user_achievements WHERE user_id = ? AND achievement_id = ?`;
+  
+  db.run(sql, [user_id, achievement_id], function(err) {
+    if (err) {
+      console.error('Error removing achievement:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Achievement not found for this user' });
+    }
+    
+    res.json({ success: true });
+  });
+});
+
+// API endpoint for user search (used by admin interface)
+app.get('/api/search-users', requireAuth, (req, res) => {
+  const { q } = req.query;
+  
+  if (!q || q.length < 2) {
+    return res.json({ users: [] });
+  }
+
+  const sql = `
+    SELECT DISTINCT u.id, u.display_name, u.email
+    FROM users u
+    WHERE u.display_name LIKE ? OR u.email LIKE ?
+    LIMIT 10
+  `;
+  
+  const searchTerm = `%${q}%`;
+  
+  db.all(sql, [searchTerm, searchTerm], (err, rows) => {
+    if (err) {
+      console.error('Error searching users:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ users: rows || [] });
+  });
+});
+
+// Basic users endpoint (for admin interface)
+app.get('/api/users', requireAuth, (req, res) => {
+  // Add admin check here if you have admin roles
+  const sql = `
+    SELECT DISTINCT u.id, u.display_name, u.email
+    FROM users u
+    JOIN teams t ON u.id = t.user_id
+    ORDER BY u.display_name, u.email
+    LIMIT 100
+  `;
+  
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching users:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ users: rows || [] });
+  });
 });
 
 // === NEW: Get voting history for a specific team ===

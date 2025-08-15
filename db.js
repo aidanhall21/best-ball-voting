@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
-const DB_PATH = process.env.DB_PATH || "./teams-2025-08-13-0751.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-13-0751.db";
+const DB_PATH = process.env.DB_PATH || "./teams-2025-08-15-0929.db"; // allow override in prod
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-15-0929.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -267,6 +267,42 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_votes_team ON tournament_votes(team_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_results_tournament ON tournament_results(tournament_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_results_position ON tournament_results(tournament_id, final_position)`);
+
+  // Achievements system tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS achievements (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      image_path TEXT,
+      category TEXT DEFAULT 'general',
+      sort_order INTEGER DEFAULT 0,
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_achievements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      achievement_id TEXT NOT NULL,
+      awarded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      awarded_by INTEGER, -- admin user who granted it
+      notes TEXT, -- optional notes about why it was awarded
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (achievement_id) REFERENCES achievements(id),
+      FOREIGN KEY (awarded_by) REFERENCES users(id),
+      UNIQUE(user_id, achievement_id)
+    )
+  `);
+
+  // Achievements indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_achievements_category ON achievements(category)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_achievements_active ON achievements(is_active)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_achievements_achievement ON user_achievements(achievement_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_achievements_awarded_at ON user_achievements(awarded_at)`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS users (

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Achievements Admin - Draft or Pass</title>
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="header.js"></script>
+
+  <style>
+    .admin-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .admin-section {
+      background: #161b22;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+
+    .admin-section h2 {
+      margin: 0 0 20px 0;
+      font-size: 20px;
+      color: #f0f6fc;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: #f0f6fc;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #f0f6fc;
+      font-size: 14px;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .btn {
+      background: #238636;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+
+    .btn:hover {
+      background: #2ea043;
+    }
+
+    .btn-danger {
+      background: #da3633;
+    }
+
+    .btn-danger:hover {
+      background: #f85149;
+    }
+
+    .achievements-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .achievement-card {
+      background: #1c2128;
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid #30363d;
+    }
+
+    .achievement-card h4 {
+      margin: 0 0 8px 0;
+      color: #f0f6fc;
+    }
+
+    .achievement-card p {
+      margin: 0 0 12px 0;
+      color: #8b949e;
+      font-size: 14px;
+    }
+
+    .achievement-meta {
+      font-size: 12px;
+      color: #6e7681;
+      margin-bottom: 12px;
+    }
+
+    .user-search {
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .user-suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1c2128;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+
+    .user-suggestion {
+      padding: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #30363d;
+      color: #f0f6fc;
+    }
+
+    .user-suggestion:hover {
+      background: #30363d;
+    }
+
+    .user-suggestion:last-child {
+      border-bottom: none;
+    }
+
+    .awarded-users {
+      margin-top: 16px;
+    }
+
+    .awarded-user {
+      display: inline-block;
+      background: #238636;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin: 2px;
+      font-size: 12px;
+    }
+
+    .message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .message.success {
+      background: rgba(35, 134, 54, 0.2);
+      border: 1px solid #238636;
+      color: #2ea043;
+    }
+
+    .message.error {
+      background: rgba(218, 54, 51, 0.2);
+      border: 1px solid #da3633;
+      color: #f85149;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-content-wrapper">
+    <div class="header" style="justify-content:center; margin-top: 20px;">
+      <h1>Achievements Admin</h1>
+    </div>
+
+    <div class="admin-container">
+      <div id="messageContainer"></div>
+
+      <!-- Create Achievement Section -->
+      <div class="admin-section">
+        <h2>Create New Achievement</h2>
+        <form id="createAchievementForm">
+          <div class="form-group">
+            <label for="achievementId">Achievement ID:</label>
+            <input type="text" id="achievementId" name="id" required 
+                   placeholder="e.g., first_upload, tournament_winner">
+          </div>
+          <div class="form-group">
+            <label for="achievementName">Name:</label>
+            <input type="text" id="achievementName" name="name" required 
+                   placeholder="e.g., First Upload">
+          </div>
+          <div class="form-group">
+            <label for="achievementDescription">Description:</label>
+            <textarea id="achievementDescription" name="description" required 
+                      placeholder="Describe what this achievement is for"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="achievementImage">Image Path:</label>
+            <input type="text" id="achievementImage" name="image_path" 
+                   placeholder="/public/achievements/first_upload.png">
+          </div>
+          <div class="form-group">
+            <label for="achievementCategory">Category:</label>
+            <select id="achievementCategory" name="category">
+              <option value="general">General</option>
+              <option value="upload">Upload</option>
+              <option value="voting">Voting</option>
+              <option value="tournament">Tournament</option>
+              <option value="special">Special</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="achievementSort">Sort Order:</label>
+            <input type="number" id="achievementSort" name="sort_order" value="0">
+          </div>
+          <button type="submit" class="btn">Create Achievement</button>
+        </form>
+      </div>
+
+      <!-- Award Achievement Section -->
+      <div class="admin-section">
+        <h2>Award Achievement to User</h2>
+        <form id="awardAchievementForm">
+          <div class="form-group">
+            <label for="userSearch">Search User:</label>
+            <div class="user-search">
+              <input type="text" id="userSearch" placeholder="Type username or display name...">
+              <div class="user-suggestions" id="userSuggestions"></div>
+            </div>
+            <input type="hidden" id="selectedUserId" name="user_id">
+          </div>
+          <div class="form-group">
+            <label for="achievementSelect">Achievement:</label>
+            <select id="achievementSelect" name="achievement_id" required>
+              <option value="">Select achievement...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="awardNotes">Notes (optional):</label>
+            <textarea id="awardNotes" name="notes" placeholder="Why is this achievement being awarded?"></textarea>
+          </div>
+          <button type="submit" class="btn">Award Achievement</button>
+        </form>
+      </div>
+
+      <!-- Achievements List -->
+      <div class="admin-section">
+        <h2>All Achievements</h2>
+        <div id="achievementsList" class="achievements-list">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let achievements = [];
+    let users = [];
+
+    // Load data on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      loadAchievements();
+      loadUsers();
+
+      // Set up form handlers
+      document.getElementById('createAchievementForm').addEventListener('submit', handleCreateAchievement);
+      document.getElementById('awardAchievementForm').addEventListener('submit', handleAwardAchievement);
+      document.getElementById('userSearch').addEventListener('input', handleUserSearch);
+    });
+
+    function showMessage(text, type = 'success') {
+      const container = document.getElementById('messageContainer');
+      container.innerHTML = `<div class="message ${type}">${text}</div>`;
+      setTimeout(() => {
+        container.innerHTML = '';
+      }, 5000);
+    }
+
+    async function loadAchievements() {
+      try {
+        const response = await fetch('/admin/achievements');
+        const data = await response.json();
+        achievements = data.achievements || [];
+        renderAchievements();
+        updateAchievementSelect();
+      } catch (err) {
+        console.error('Failed to load achievements:', err);
+        showMessage('Failed to load achievements', 'error');
+      }
+    }
+
+    async function loadUsers() {
+      try {
+        // Get users with teams (simple endpoint to get usernames and IDs)
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        users = data.users || [];
+      } catch (err) {
+        console.error('Failed to load users:', err);
+        // For now, we'll handle user search without pre-loading
+      }
+    }
+
+    function renderAchievements() {
+      const container = document.getElementById('achievementsList');
+      
+      if (achievements.length === 0) {
+        container.innerHTML = '<p style="color:#8b949e;">No achievements created yet.</p>';
+        return;
+      }
+
+      container.innerHTML = achievements.map(achievement => `
+        <div class="achievement-card">
+          <h4>${escapeHtml(achievement.name)}</h4>
+          <p>${escapeHtml(achievement.description)}</p>
+          <div class="achievement-meta">
+            ID: ${achievement.id} | Category: ${achievement.category} | Sort: ${achievement.sort_order}
+            ${achievement.image_path ? `<br>Image: ${achievement.image_path}` : ''}
+          </div>
+          <div id="awardedUsers-${achievement.id}" class="awarded-users">
+            <!-- Will be populated with awarded users -->
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateAchievementSelect() {
+      const select = document.getElementById('achievementSelect');
+      select.innerHTML = '<option value="">Select achievement...</option>' +
+        achievements.map(achievement => 
+          `<option value="${achievement.id}">${escapeHtml(achievement.name)}</option>`
+        ).join('');
+    }
+
+    async function handleCreateAchievement(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = Object.fromEntries(formData);
+
+      try {
+        const response = await fetch('/admin/achievements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+          showMessage('Achievement created successfully!');
+          e.target.reset();
+          loadAchievements();
+        } else {
+          showMessage(result.error || 'Failed to create achievement', 'error');
+        }
+      } catch (err) {
+        console.error('Error creating achievement:', err);
+        showMessage('Failed to create achievement', 'error');
+      }
+    }
+
+    async function handleAwardAchievement(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = Object.fromEntries(formData);
+
+      if (!data.user_id) {
+        showMessage('Please select a user', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch('/admin/award-achievement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+          showMessage('Achievement awarded successfully!');
+          e.target.reset();
+          document.getElementById('selectedUserId').value = '';
+          document.getElementById('userSearch').value = '';
+        } else {
+          showMessage(result.error || 'Failed to award achievement', 'error');
+        }
+      } catch (err) {
+        console.error('Error awarding achievement:', err);
+        showMessage('Failed to award achievement', 'error');
+      }
+    }
+
+    async function handleUserSearch(e) {
+      const query = e.target.value.trim();
+      const suggestions = document.getElementById('userSuggestions');
+      
+      if (query.length < 2) {
+        suggestions.style.display = 'none';
+        return;
+      }
+
+      try {
+        // Search for users by display name or username
+        const response = await fetch(`/api/search-users?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (data.users && data.users.length > 0) {
+          suggestions.innerHTML = data.users.map(user => 
+            `<div class="user-suggestion" onclick="selectUser(${user.id}, '${escapeHtml(user.display_name || user.email)}')">
+              ${escapeHtml(user.display_name || user.email)}
+            </div>`
+          ).join('');
+          suggestions.style.display = 'block';
+        } else {
+          suggestions.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('User search failed:', err);
+        suggestions.style.display = 'none';
+      }
+    }
+
+    function selectUser(userId, displayName) {
+      document.getElementById('selectedUserId').value = userId;
+      document.getElementById('userSearch').value = displayName;
+      document.getElementById('userSuggestions').style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Close suggestions when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.user-search')) {
+        document.getElementById('userSuggestions').style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

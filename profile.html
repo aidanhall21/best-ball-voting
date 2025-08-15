@@ -83,14 +83,90 @@
       font-size: 20px;
     }
 
-    .coming-soon {
+    .achievements-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      min-height: 80px;
+    }
+
+    .achievement-item {
+      background: #1c2128;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      border: 1px solid #30363d;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .achievement-item:hover {
+      border-color: #58a6ff;
+      background: #21262d;
+    }
+
+    .achievement-image {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 12px auto;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 2px solid #ffd700;
+      box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+    }
+
+    .achievement-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: #f0f6fc;
+      margin-bottom: 6px;
+    }
+
+    .achievement-description {
+      font-size: 12px;
+      color: #8b949e;
+      line-height: 1.4;
+    }
+
+    .achievement-date {
+      font-size: 11px;
+      color: #6e7681;
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    .no-achievements {
       color: #8b949e;
       font-style: italic;
       font-size: 14px;
-      padding: 20px;
+      padding: 40px 20px;
       text-align: center;
       background: #1c2128;
       border-radius: 8px;
+      grid-column: 1 / -1;
+    }
+
+    @media (max-width: 768px) {
+      .achievements-container {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .achievement-item {
+        padding: 12px;
+      }
+
+      .achievement-image {
+        width: 48px;
+        height: 48px;
+      }
+
+      .achievement-name {
+        font-size: 13px;
+      }
+
+      .achievement-description {
+        font-size: 11px;
+      }
     }
 
     .uploads-section {
@@ -1040,9 +1116,11 @@
       <div id="profileInfo"></div>
     </div>
 
-    <div class="achievements">
-      <h2>Achievements</h2>
-      <p class="coming-soon">Coming Soon!</p>
+    <div class="achievements-section">
+      <h3>Achievements</h3>
+      <div id="achievementsContainer" class="achievements-container">
+        <!-- Achievements will be populated by JavaScript -->
+      </div>
     </div>
 
     <div class="voting-stats">
@@ -1206,16 +1284,45 @@
 
       // Load profile data
       function loadProfile() {
-        let profileEndpoint;
-        if (viewingUsername) {
-          // Viewing someone else's profile
-          profileEndpoint = `/profile/${encodeURIComponent(viewingUsername)}`;
-        } else {
-          // Viewing own profile
-          profileEndpoint = '/my/profile';
-        }
+        // First check if we have a username parameter and if we're logged in to determine the right endpoint
+        fetch('/me')
+          .then(res => res.json())
+          .then(authData => {
+            let profileEndpoint;
+            let isViewingOwnProfile = false;
+            
+            if (viewingUsername && authData.user) {
+              // Check if the username matches our own username/display_name
+              const currentUserDisplay = authData.user.display_name;
+              const currentUserEmail = authData.user.email;
+              
+              // If the username in URL matches our display name, treat as own profile
+              if (currentUserDisplay && currentUserDisplay.toLowerCase() === viewingUsername.toLowerCase()) {
+                isViewingOwnProfile = true;
+                profileEndpoint = '/my/profile';
+              } else {
+                // Viewing someone else's profile
+                profileEndpoint = `/profile/${encodeURIComponent(viewingUsername)}`;
+              }
+            } else if (viewingUsername) {
+              // Not logged in but viewing a specific username
+              profileEndpoint = `/profile/${encodeURIComponent(viewingUsername)}`;
+            } else {
+              // No username parameter - viewing own profile
+              isViewingOwnProfile = true;
+              profileEndpoint = '/my/profile';
+            }
 
-        fetch(profileEndpoint)
+            return fetch(profileEndpoint);
+          })
+          .catch(authErr => {
+            // If auth check fails, default to public profile endpoint if we have a username
+            if (viewingUsername) {
+              return fetch(`/profile/${encodeURIComponent(viewingUsername)}`);
+            } else {
+              throw authErr;
+            }
+          })
           .then(async res => {
             if (res.status === 401) {
               // Not logged in - show login required message
@@ -1439,6 +1546,9 @@
             if (isOwnProfile && data.usernames) {
               window.availableUsernames = data.usernames;
             }
+
+            // ---- Populate Achievements ----
+            populateAchievements(data.achievements || []);
 
             // ---- Populate Friends & Foes ----
             if (data.votingStats && (data.votingStats.friends.length || data.votingStats.foes.length)) {
@@ -1884,6 +1994,39 @@
           console.error('Failed to set gear active state after header load', err);
         }
       });
+
+      // Helper function to escape HTML
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Helper to render achievements
+      function populateAchievements(achievements) {
+        const container = document.getElementById('achievementsContainer');
+        if (!container) return;
+
+        if (!achievements || achievements.length === 0) {
+          container.innerHTML = '<div class="no-achievements">No achievements yet!</div>';
+          return;
+        }
+
+        container.innerHTML = achievements.map(achievement => {
+          const awardedDate = new Date(achievement.awarded_at).toLocaleDateString();
+          const imagePath = achievement.image_path || '/public/achievements/default.png';
+          
+          return `
+            <div class="achievement-item">
+              <img src="${imagePath}" alt="${achievement.name}" class="achievement-image" 
+                   onerror="this.src='/favicon_io/android-chrome-192x192.png'">
+              <div class="achievement-name">${escapeHtml(achievement.name)}</div>
+              <div class="achievement-description">${escapeHtml(achievement.description)}</div>
+              <div class="achievement-date">Awarded ${awardedDate}</div>
+            </div>
+          `;
+        }).join('');
+      }
 
       // Helper to render voting stats
       function populateVotingStats(stats) {
