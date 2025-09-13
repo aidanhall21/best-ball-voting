@@ -416,13 +416,13 @@ app.get('/leaderboard', (req, res) => {
 });
 
 // Serve tournament page
-app.get('/tournament', (req, res) => {
-  const htmlPath = path.join(__dirname, 'tournament.html');
+app.get('/eliminator', (req, res) => {
+  const htmlPath = path.join(__dirname, 'eliminator.html');
   let html = fs.readFileSync(htmlPath, 'utf8');
   const tokenScript = `\n<script>\n    window.TURNSTILE_SITE_KEY='${CF_SITE_KEY}';\n  </script>\n`;
   html = html.replace('</head>', tokenScript + '</head>');
-  // Inject cache-busting query string
-  html = html.replace('tournament.js"', `tournament.js?v=${ASSET_VERSION}"`);
+  // Cache-bust eliminator.js
+  html = html.replace('eliminator.js"', `eliminator.js?v=${ASSET_VERSION}"`);
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
 });
@@ -445,6 +445,153 @@ app.get('/matchup-settings', requireAdmin, (req, res) => {
 
 // Serve other static assets after the HTML routes so token injection wins
 app.use(express.static(__dirname));
+
+// --- Eliminator API ---
+// Returns two teams built from a random draft_id in eliminator_rd2
+app.get('/api/eliminator/matchup', async (req, res) => {
+  try {
+    // Pick a random draft_id with exactly two distinct teams
+    const draftId = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT draft_id
+         FROM eliminator_rd2
+         GROUP BY draft_id
+         HAVING COUNT(DISTINCT draft_entry_id) = 2
+         ORDER BY RANDOM()
+         LIMIT 1`,
+        [],
+        (err, row) => {
+          if (err) return reject(err);
+          if (!row) return resolve(null);
+          resolve(row.draft_id);
+        }
+      );
+    });
+
+    if (!draftId) {
+      return res.status(404).json({ error: 'No Eliminator drafts found with exactly two teams' });
+    }
+
+    // Fetch both teams' rosters for this draft
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT 
+           draft_entry_id,
+           player_name,
+           position_name,
+           team_pick_number,
+           overall_pick_number,
+           pick_order,
+           username
+         FROM eliminator_rd2
+         WHERE draft_id = ?
+         ORDER BY draft_entry_id, CAST(team_pick_number AS INTEGER), CAST(overall_pick_number AS INTEGER)`,
+        [draftId],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        }
+      );
+    });
+
+    // Group by draft_entry_id to form two teams
+    const byTeam = new Map();
+    const usernamesByTeam = {};
+    for (const r of rows) {
+      if (!byTeam.has(r.draft_entry_id)) byTeam.set(r.draft_entry_id, []);
+      byTeam.get(r.draft_entry_id).push({
+        position: r.position_name,
+        name: r.player_name,
+        pick: r.team_pick_number || r.overall_pick_number || r.pick_order || null,
+        team: null,
+        stack: null
+      });
+      if (!usernamesByTeam[r.draft_entry_id] && r.username) {
+        usernamesByTeam[r.draft_entry_id] = r.username;
+      }
+    }
+
+    // Build the array in the format script.js expects: [teamId, players[], metadata]
+    const teamsPayload = Array.from(byTeam.entries()).map(([teamId, players]) => [teamId, players, {}]);
+
+    if (teamsPayload.length !== 2) {
+      // Edge case: skip this draft_id if malformed; try again recursively once
+      return res.status(409).json({ error: 'Selected draft did not contain exactly two teams' });
+    }
+
+    // Ensure a persistent matchup row exists and return its id
+    const teamIds = Array.from(byTeam.keys()).sort();
+    const team1Id = teamIds[0];
+    const team2Id = teamIds[1];
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR IGNORE INTO eliminator_matchups (draft_id, team1_draft_entry_id, team2_draft_entry_id) VALUES (?,?,?)`,
+        [draftId, team1Id, team2Id],
+        (err) => err ? reject(err) : resolve()
+      );
+    });
+
+    const matchup = await new Promise((resolve, reject) => {
+      db.get(`SELECT id FROM eliminator_matchups WHERE draft_id = ?`, [draftId], (err, row) => {
+        if (err) return reject(err);
+        resolve(row);
+      });
+    });
+
+    // Public-facing matchup_id is the draft_id; include numeric PK as matchup_pk
+    return res.json({ matchup_id: draftId, matchup_pk: matchup?.id, draft_id: draftId, teams: teamsPayload, usernames: usernamesByTeam });
+  } catch (e) {
+    console.error('Error building Eliminator matchup:', e);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Record an Eliminator vote (captcha-protected)
+app.post('/api/eliminator/vote', verifyCaptcha, (req, res) => {
+  const { matchup_id, winner_draft_entry_id, loser_draft_entry_id } = req.body || {};
+  if (!matchup_id || !winner_draft_entry_id || !loser_draft_entry_id) {
+    return res.status(400).json({ error: 'matchup_id, winner_draft_entry_id, and loser_draft_entry_id are required' });
+  }
+  if (winner_draft_entry_id === loser_draft_entry_id) {
+    return res.status(400).json({ error: 'winner and loser must be different' });
+  }
+
+  // Resolve matchup by draft_id (public id) or numeric id
+  const isDraftId = typeof matchup_id === 'string' && matchup_id.includes('-');
+  const sql = isDraftId
+    ? `SELECT id, draft_id, team1_draft_entry_id, team2_draft_entry_id FROM eliminator_matchups WHERE draft_id = ?`
+    : `SELECT id, draft_id, team1_draft_entry_id, team2_draft_entry_id FROM eliminator_matchups WHERE id = ?`;
+  const param = matchup_id;
+
+  db.get(sql, [param], (err, row) => {
+    if (err) {
+      console.error('DB error reading eliminator_matchups', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'Matchup not found' });
+    }
+
+    const validIds = new Set([row.team1_draft_entry_id, row.team2_draft_entry_id]);
+    if (!validIds.has(winner_draft_entry_id) || !validIds.has(loser_draft_entry_id)) {
+      return res.status(400).json({ error: 'Winner/loser do not belong to this matchup' });
+    }
+
+    const voterId = (req.user && req.user.id) ? req.user.id : null;
+    db.run(
+      `INSERT INTO eliminator_votes (matchup_id, matchup_draft_id, winner_draft_entry_id, loser_draft_entry_id, voter_id) VALUES (?,?,?,?,?)`,
+      [row.id, row.draft_id, winner_draft_entry_id, loser_draft_entry_id, voterId],
+      function(insertErr) {
+        if (insertErr) {
+          console.error('DB error inserting eliminator_vote', insertErr);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        return res.json({ success: true, vote_id: this.lastID });
+      }
+    );
+  });
+});
 
 // Handle CSV Upload
 app.post("/upload", requireAuth, upload.single("csv"), (req, res) => {

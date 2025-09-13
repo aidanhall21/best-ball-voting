@@ -1598,7 +1598,7 @@ function buildTeamCard(teamId, players) {
       const stackStar = pl.stack ? 
         `<span class="stack-star ${pl.stack}">★</span>` : '';
       // Build bubble content with pick number left-aligned and player info centered
-      const pickHTML = (pl.pick || pl.pick === 0) ? `<span class="pick-num">#${pl.pick}</span>` : '';
+      const pickHTML = '';
       const infoHTML = `<span class="player-info">${pl.name}${pl.team ? ` - ${pl.team}` : ''}</span>`;
       const starHTML = stackStar; // star after info for positioning via CSS
       bubble.innerHTML = `${pickHTML}${infoHTML}${starHTML}`;

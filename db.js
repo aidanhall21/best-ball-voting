@@ -1,6 +1,6 @@
 const sqlite3 = require("sqlite3").verbose();
 const DB_PATH = process.env.DB_PATH || "./teams-2025-08-15-1533.db"; // allow override in prod
-const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-15-0929.db";
+const ANALYTICS_DB_PATH = process.env.ANALYTICS_DB_PATH || "./analytics-2025-08-15-1533.db";
 const db = new sqlite3.Database(DB_PATH);
 const analyticsDb = new sqlite3.Database(ANALYTICS_DB_PATH);
 
@@ -267,6 +267,48 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_votes_team ON tournament_votes(team_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_results_tournament ON tournament_results(tournament_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_tournament_results_position ON tournament_results(tournament_id, final_position)`);
+
+  // --- Eliminator tables ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS eliminator_matchups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      draft_id TEXT NOT NULL UNIQUE,
+      team1_draft_entry_id TEXT NOT NULL,
+      team2_draft_entry_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS eliminator_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      matchup_id INTEGER NOT NULL,
+      matchup_draft_id TEXT,
+      winner_draft_entry_id TEXT NOT NULL,
+      loser_draft_entry_id TEXT NOT NULL,
+      voter_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (matchup_id) REFERENCES eliminator_matchups(id)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_elim_votes_matchup ON eliminator_votes(matchup_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_elim_votes_voter ON eliminator_votes(voter_id)`);
+
+  // Backfill new eliminator_votes columns when upgrading existing DBs
+  db.all('PRAGMA table_info(eliminator_votes)', (err, cols) => {
+    if (err) return; // silent fail
+    const hasDraftId = Array.isArray(cols) && cols.some(c => c.name === 'matchup_draft_id');
+    if (!hasDraftId) {
+      db.run('ALTER TABLE eliminator_votes ADD COLUMN matchup_draft_id TEXT', (alterErr) => {
+        if (alterErr && !alterErr.message.includes('duplicate column name')) {
+          console.error('Error adding matchup_draft_id to eliminator_votes:', alterErr);
+        } else {
+          db.run('CREATE INDEX IF NOT EXISTS idx_elim_votes_matchup_draft ON eliminator_votes(matchup_draft_id)');
+        }
+      });
+    } else {
+      db.run('CREATE INDEX IF NOT EXISTS idx_elim_votes_matchup_draft ON eliminator_votes(matchup_draft_id)');
+    }
+  });
 
   // Achievements system tables
   db.run(`

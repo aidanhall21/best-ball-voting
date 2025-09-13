@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eliminator - Head-to-Head</title>
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="header.js"></script>
+  <!-- Favicons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/favicon_io/site.webmanifest">
+  <link rel="shortcut icon" href="/favicon_io/favicon.ico">
+
+  <!-- Social share metadata -->
+  <meta property="og:title" content="Eliminator - Head-to-Head">
+  <meta property="og:description" content="Compare two Eliminator teams head-to-head">
+  <meta property="og:image" content="https://draftrpass.com/social_share_img.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://draftrpass.com/eliminator" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Eliminator - Head-to-Head">
+  <meta name="twitter:description" content="Compare two Eliminator teams head-to-head">
+  <meta name="twitter:image" content="https://draftrpass.com/social_share_img.png?v=2">
+
+  <!-- Cloudflare Turnstile (kept for consistent script.js expectations; vote is no-op here) -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+</head>
+<body>
+  <!-- Hidden Turnstile container -->
+  <div id="cf-container" style="display:none;"></div>
+
+  <main class="main-content">
+    <div id="teamsContainer" class="teams-container">
+      <div class="loading-indicator">Loading Eliminator matchup…</div>
+    </div>
+  </main>
+
+  <script src="analytics.js"></script>
+  <script src="eliminator.js"></script>
+</body>
+<html>
+
