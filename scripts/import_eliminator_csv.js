@@ -102,7 +102,8 @@ async function run() {
   await exec(`PRAGMA journal_mode = WAL`);
   await exec(`PRAGMA synchronous = NORMAL`);
   await exec(`PRAGMA temp_store = MEMORY`);
-  await exec(`PRAGMA cache_size = -50000`); // ~50MB page cache
+  // Keep cache modest to reduce process memory pressure
+  await exec(`PRAGMA cache_size = 2000`); // ~2k pages
 
   if (shouldDrop) {
     console.log('Dropping existing table eliminator_rd2 (if exists)...');
@@ -117,10 +118,13 @@ async function run() {
 
   await exec('BEGIN');
 
-  const insertStmt = await prepare(insertSql);
+  let insertStmt = await prepare(insertSql);
 
   let rowCount = 0;
   let t0 = Date.now();
+
+  const BATCH_ROWS = parseInt(process.env.BATCH_ROWS || '20000', 10);
+  let batchRows = 0;
 
   await new Promise((resolve, reject) => {
     const stream = fs.createReadStream(csvPath);
@@ -128,22 +132,35 @@ async function run() {
       header: true,
       skipEmptyLines: true,
       dynamicTyping: false, // keep as strings
-      chunkSize: 1024 * 1024, // 1MB chunks
-      step: (results, parser) => {
-        const row = results.data;
-        // Map values in canonical column order; default to null for missing fields
-        const values = COLUMNS.map((col) => (row[col] === undefined || row[col] === '' ? null : String(row[col])));
-        insertStmt.run(values, (err) => {
-          if (err) {
-            parser.abort();
-            reject(err);
-            return;
+      chunkSize: 1024 * 1024, // ~1MB chunks
+      chunk: async (results, parser) => {
+        parser.pause();
+        try {
+          for (const row of results.data) {
+            const values = COLUMNS.map((col) => (row[col] === undefined || row[col] === '' ? null : String(row[col])));
+            await runStmt(insertStmt, values);
+            rowCount++;
+            batchRows++;
+            if (rowCount % 10000 === 0) {
+              const dt = ((Date.now() - t0) / 1000).toFixed(1);
+              console.log(`Inserted ${rowCount.toLocaleString()} rows in ${dt}s`);
+            }
+            if (batchRows >= BATCH_ROWS) {
+              // Commit intermittently to keep WAL small and pressure low
+              await exec('COMMIT');
+              if (global.gc) { try { global.gc(); } catch(_) {} }
+              await exec('PRAGMA wal_checkpoint(TRUNCATE)');
+              await exec('BEGIN');
+              // Re-prepare the statement (safer across commits)
+              insertStmt.finalize();
+              insertStmt = await prepare(insertSql);
+              batchRows = 0;
+            }
           }
-        });
-        rowCount++;
-        if (rowCount % 10000 === 0) {
-          const dt = ((Date.now() - t0) / 1000).toFixed(1);
-          console.log(`Inserted ${rowCount.toLocaleString()} rows in ${dt}s`);
+          parser.resume();
+        } catch (e) {
+          parser.abort();
+          reject(e);
         }
       },
       complete: async () => {
@@ -186,9 +203,17 @@ function prepare(sql) {
   });
 }
 
+function runStmt(stmt, values) {
+  return new Promise((resolve, reject) => {
+    stmt.run(values, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
 run().catch(err => {
   console.error('Import failed:', err);
   try { db.run('ROLLBACK'); } catch (_) {}
   process.exit(1);
 });
-
