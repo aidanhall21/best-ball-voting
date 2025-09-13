@@ -35,5 +35,5 @@ teams_cache.json.gz
 .claude/
 CLAUDE.md
 
-*.csv
+# *.csv
 *.sql
